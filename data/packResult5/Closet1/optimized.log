@@ -1,0 +1,25 @@
+total number of nestable workpieces：93
+Processing color group: 0 (1/2), boxes: 51
+Allocated time: 329.0s
+searchTime: 1000
+Start nesting on the 1th large board, remaining blocks count: 28
+Utilization of the 1th large board: 97.6686710561677, Time taken for this board: 0.218s
+-------------------------------------------------------------------
+Start nesting on the 2th large board, remaining blocks count: 20
+Utilization of the 2th large board: 77.48850044510884, Time taken for this board: 0.40800000000000003s
+-------------------------------------------------------------------
+Found solution: 2
+
+
+Processing color group: 1 (2/2), boxes: 42
+Allocated time: 271.0s
+searchTime: 1000
+Start nesting on the 1th large board, remaining blocks count: 37
+Utilization of the 1th large board: 98.18220908357968, Time taken for this board: 0.41000000000000003s
+-------------------------------------------------------------------
+Start nesting on the 2th large board, remaining blocks count: 20
+Utilization of the 2th large board: 69.46078315640958, Time taken for this board: 0.616s
+-------------------------------------------------------------------
+Found solution: 2
+
+
