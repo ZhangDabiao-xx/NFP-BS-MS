@@ -12,6 +12,10 @@ public class ExecutionResult {
      * 每张已完成板材的几何状态快照，供后续阶段继续排样使用。
      */
     public ArrayList<BoardStateSnapshot> boardStates = new ArrayList<>();
+    /** 最终结果中含有优先件的板材数，即 Sp。 */
+    public int priorityBoardCount;
+    /** 最终结果中只用于普通件新板的板材数，即 So。 */
+    public int ordinaryBoardCount;
     public double avgUtilization;
 
 

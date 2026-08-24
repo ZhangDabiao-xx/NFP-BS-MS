@@ -454,20 +454,32 @@ public class BeamSearch {
             }
 
             ArrayList<Integer> pairSet = new ArrayList<>();
-            ArrayList<Integer> pairSet1 = new ArrayList<>();
             for (int i = 0; i < newSolutions.size(); i++) {
                 if (newSolutions.get(i).getUtilization() > maxUtilization) {
                     continue;
                 }
+
+                // 增加 a == b 的候选，使被移出的板材可以尝试与某一张
+                // 现有板材合并到一张板上。原实现只尝试两张现有板材，
+                // 当总板材数较少时无法执行真正的减板优化。
+                pairSet.add(i * containerNum + i);
+
                 for (int j = i + 1; j < newSolutions.size(); j++) {
                     if ((newSolutions.get(i).getUtilization() > allAvgUtilization && newSolutions.get(j).getUtilization() > allAvgUtilization)
                             || newSolutions.get(j).getUtilization() > maxUtilization) {
                         continue;
                     }
                     pairSet.add(i * containerNum + j);
-                    pairSet1.add(i * containerNum + j);
                 }
 
+            }
+
+            // 理论上自合并候选已经保证 pairSet 非空，但保留这个保护，
+            // 避免特殊利用率数据导致后续 get(index) 抛出异常。
+            if (pairSet.isEmpty()) {
+                locations.clear();
+                flag++;
+                continue;
             }
 
             Collections.shuffle(pairSet, random);

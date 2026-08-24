@@ -144,6 +144,8 @@ public class LoadingTestRun {
         pwTotal.println(workPieceInPath);
         pwTotal.println("Total number of nestable workpieces in this batch: " + numOfWorkpiece);
         pwTotal.println("Number of sheets used in this batch: " + containerCount);
+        pwTotal.println("Priority containers (Sp): " + exeResult.priorityBoardCount);
+        pwTotal.println("Ordinary containers (So): " + exeResult.ordinaryBoardCount);
         pwTotal.println("Average utilization rate of this batch: " + exeResult.avgUtilization + "%");
         pwTotal.println("Running time: " + ((System.currentTimeMillis() - startTime) / 1000d) + "s");
 

@@ -20,9 +20,9 @@ import java.util.List;
  * <p>这个类只负责组织求解阶段，不实现新的几何算法：</p>
  *
  * <ol>
- *     <li>使用现有 BeamSearch 排样优先件；</li>
- *     <li>把优先件板材的剩余空间交给 BeamSearch，尽量插入普通件；</li>
- *     <li>将还未放置的普通件交给普通的逐板 BeamSearch。</li>
+ *     <li>使用现有 BeamSearch 排样优先件，并执行跨板材全局重排；</li>
+ *     <li>锁定优化后的优先件布局，把剩余空间交给 BeamSearch 插入普通件；</li>
+ *     <li>将还未放置的普通件交给普通的逐板 BeamSearch，并再次优化普通件板材。</li>
  * </ol>
  *
  * <p>优先件布局在第二阶段被视为固定布局，因此第二阶段不会移动或重新
@@ -71,16 +71,32 @@ public final class PriorityFirstPacker {
             }
         }
 
-        // 没有优先件时直接使用原有 BeamSearch，避免构造无意义的种子板材。
+        // 没有优先件时只执行普通件的新板排样和普通件全局优化，
+        // 避免构造无意义的优先件种子板材。
         if (priorityBoxes.isEmpty()) {
             Instance ordinaryInstance = new Instance(new ArrayList<>(allBoxes), mixedContainer);
-            return solveNewBoards(ordinaryInstance, searchTimeMs);
+            ExecutionResult ordinaryResult = solveNewBoards(ordinaryInstance, searchTimeMs);
+            ordinaryResult = GlobalRepackOptimizer.optimize(
+                    ordinaryInstance,
+                    ordinaryResult,
+                    searchTimeMs);
+            ordinaryResult.priorityBoardCount = 0;
+            ordinaryResult.ordinaryBoardCount = ordinaryResult.solutions.size();
+            return ordinaryResult;
         }
 
         // 第一阶段只建立优先件 Instance。Box 对象仍然复用同一份，便于
         // 后面把优先件放置记录转换到混合 Instance 中。
         Instance priorityInstance = new Instance(new ArrayList<>(priorityBoxes), mixedContainer);
         ExecutionResult priorityResult = solveNewBoards(priorityInstance, searchTimeMs);
+
+        // 目标函数首先最小化 Sp，因此必须在普通件插入前完成优先件全局优化。
+        // 优化结束后 GlobalRepackOptimizer 会重新生成 boardStates，第二阶段
+        // 只接收这批最终优先件板材，不会因为普通件插入而新增优先件板材。
+        priorityResult = GlobalRepackOptimizer.optimize(
+                priorityInstance,
+                priorityResult,
+                searchTimeMs);
 
         // 重新建立混合 Instance，统一重编号 typeNum，使 freeBoxes 和
         // GeneralBlock.typeCount 在后续阶段使用同一套下标。
@@ -96,6 +112,13 @@ public final class PriorityFirstPacker {
                 ordinaryTypes,
                 insertionTimeMs);
 
+        // 第二阶段只允许在已有优先件板材中继续排样，板材数量必须与
+        // 第一阶段优化后的快照数量一致。这个检查用于防止后续改动意外改变 Sp。
+        if (insertionResult.solutions.size() != priorityResult.boardStates.size()) {
+            throw new IllegalStateException(
+                    "Ordinary insertion must not change the priority board count.");
+        }
+
         // insertionResult.unplacedCounts 的下标属于 mixedInstance，使用它
         // 重新建立只包含剩余普通件的 Instance，继续开新板排样。
         Instance remainingOrdinaryInstance = createRemainingInstance(
@@ -107,6 +130,12 @@ public final class PriorityFirstPacker {
         ExecutionResult remainingResult = null;
         if (remainingOrdinaryInstance != null) {
             remainingResult = solveNewBoards(remainingOrdinaryInstance, searchTimeMs);
+            // 这里只优化普通件新开的板材。由于优先件板材已经在上一步锁定，
+            // 该优化不会改变 Sp，只会尽量减少 So。
+            remainingResult = GlobalRepackOptimizer.optimize(
+                    remainingOrdinaryInstance,
+                    remainingResult,
+                    searchTimeMs);
         }
 
         return mergeResults(
@@ -222,6 +251,15 @@ public final class PriorityFirstPacker {
             finalResult.solutions.addAll(remainingResult.solutions);
             finalResult.boardStates.addAll(remainingResult.boardStates);
         }
+
+        // insertedResult 的每张板材都来自第一阶段的优先件快照，因此这里的
+        // priorityBoardCount 就是最终 Sp；remainingResult 的数量就是 So。
+        finalResult.priorityBoardCount = insertedResult == null
+                ? 0
+                : insertedResult.solutions.size();
+        finalResult.ordinaryBoardCount = remainingResult == null
+                ? 0
+                : remainingResult.solutions.size();
 
         // 三个阶段使用过不同的 Instance 下标。统一按 Box 对象映射到
         // mixedInstance，避免优先件或第三阶段未排件的数量被覆盖或丢失。
