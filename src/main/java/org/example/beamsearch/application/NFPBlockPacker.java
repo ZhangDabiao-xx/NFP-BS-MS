@@ -1,8 +1,6 @@
 package org.example.beamsearch.application;
 
-import org.example.beamsearch.algo.BeamSearch;
 import org.example.beamsearch.common.*;
-import org.example.beamsearch.spacemanager.SpaceManager;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -23,8 +21,8 @@ import java.util.regex.Pattern;
  *   1. 从 data/outputData/*.txt 读取 NFP 拼接结果（block 列表）
  *   2. 从 data/inputData/*.json 读取板材尺寸（plates）
  *   3. 将每个 block 的外接矩形映射为一个 Box
- *   4. 按 BackFrontPriority 分组，每组对应一个 BeamSearch Instance
- *   5. 对每个 Instance 执行 BeamSearch 排样求解
+ *   4. 使用同一块物理板材构建混合 Instance
+ *   5. 先排优先件，再向优先件板材插入普通件，最后排剩余普通件
  *   6. 输出排样结果到 data/packResult/
  */
 public class NFPBlockPacker {
@@ -34,7 +32,6 @@ public class NFPBlockPacker {
     private static final Path DEFAULT_RESULT_DIR = Path.of("data", "packResult");
 
     private static final int BEAM_SEARCH_TIME_MS  = 30_000;  // 单个 Instance 求解时限（毫秒）
-    private static final int BEAM_CNT_NUM         = 1000;
 
     // ---------- 内部数据模型 ----------
 
@@ -121,30 +118,23 @@ public class NFPBlockPacker {
             // 3. block → Box 转换
             List<Box> allBoxes = blocksToBoxes(blocks);
 
-            // 4. 按 BackFrontPriority 分组，每组构建 Instance
-            Map<String, List<Box>> grouped = groupByPriority(allBoxes);
-            List<Instance> instances = new ArrayList<>();
-            for (Map.Entry<String, List<Box>> entry : grouped.entrySet()) {
-                Container container = new Container(entry.getKey(),
-                        plate.length / 10.0,
-                        plate.width / 10.0,
-                        0);
-                instances.add(new Instance(new ArrayList<>(entry.getValue()), container));
-            }
+            // 4. 所有 Block 使用同一个物理板材构造混合 Instance。
+            // 优先级只作为求解顺序和输出属性，不再作为独立板材池。
+            Container mixedContainer = new Container(
+                    "mixed",
+                    plate.length / 10.0,
+                    plate.width / 10.0,
+                    0);
+            Instance mixedInstance = new Instance(new ArrayList<>(allBoxes), mixedContainer);
 
-            // 5. 对每个 Instance 执行排样
+            // 5. 统一执行“优先件 -> 优先板剩余空间中的普通件 -> 普通件新板”流程。
             Path caseResultDir = resultDir.resolve(caseName);
             Files.createDirectories(caseResultDir);
-            for (int i = 0; i < instances.size(); i++) {
-                Instance inst = instances.get(i);
-                System.out.printf("  排样 group %d/%d (color=%s, boxes=%d)%n",
-                        i + 1, instances.size(),
-                        inst.boxes.length > 0 ? inst.boxes[0].color : "?",
-                        inst.totalBoxCount);
-
-                ExecutionResult result = packInstance(inst, BEAM_SEARCH_TIME_MS, BEAM_CNT_NUM);
-                writePackResult(caseResultDir, i + 1, inst, result);
-            }
+            System.out.println("  排样模式: priority-first combined");
+            ExecutionResult result = PriorityFirstPacker.solve(
+                    List.of(mixedInstance),
+                    BEAM_SEARCH_TIME_MS);
+            writePackResult(caseResultDir, 1, mixedInstance, result);
 
             System.out.println("  完成: " + caseResultDir);
         }
@@ -388,45 +378,6 @@ public class NFPBlockPacker {
     private static boolean canRotateInBeamSearch(List<Integer> rotations) {
         // BeamSearch 只区分不旋转与交换长宽；允许 90° 或 270° 都应视为可旋转。
         return rotations.contains(90) || rotations.contains(270);
-    }
-
-    // ---------- 按优先级分组 ----------
-
-    /**
-     * 按 BackFrontPriority 分组，相同优先级的 Box 放入同一组。
-     * BeamSearch 内部按 color 字段区分不同的 Instance。
-     */
-    static Map<String, List<Box>> groupByPriority(List<Box> boxes) {
-        Map<String, List<Box>> map = new LinkedHashMap<>();
-        for (Box box : boxes) {
-            map.computeIfAbsent(box.color, k -> new ArrayList<>()).add(box);
-        }
-        return map;
-    }
-
-    // ---------- 排样求解 ----------
-
-    /**
-     * 对单个 Instance 调用 BeamSearch 执行排样。
-     * 参数含义与 LoadingTestRun.solve() 保持一致。
-     */
-    static ExecutionResult packInstance(Instance instance, int timeMs, int cntNum) {
-        int minCon = (int) (instance.totalBoxVolume
-                / ((long) instance.length * instance.width));
-        // 确保 searchTime 合理
-        int searchTime = timeMs;
-        if (minCon > 0 && minCon > searchTime / 2) {
-            searchTime = (int) (((double) searchTime / (2.0 * minCon)) * 1000);
-        }
-
-        Comparator<Space> spaceComparator = SpaceComparator.getSpaceComparator(instance, cntNum);
-        SpaceManager spaceManager = new SpaceManager(spaceComparator);
-        BeamSearch beamSearch = new BeamSearch(spaceManager, instance);
-        ExecutionResult result = beamSearch.solve(searchTime, minCon);
-        result.setAvgUtilization();
-        System.out.printf("    结果: %d 张板, 利用率 %.2f%%%n",
-                result.solutions.size(), result.avgUtilization);
-        return result;
     }
 
     // ---------- 结果输出 ----------

@@ -1,0 +1,23 @@
+total number of nestable workpieces：80
+Start priority-first combined packing.
+Start nesting on the 1th large board, remaining blocks count: 78
+Utilization of the 1th large board: 98.90855952700886, Time taken for this board: 0.764s
+-------------------------------------------------------------------
+Start nesting on the 2th large board, remaining blocks count: 64
+Utilization of the 2th large board: 99.00363615202163, Time taken for this board: 1.127s
+-------------------------------------------------------------------
+Start nesting on the 3th large board, remaining blocks count: 44
+Utilization of the 3th large board: 98.27764713786617, Time taken for this board: 1.393s
+-------------------------------------------------------------------
+Start nesting on the 4th large board, remaining blocks count: 26
+Utilization of the 4th large board: 96.51713249126578, Time taken for this board: 1.478s
+-------------------------------------------------------------------
+Start nesting on the 5th large board, remaining blocks count: 4
+Utilization of the 5th large board: 17.21083042192959, Time taken for this board: 1.478s
+-------------------------------------------------------------------
+Start nesting on the 1th large board, remaining blocks count: 19
+Utilization of the 1th large board: 95.57215802203709, Time taken for this board: 0.025s
+-------------------------------------------------------------------
+Start nesting on the 2th large board, remaining blocks count: 7
+Utilization of the 2th large board: 59.1996103198065, Time taken for this board: 0.026000000000000002s
+-------------------------------------------------------------------

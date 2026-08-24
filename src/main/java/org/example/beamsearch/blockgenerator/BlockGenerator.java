@@ -54,11 +54,23 @@ public class BlockGenerator {
     private TreeSet<GeneralBlock> generatedBlockSet = null;
 
     public GeneralBlock[] generateSingleBlock(boolean isOrder) {
+        return generateSingleBlock(isOrder, null);
+    }
+
+    /**
+     * 根据启用的工件类型生成单件矩形块。
+     *
+     * <p>普通排样阶段需要在一个混合 Instance 中只生成普通件候选，
+     * 不能让已经锁定的优先件再次出现在候选列表中。enabledTypes 的下标
+     * 与 Instance.boxes 的下标一致；传入 null 表示启用全部类型，保持原有
+     * 调用方式的行为不变。</p>
+     */
+    public GeneralBlock[] generateSingleBlock(boolean isOrder, boolean[] enabledTypes) {
         GeneralBlock[] list = null;
         generatedBlockSet = new TreeSet<GeneralBlock>(new BlockComparator());
         ArrayList<GeneralBlock> result = null;
 
-        result = generateSingleBox();
+        result = generateSingleBox(enabledTypes);
 
         list = new GeneralBlock[result.size()];
 
@@ -89,9 +101,14 @@ public class BlockGenerator {
         return list;
     }
 
-    private ArrayList<GeneralBlock> generateSingleBox() {
+    private ArrayList<GeneralBlock> generateSingleBox(boolean[] enabledTypes) {
         ArrayList<GeneralBlock> list = new ArrayList<GeneralBlock>();
-        for (Box box : inst.boxes) {
+        for (int boxIndex = 0; boxIndex < inst.boxes.length; boxIndex++) {
+            Box box = inst.boxes[boxIndex];
+            if (enabledTypes != null
+                    && (boxIndex >= enabledTypes.length || !enabledTypes[boxIndex])) {
+                continue;
+            }
             if (box.count == 0) {
                 continue;
             }

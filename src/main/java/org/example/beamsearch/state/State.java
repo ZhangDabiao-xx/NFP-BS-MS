@@ -88,6 +88,43 @@ public class State {
         return state;
     }
 
+    /**
+     * 从已有板材布局创建一个新的搜索状态。
+     *
+     * <p>该入口用于分阶段排样：优先件已经通过第一阶段求解并作为
+     * placedBlocks 固定在板材上，spaceManagerReadOnly 中只放入几何剩余
+     * 空间，availableBlocks 则只包含下一阶段允许放置的普通件。</p>
+     *
+     * <p>freeBoxes、placedBlocks 和 SpaceManager 都会复制一份，避免多个
+     * BeamSearch 分支共享可变状态。</p>
+     */
+    public static State createSeededState(final Instance inst,
+                                          final SpaceManager spaceManagerReadOnly,
+                                          final int[] freeBoxes,
+                                          final GeneralBlock[] availableBlocks,
+                                          final PlacedBlock[] placedBlocks) {
+        int[] copiedFreeBoxes = freeBoxes == null ? new int[inst.boxes.length] : freeBoxes.clone();
+
+        PlacedBlock[] copiedPlacedBlocks;
+        if (placedBlocks == null) {
+            copiedPlacedBlocks = new PlacedBlock[0];
+        } else {
+            copiedPlacedBlocks = new PlacedBlock[placedBlocks.length];
+            for (int i = 0; i < placedBlocks.length; i++) {
+                copiedPlacedBlocks[i] = placedBlocks[i].clone();
+            }
+        }
+
+        return new State(
+                inst,
+                0,
+                0,
+                copiedFreeBoxes,
+                spaceManagerReadOnly.copy(),
+                availableBlocks,
+                copiedPlacedBlocks);
+    }
+
     public static State createMultipleInitState(final Instance inst, final SpaceManager spaceManagerReadOnly,
                                                 final GeneralBlock[] availableBlocks, int containerNum) {
         int[] freeBoxes = new int[inst.boxes.length];

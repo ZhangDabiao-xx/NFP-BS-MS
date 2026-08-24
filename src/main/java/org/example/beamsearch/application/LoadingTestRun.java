@@ -1,11 +1,6 @@
 package org.example.beamsearch.application;
 
-import org.example.beamsearch.algo.BeamSearch;
 import org.example.beamsearch.common.*;
-import org.example.beamsearch.lb.entity.Item;
-import org.example.beamsearch.lb.solver.BM_LowerBound_Solver;
-import org.example.beamsearch.lb.solver.CCM_LowerBound_Solver;
-import org.example.beamsearch.spacemanager.SpaceManager;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
@@ -14,6 +9,10 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 
 public class LoadingTestRun {
+
+    /** 优先件和普通件每张新板的基础搜索时间，单位为毫秒。 */
+    private static final int BEAM_SEARCH_TIME_MS = 1_000;
+
     /**
      *
      * @param materialInPath  Large Board File Path
@@ -31,10 +30,6 @@ public class LoadingTestRun {
             return null;
         }
 
-        double maxOptimizeTime = problemLoader.maxOptimizeTime;
-
-        int cntNum = 1000;
-
         System.out.println("Start " + workPieceInPath + "," + " numOfColor " + instances.size());
         PrintStream oldout = System.out;
         Path oPath = Paths.get(outPath);
@@ -49,52 +44,12 @@ public class LoadingTestRun {
         }
         System.out.println("total number of nestable workpieces：" + numOfWorkpiece);
 
-        ExecutionResult exeResult = new ExecutionResult();
-
-        if (instances.size() >= 1) {
-            // 为每个优先级组（color）独立排样，最后合并统计
-            for (int instIdx = 0; instIdx < instances.size(); instIdx++) {
-                Instance instance = instances.get(instIdx);
-                String colorTag = (instance.boxes.length > 0) ? instance.boxes[0].color : "?";
-                System.out.println("Processing color group: " + colorTag
-                        + " (" + (instIdx + 1) + "/" + instances.size() + ")"
-                        + ", boxes: " + instance.totalBoxCount);
-
-                // 按工件数量比例分配优化时间
-                double allocatedTime = maxOptimizeTime
-                        * ((double) instance.totalBoxCount / numOfWorkpiece);
-                allocatedTime = Math.max(1, allocatedTime);
-                System.out.println("Allocated time: " + String.format("%.1f", allocatedTime) + "s");
-
-                long instStartMs = System.currentTimeMillis();
-                ExecutionResult instResult = solve(instance, allocatedTime, cntNum);
-                double solveElapsed = (System.currentTimeMillis() - instStartMs) / 1000d;
-
-                // 单实例时计算下界并执行 ImproveSol 优化
-                int max = 0;
-                if (instances.size() == 1) {
-                    try {
-                        int index = 1;
-                        Item[] items = Item.getItems(new File(workPieceInPath));
-                        max = BM_LowerBound_Solver.LB_BM_3(instance.length * index, instance.width * index, items);
-                        int r1 = CCM_LowerBound_Solver.LB_CCM_1(instance.length * index, instance.width * index, items);
-                        int r2 = CCM_LowerBound_Solver.LB_CCM_2(instance.length * index, instance.width * index, items);
-                        max = Math.max(max, r1);
-                        max = Math.max(max, r2);
-                    } catch (Exception e) {
-                        throw new RuntimeException(e);
-                    }
-                    System.out.println("Lower Bound LB=" + max);
-                }
-
-                double improveTime = Math.max(1, allocatedTime - solveElapsed);
-                ImproveSol(instance, instResult, cntNum, improveTime, max);
-
-                // 合并到总结果
-                exeResult.solutions.addAll(instResult.solutions);
-            }
-            exeResult.setAvgUtilization();
-        }
+        // 先求解优先件，再把优先件板材的剩余空间交给普通件。
+        // 当前 BeamSearch 单板搜索沿用原有约 1 秒的搜索窗口；真正的阶段
+        // 顺序和状态传递由 PriorityFirstPacker 统一负责。
+        System.out.println("Start priority-first combined packing.");
+        ExecutionResult exeResult = PriorityFirstPacker.solve(instances, BEAM_SEARCH_TIME_MS);
+        exeResult.setAvgUtilization();
 
         int containerCount = exeResult.solutions.size();
         PrintWriter pw;
@@ -106,7 +61,7 @@ public class LoadingTestRun {
         PrintWriter pwStatistics;
         String statisticsPath = oPath.resolve("statistics.csv").toString().replace("\\", "/");
         pwStatistics = new PrintWriter(new BufferedWriter(new OutputStreamWriter(new FileOutputStream(statisticsPath), StandardCharsets.UTF_8)));
-        pwStatistics.println("BatchNo, BoardNo, Color, Specification, BoardArea, WorkPiecesQty, WorkPiecesArea, Ratio, OddArea");
+        pwStatistics.println("BatchNo, BoardNo, Color, Specification, BoardArea, WorkPiecesQty, WorkPiecesArea, Ratio, OddArea, PriorityQty, OrdinaryQty, PriorityArea, OrdinaryArea");
 
         File dir = new File(outPath, "orderId/");
         if (dir.exists()) {
@@ -146,13 +101,10 @@ public class LoadingTestRun {
                     System.out.println("The nested workpieces in the " + j + "th large board do not meet the trimming requirements of the sheet!!!");
                 }
 
-                if (orient == 0) {
-                    double[] rect = new double[]{p.x, p.y, p.x + rawL, p.y + rawW};
-                    rectList.add(rect);
-                } else {
-                    double[] rect = new double[]{p.x, p.y, p.x + rawW, p.y + rawL};
-                    rectList.add(rect);
-                }
+                // p.x/p.y/p.length/p.width 都是 BeamSearch 内部的 ×10 整数单位。
+                // 重叠检查必须使用同一单位，不能把毫米单位的 rawL/rawW
+                // 直接与内部坐标相加。
+                rectList.add(new double[]{p.x, p.y, p.x + p.length, p.y + p.width});
 
                 pw.println(p.box.name + "," + (j + 1) + "," + p.box.color + "," + id + ","
                         + p.x + "," + p.y + "," + orient + "," + rawL
@@ -182,10 +134,7 @@ public class LoadingTestRun {
                 }
             }
 
-            pwStatistics.println(exeResult.solutions.get(j).getPlacedCuboid().get(0).box.name + "," + (j + 1) + "," + exeResult.solutions.get(j).getPlacedCuboid().get(0).box.color
-                    + "," + exeResult.solutions.get(j).getInst().length + "*" + exeResult.solutions.get(j).getInst().width + ","
-                    + (exeResult.solutions.get(j).getContainerArea()) + "," + exeResult.solutions.get(j).getPlacedCuboid().size() + "," + (exeResult.solutions.get(j).getBoxesVolume()) + ","
-                    + exeResult.solutions.get(j).getUtilization() + "%,");
+            writeStatistics(pwStatistics, exeResult.solutions.get(j), j + 1);
             pwStatistics.flush();
         }
 
@@ -212,56 +161,53 @@ public class LoadingTestRun {
         } else {
             System.out.println("The number of workpieces in the result does not match the input data!!!");
         }
-        return new String[]{instances.get(0).boxes[0].name, numOfWorkpiece + "", containerCount + "", exeResult.avgUtilization + "%", ((System.currentTimeMillis() - startTime) / 1000d) + "s"};
+        return new String[]{firstPlacedName(exeResult), numOfWorkpiece + "", containerCount + "", exeResult.avgUtilization + "%", ((System.currentTimeMillis() - startTime) / 1000d) + "s"};
     }
 
-    private static ExecutionResult solve(Instance instance, double maxTime, int cntNum) {
-        int searchTime = 1000;
-        int minCon = (int) (instance.totalBoxVolume / (instance.length * instance.width));
-        if (minCon > maxTime / 2) {
-            searchTime = (int) ((maxTime / (2.0 * minCon)) * 1000);
-        }
-        System.out.println("searchTime: " + searchTime);
-        Comparator<Space> spaceComparator = SpaceComparator.getSpaceComparator(instance, cntNum);
-        SpaceManager spaceManager = new SpaceManager(spaceComparator);
-        ExecutionResult exeResult = null;
-        BeamSearch beamSearch = new BeamSearch(spaceManager, instance);
-        exeResult = beamSearch.solve(searchTime, minCon);
-        exeResult.setAvgUtilization();
-        System.out.println("Found solution: " + exeResult.solutions.size() + "\n\n");
-        return exeResult;
-    }
+    /**
+     * 输出一张板材的统计信息。整体排样后同一张板可以同时包含两种 Color，
+     * 因此不能再使用第一件工件的颜色代表整张板。
+     */
+    private static void writeStatistics(PrintWriter writer, Solution solution, int boardNumber) {
+        int priorityCount = 0;
+        int ordinaryCount = 0;
+        double priorityArea = 0;
+        double ordinaryArea = 0;
 
-    private static void ImproveSol(Instance instance, ExecutionResult exeResult, int cntNum, double maxTime, int LB) {
-        if (exeResult.solutions.size() <= LB) {
-            System.out.println("Lower bound reached, no optimization required.");
-            return;
-        }
-        if (exeResult.solutions.size() < 4) {
-            return;
-        }
-        Comparator<Space> spaceComparator = SpaceComparator.getSpaceComparator(instance, cntNum);
-        SpaceManager spaceManager = new SpaceManager(spaceComparator);
-        int containerCnt = exeResult.solutions.size();
-        BeamSearch beamSearch = new BeamSearch(spaceManager, instance);
-        long startTime = System.currentTimeMillis();
-        Random random = new Random(1L);
-        exeResult = beamSearch.ImproveByRepack(exeResult, maxTime, random);
-        double costTime = (System.currentTimeMillis() - startTime) / 1000d;
-        if (exeResult.solutions.size() < containerCnt) {
-            if (exeResult.solutions.size() <= LB) {
-                System.out.println("Lower bound reached early, optimization terminated.");
-                exeResult.setAvgUtilization();
-
+        for (PlacedCuboid placedCuboid : solution.getPlacedCuboid()) {
+            if ("1".equals(placedCuboid.box.color)
+                    || "true".equalsIgnoreCase(placedCuboid.box.color)) {
+                priorityCount++;
+                priorityArea += placedCuboid.getVolume();
             } else {
-                System.out.println("Found solution " + exeResult.solutions.size());
-                exeResult.setAvgUtilization();
-                maxTime = maxTime - costTime;
-                ImproveSol(instance, exeResult, cntNum, maxTime, LB);
+                ordinaryCount++;
+                ordinaryArea += placedCuboid.getVolume();
             }
         }
+
+        String color = priorityCount > 0 && ordinaryCount > 0
+                ? "MIXED"
+                : priorityCount > 0 ? "1" : "0";
+
+        writer.println(solution.getPlacedCuboid().isEmpty()
+                ? "unknown," + boardNumber + "," + color + ","
+                + solution.getInst().length + "*" + solution.getInst().width + ","
+                + solution.getContainerArea() + ",0,0,0%,0,0,0,0,0"
+                : solution.getPlacedCuboid().get(0).box.name + "," + boardNumber + "," + color + ","
+                + solution.getInst().length + "*" + solution.getInst().width + ","
+                + solution.getContainerArea() + "," + solution.getPlacedCuboid().size() + ","
+                + solution.getBoxesVolume() + "," + solution.getUtilization() + "%,"
+                + priorityCount + "," + ordinaryCount + "," + priorityArea + "," + ordinaryArea);
     }
 
+    private static String firstPlacedName(ExecutionResult result) {
+        for (Solution solution : result.solutions) {
+            if (!solution.getPlacedCuboid().isEmpty()) {
+                return solution.getPlacedCuboid().get(0).box.name;
+            }
+        }
+        return "unknown";
+    }
 
     public static void main(String[] args) throws IOException {
         BufferedWriter bw = new BufferedWriter(new FileWriter("F:\\binpack_2D\\AI_result\\total.csv"));
