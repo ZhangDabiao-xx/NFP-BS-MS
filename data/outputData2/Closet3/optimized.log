@@ -1,0 +1,38 @@
+total number of nestable workpieces：125
+Processing color group: 0 (1/1), boxes: 125
+searchTime: 1000
+Start nesting on the 1th large board, remaining blocks count: 123
+Utilization of the 1th large board: 97.49428916957808, Time taken for this board: 1.0s
+-------------------------------------------------------------------
+Start nesting on the 2th large board, remaining blocks count: 120
+Utilization of the 2th large board: 98.81894987906476, Time taken for this board: 2.0s
+-------------------------------------------------------------------
+Start nesting on the 3th large board, remaining blocks count: 116
+Utilization of the 3th large board: 97.40590567051868, Time taken for this board: 3.0020000000000002s
+-------------------------------------------------------------------
+Start nesting on the 4th large board, remaining blocks count: 110
+Utilization of the 4th large board: 99.06868113410373, Time taken for this board: 4.002s
+-------------------------------------------------------------------
+Start nesting on the 5th large board, remaining blocks count: 102
+Utilization of the 5th large board: 98.2435921123354, Time taken for this board: 5.002s
+-------------------------------------------------------------------
+Start nesting on the 6th large board, remaining blocks count: 91
+Utilization of the 6th large board: 99.49553883364688, Time taken for this board: 6.003s
+-------------------------------------------------------------------
+Start nesting on the 7th large board, remaining blocks count: 76
+Utilization of the 7th large board: 99.21788497715667, Time taken for this board: 7.003s
+-------------------------------------------------------------------
+Start nesting on the 8th large board, remaining blocks count: 59
+Utilization of the 8th large board: 99.04397339424885, Time taken for this board: 7.71s
+-------------------------------------------------------------------
+Start nesting on the 9th large board, remaining blocks count: 35
+Utilization of the 9th large board: 98.40173340499865, Time taken for this board: 8.103s
+-------------------------------------------------------------------
+Start nesting on the 10th large board, remaining blocks count: 18
+Utilization of the 10th large board: 60.89292192958882, Time taken for this board: 8.132s
+-------------------------------------------------------------------
+Found solution: 10
+
+
+Lower Bound LB=10
+Lower bound reached, no optimization required.

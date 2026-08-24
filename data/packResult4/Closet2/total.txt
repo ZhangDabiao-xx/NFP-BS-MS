@@ -1,0 +1,5 @@
+data\inputData2\Closet2\workpiece
+Total number of nestable workpieces in this batch: 115
+Number of sheets used in this batch: 16
+Average utilization rate of this batch: 82.19063885716206%
+Running time: 15.17s

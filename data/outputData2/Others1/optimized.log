@@ -1,0 +1,29 @@
+total number of nestable workpieces：81
+Processing color group: 0 (1/1), boxes: 81
+searchTime: 1000
+Start nesting on the 1th large board, remaining blocks count: 89
+Utilization of the 1th large board: 97.1370599301263, Time taken for this board: 1.0s
+-------------------------------------------------------------------
+Start nesting on the 2th large board, remaining blocks count: 80
+Utilization of the 2th large board: 98.32034399355011, Time taken for this board: 2.0s
+-------------------------------------------------------------------
+Start nesting on the 3th large board, remaining blocks count: 68
+Utilization of the 3th large board: 99.54912729441011, Time taken for this board: 2.75s
+-------------------------------------------------------------------
+Start nesting on the 4th large board, remaining blocks count: 50
+Utilization of the 4th large board: 98.79585460897607, Time taken for this board: 2.974s
+-------------------------------------------------------------------
+Start nesting on the 5th large board, remaining blocks count: 42
+Utilization of the 5th large board: 98.4596882558452, Time taken for this board: 3.176s
+-------------------------------------------------------------------
+Start nesting on the 6th large board, remaining blocks count: 30
+Utilization of the 6th large board: 96.63642166084387, Time taken for this board: 3.224s
+-------------------------------------------------------------------
+Start nesting on the 7th large board, remaining blocks count: 10
+Utilization of the 7th large board: 50.46963181940339, Time taken for this board: 3.225s
+-------------------------------------------------------------------
+Found solution: 7
+
+
+Lower Bound LB=7
+Lower bound reached, no optimization required.
