@@ -31,7 +31,8 @@ public class NFPBlockPacker {
     private static final Path DEFAULT_INPUT_DIR  = Path.of("data", "inputData");
     private static final Path DEFAULT_RESULT_DIR = Path.of("data", "packResult");
 
-    private static final int BEAM_SEARCH_TIME_MS  = 30_000;  // 单个 Instance 求解时限（毫秒）
+    /** 排样和解优化总预算；NFP 拼接与本类前面的数据解析不计入此时间。 */
+    private static final long TOTAL_SOLVE_TIME_MS = PriorityFirstPacker.DEFAULT_TOTAL_SOLVE_TIME_MS;
 
     // ---------- 内部数据模型 ----------
 
@@ -131,9 +132,9 @@ public class NFPBlockPacker {
             Path caseResultDir = resultDir.resolve(caseName);
             Files.createDirectories(caseResultDir);
             System.out.println("  排样模式: priority-first combined");
-            ExecutionResult result = PriorityFirstPacker.solve(
+            ExecutionResult result = PriorityFirstPacker.solveWithTotalTime(
                     List.of(mixedInstance),
-                    BEAM_SEARCH_TIME_MS);
+                    TOTAL_SOLVE_TIME_MS);
             writePackResult(caseResultDir, 1, mixedInstance, result);
 
             System.out.println("  完成: " + caseResultDir);
@@ -439,6 +440,22 @@ public class NFPBlockPacker {
                     .mapToInt(s -> s.getPlacedCuboid().size()).sum();
             pw.printf(Locale.ROOT, "%d,%d,%d,%.2f%%%n",
                     groupIndex, result.solutions.size(), totalBoxes, result.avgUtilization);
+        }
+
+        // 单独写时间统计，避免改动已有 statistics.csv 的字段格式，
+        // 同时保留 Sp、So 和每个阶段的实际耗时。
+        String timingFile = resultDir.resolve("pack_group" + groupIndex + "_timing.txt").toString();
+        try (PrintWriter pw = new PrintWriter(new BufferedWriter(
+                new OutputStreamWriter(new FileOutputStream(timingFile), StandardCharsets.UTF_8)))) {
+            pw.println("Sp=" + result.priorityBoardCount);
+            pw.println("So=" + result.ordinaryBoardCount);
+            pw.println("S=" + result.solutions.size());
+            pw.println("TotalSolveTimeMs=" + result.totalSolveTimeMs);
+            pw.println("PrioritySolveTimeMs=" + result.prioritySolveTimeMs);
+            pw.println("PriorityOptimizeTimeMs=" + result.priorityOptimizeTimeMs);
+            pw.println("OrdinaryInsertionTimeMs=" + result.ordinaryInsertionTimeMs);
+            pw.println("OrdinarySolveTimeMs=" + result.ordinarySolveTimeMs);
+            pw.println("OrdinaryOptimizeTimeMs=" + result.ordinaryOptimizeTimeMs);
         }
     }
 

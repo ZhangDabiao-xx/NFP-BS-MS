@@ -19,14 +19,52 @@ public class BeamSearch {
         this.spaceManager = spaceManager;
     }
 
+    /**
+     * 兼容旧调用方的相对时间入口。
+     *
+     * <p>新流程应优先使用 {@link #solveUntil(long, int)}，这样多个阶段
+     * 可以共享同一个全局截止时间。这里保留原方法，避免其他入口的调用
+     * 方式被本次时间调度修改破坏。</p>
+     *
+     * @param timeLimit 本次求解允许使用的时间，单位为毫秒
+     * @param minCon 原有的最低装载约束参数
+     * @return 本次求解结果
+     */
     public ExecutionResult solve(int timeLimit, int minCon) {
+        long deadlineMillis = System.currentTimeMillis() + Math.max(1, timeLimit);
+        return solveUntil(deadlineMillis, minCon);
+    }
+
+    /**
+     * 在指定的绝对截止时间之前逐板求解普通新板排样。
+     *
+     * <p>原实现会给每一张板材重复分配同样的 timeLimit，板材数量增加时
+     * 总耗时也会线性增加。本方法把截止时间传入逐板循环，每张板材只使用
+     * 当前全局剩余时间，从而让优先件求解或普通件求解不会越过总预算。</p>
+     *
+     * @param deadlineMillis 全局绝对截止时间，使用 System.currentTimeMillis() 的时间基准
+     * @param minCon 原有的最低装载约束参数
+     * @return 截止时间前得到的本次求解结果
+     */
+    public ExecutionResult solveUntil(long deadlineMillis, int minCon) {
         ExecutionResult exeResult = new ExecutionResult();
         int containerNum = 1;
         State endState = null;
         long start = System.currentTimeMillis();
 
+        // 后续阶段可能在进入本方法前已经耗尽全局预算。此时直接返回
+        // 初始未排数量，避免为了生成候选块又额外消耗无效时间。
+        if (System.currentTimeMillis() >= deadlineMillis) {
+            int[] initialFreeBoxes = new int[inst.boxes.length];
+            for (int i = 0; i < inst.boxes.length; i++) {
+                initialFreeBoxes[i] = inst.boxes[i].count;
+            }
+            fillUnplacedBoxes(exeResult, initialFreeBoxes, null);
+            return exeResult;
+        }
+
         GeneralBlock[] allBlocks = new BlockGenerator(inst).generateSingleBlock(true);
-        while (allBlocks.length > 0) {
+        while (allBlocks.length > 0 && System.currentTimeMillis() < deadlineMillis) {
             System.out.println("Start nesting on the " + containerNum + "th large board, remaining blocks count: " + allBlocks.length);
             State initialState;
             if (containerNum == 1) {
@@ -35,8 +73,12 @@ public class BeamSearch {
                 initialState = State.initState(endState, spaceManager);
             }
 
+            // 当前板材只使用全局截止时间前的剩余时间，避免逐板重复计时。
+            long remainingTime = deadlineMillis - System.currentTimeMillis();
+            int boardTime = (int) Math.min(Integer.MAX_VALUE, Math.max(1, remainingTime));
+
             // 把单张板材的搜索抽成独立方法，后续阶段可以从已有空间继续搜索。
-            endState = searchOneBoard(initialState, timeLimit, minCon, 0);
+            endState = searchOneBoard(initialState, boardTime, minCon, 0);
 
             allBlocks = endState.availableBlocks;
 
@@ -79,28 +121,65 @@ public class BeamSearch {
      *
      * @param seedBoards 优先件阶段产生的板材快照
      * @param allowedTypes 与 inst.boxes 对应的可继续排样类型
-     * @param timeLimit 总搜索时间，单位为毫秒
+     * @param timeLimit 本次插入允许使用的相对时间，单位为毫秒
      */
     public ExecutionResult packIntoExistingBoards(List<BoardStateSnapshot> seedBoards,
                                                    boolean[] allowedTypes,
                                                    int timeLimit) {
+        long deadlineMillis = System.currentTimeMillis() + Math.max(1, timeLimit);
+        return packIntoExistingBoardsUntil(seedBoards, allowedTypes, deadlineMillis);
+    }
+
+    /**
+     * 在已有优先件板材中插入普通件，并共享一个全局绝对截止时间。
+     *
+     * <p>普通件插入必须保持优先件板材数量不变，因此即使时间已经耗尽，
+     * 也要把尚未处理的 seedBoard 原样复制到结果中。这样第三阶段可以
+     * 正确继承 Sp，而不会因为超时丢失优先件板材。</p>
+     *
+     * @param seedBoards 优先件阶段产生的板材快照
+     * @param allowedTypes 与 inst.boxes 对应的可继续排样类型
+     * @param deadlineMillis 全局绝对截止时间，使用 System.currentTimeMillis() 的时间基准
+     * @return 插入普通件后的板材结果
+     */
+    public ExecutionResult packIntoExistingBoardsUntil(List<BoardStateSnapshot> seedBoards,
+                                                        boolean[] allowedTypes,
+                                                        long deadlineMillis) {
         ExecutionResult result = new ExecutionResult();
         if (seedBoards == null || seedBoards.isEmpty()) {
-            result.unplacedBoxes = new ArrayList<>();
-            result.unplacedCounts = new int[inst.boxes.length];
+            // 没有优先件 seedBoard 时，普通件仍然没有开始插入，必须把
+            // 允许类型的完整剩余数量传给第三阶段，不能误报为已排完。
+            fillUnplacedBoxes(result, initialFreeBoxes(allowedTypes), allowedTypes);
+            return result;
+        }
+
+        int[] freeBoxes = initialFreeBoxes(allowedTypes);
+
+        // 如果前一阶段已经耗尽总预算，不再生成普通件候选块，但仍然需要
+        // 原样复制所有优先件 seedBoard，保证 Sp 的结构和数量不丢失。
+        if (System.currentTimeMillis() >= deadlineMillis) {
+            for (BoardStateSnapshot seedBoard : seedBoards) {
+                Solution unchangedSolution = seedBoard.toSolution(inst);
+                result.solutions.add(unchangedSolution);
+                result.boardStates.add(createBoardStateSnapshot(unchangedSolution));
+            }
+            fillUnplacedBoxes(result, freeBoxes, allowedTypes);
+            result.setAvgUtilization();
             return result;
         }
 
         GeneralBlock[] availableBlocks = new BlockGenerator(inst)
                 .generateSingleBlock(true, allowedTypes);
-        int[] freeBoxes = initialFreeBoxes(allowedTypes);
-        long deadline = System.currentTimeMillis() + Math.max(1, timeLimit);
 
         for (int boardIndex = 0; boardIndex < seedBoards.size(); boardIndex++) {
             BoardStateSnapshot seedBoard = seedBoards.get(boardIndex);
 
             // 普通件已经全部放完时，后面的优先件板材仍然要保留在结果中。
-            if (availableBlocks.length == 0 || hasNoAllowedBoxes(freeBoxes, allowedTypes)) {
+            // 如果全局时间已经耗尽，也必须原样保留当前和后续优先件板材，
+            // 不能用“至少 1 毫秒”的旧逻辑继续突破总预算。
+            if (availableBlocks.length == 0
+                    || hasNoAllowedBoxes(freeBoxes, allowedTypes)
+                    || System.currentTimeMillis() >= deadlineMillis) {
                 Solution unchangedSolution = seedBoard.toSolution(inst);
                 result.solutions.add(unchangedSolution);
                 result.boardStates.add(createBoardStateSnapshot(unchangedSolution));
@@ -117,7 +196,7 @@ public class BeamSearch {
                     fixedPriorityBlocks);
 
             int remainingBoards = seedBoards.size() - boardIndex;
-            long remainingTime = deadline - System.currentTimeMillis();
+            long remainingTime = deadlineMillis - System.currentTimeMillis();
             int boardTime = (int) Math.max(1, remainingTime / Math.max(1, remainingBoards));
 
             // volumeType=1 使用实际矩形面积作为评分，目标是尽可能多地

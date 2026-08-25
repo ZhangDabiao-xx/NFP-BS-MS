@@ -10,8 +10,8 @@ import java.nio.file.Paths;
 
 public class LoadingTestRun {
 
-    /** 优先件和普通件每张新板的基础搜索时间，单位为毫秒。 */
-    private static final int BEAM_SEARCH_TIME_MS = 1_000;
+    /** 排样与解优化的总时间预算，不包含 NFP 拼接和组块生成，单位为毫秒。 */
+    private static final long TOTAL_SOLVE_TIME_MS = PriorityFirstPacker.DEFAULT_TOTAL_SOLVE_TIME_MS;
 
     /**
      *
@@ -45,10 +45,12 @@ public class LoadingTestRun {
         System.out.println("total number of nestable workpieces：" + numOfWorkpiece);
 
         // 先求解优先件，再把优先件板材的剩余空间交给普通件。
-        // 当前 BeamSearch 单板搜索沿用原有约 1 秒的搜索窗口；真正的阶段
-        // 顺序和状态传递由 PriorityFirstPacker 统一负责。
+        // 600 秒由 PriorityFirstPacker 在各阶段之间统一分配，不能在这里
+        // 为每张板材重复传入一个独立搜索时间。
         System.out.println("Start priority-first combined packing.");
-        ExecutionResult exeResult = PriorityFirstPacker.solve(instances, BEAM_SEARCH_TIME_MS);
+        ExecutionResult exeResult = PriorityFirstPacker.solveWithTotalTime(
+                instances,
+                TOTAL_SOLVE_TIME_MS);
         exeResult.setAvgUtilization();
 
         int containerCount = exeResult.solutions.size();
@@ -146,7 +148,9 @@ public class LoadingTestRun {
         pwTotal.println("Number of sheets used in this batch: " + containerCount);
         pwTotal.println("Priority containers (Sp): " + exeResult.priorityBoardCount);
         pwTotal.println("Ordinary containers (So): " + exeResult.ordinaryBoardCount);
+        pwTotal.println("S = Sp + So: " + (exeResult.priorityBoardCount + exeResult.ordinaryBoardCount));
         pwTotal.println("Average utilization rate of this batch: " + exeResult.avgUtilization + "%");
+        writeSolveTiming(pwTotal, exeResult);
         pwTotal.println("Running time: " + ((System.currentTimeMillis() - startTime) / 1000d) + "s");
 
         pw.close();
@@ -156,6 +160,7 @@ public class LoadingTestRun {
 
         System.out.println("Total number of nestable workpieces in this batch: " + numOfWorkpiece);
         System.out.println("Number of sheets used in this batch: " + containerCount);
+        System.out.println("Actual solve time: " + formatSeconds(exeResult.totalSolveTimeMs) + "s");
         System.out.println("Average utilization rate of this batch: " + exeResult.avgUtilization + "%");
         System.out.println("Running time: " + ((System.currentTimeMillis() - startTime) / 1000d) + "s");
         if (numOfWorkpiece == workpieceNum) {
@@ -164,6 +169,20 @@ public class LoadingTestRun {
             System.out.println("The number of workpieces in the result does not match the input data!!!");
         }
         return new String[]{firstPlacedName(exeResult), numOfWorkpiece + "", containerCount + "", exeResult.avgUtilization + "%", ((System.currentTimeMillis() - startTime) / 1000d) + "s"};
+    }
+
+    /** 将排样阶段的实际耗时写入总结果文件，便于核对全局时间预算。 */
+    private static void writeSolveTiming(PrintWriter writer, ExecutionResult result) {
+        writer.println("Actual solve time: " + formatSeconds(result.totalSolveTimeMs) + "s");
+        writer.println("Priority solve time: " + formatSeconds(result.prioritySolveTimeMs) + "s");
+        writer.println("Priority optimize time: " + formatSeconds(result.priorityOptimizeTimeMs) + "s");
+        writer.println("Ordinary insertion time: " + formatSeconds(result.ordinaryInsertionTimeMs) + "s");
+        writer.println("Ordinary solve time: " + formatSeconds(result.ordinarySolveTimeMs) + "s");
+        writer.println("Ordinary optimize time: " + formatSeconds(result.ordinaryOptimizeTimeMs) + "s");
+    }
+
+    private static String formatSeconds(long timeMs) {
+        return String.format(Locale.ROOT, "%.3f", timeMs / 1000.0);
     }
 
     /**

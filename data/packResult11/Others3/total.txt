@@ -1,0 +1,14 @@
+data\materialData5\Others3\workpiece
+Total number of nestable workpieces in this batch: 216
+Number of sheets used in this batch: 19
+Priority containers (Sp): 10
+Ordinary containers (So): 9
+S = Sp + So: 19
+Average utilization rate of this batch: 93.45114955657081%
+Actual solve time: 194.692s
+Priority solve time: 26.991s
+Priority optimize time: 131.700s
+Ordinary insertion time: 1.351s
+Ordinary solve time: 3.732s
+Ordinary optimize time: 30.915s
+Running time: 194.717s

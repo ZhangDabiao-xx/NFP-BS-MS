@@ -16,6 +16,19 @@ public class ExecutionResult {
     public int priorityBoardCount;
     /** 最终结果中只用于普通件新板的板材数，即 So。 */
     public int ordinaryBoardCount;
+
+    /** 优先件新板求解阶段实际耗时，单位为毫秒。 */
+    public long prioritySolveTimeMs;
+    /** 优先件全局优化阶段实际耗时，单位为毫秒。 */
+    public long priorityOptimizeTimeMs;
+    /** 向优先件板材插入普通件阶段实际耗时，单位为毫秒。 */
+    public long ordinaryInsertionTimeMs;
+    /** 普通件新板求解阶段实际耗时，单位为毫秒。 */
+    public long ordinarySolveTimeMs;
+    /** 普通件新板全局优化阶段实际耗时，单位为毫秒。 */
+    public long ordinaryOptimizeTimeMs;
+    /** 上述排样和优化阶段的总实际耗时，单位为毫秒。 */
+    public long totalSolveTimeMs;
     public double avgUtilization;
 
 

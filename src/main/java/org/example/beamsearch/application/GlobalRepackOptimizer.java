@@ -33,9 +33,6 @@ import java.util.Random;
  */
 public final class GlobalRepackOptimizer {
 
-    /** 搜索时间较短时，仍为全局重排保留一个最小的可用时间窗口。 */
-    private static final int MIN_REPACK_TIME_MS = 5_000;
-
     private GlobalRepackOptimizer() {
     }
 
@@ -44,12 +41,12 @@ public final class GlobalRepackOptimizer {
      *
      * @param instance 当前阶段使用的 Instance
      * @param result 当前阶段的逐板排样结果
-     * @param timeLimitMs 全局重排时间，单位为毫秒
+     * @param timeLimitMs 调度器分配给本阶段的时间，单位为毫秒
      * @return 优化并重新建立状态快照后的结果
      */
     public static ExecutionResult optimize(Instance instance,
                                             ExecutionResult result,
-                                            int timeLimitMs) {
+                                            long timeLimitMs) {
         if (instance == null || result == null) {
             return result;
         }
@@ -64,10 +61,9 @@ public final class GlobalRepackOptimizer {
             SpaceManager spaceManager = new SpaceManager(comparator);
             BeamSearch beamSearch = new BeamSearch(spaceManager, instance);
 
-            // ImproveByRepack() 接收秒数。最小时间窗口是为了避免 LoadingTestRun
-            // 的短单板搜索时间导致全局优化几乎没有机会执行。
-            int repackTimeMs = Math.max(MIN_REPACK_TIME_MS, timeLimitMs);
-            double repackTimeSeconds = repackTimeMs / 1000.0;
+            // ImproveByRepack() 接收秒数。这里严格使用调度器传入的预算，
+            // 不能再人为增加最小时间，否则会突破 600 秒全局限制。
+            double repackTimeSeconds = timeLimitMs / 1000.0;
             System.out.println("Start global repack optimization for "
                     + boardCountBefore + " boards, time=" + repackTimeSeconds + "s.");
 
