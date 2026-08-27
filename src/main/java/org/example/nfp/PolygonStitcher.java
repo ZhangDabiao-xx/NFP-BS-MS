@@ -7,6 +7,8 @@ import java.util.List;
 public class PolygonStitcher {
 
     public static final double SCORE_EPS = 1e-6;
+    // 组合块达到 98% 填充率后已经足够紧凑，不再把它作为后续 NFP 拼接的主块。
+    public static final double TARGET_FILL_RATE = 0.98;
 
     // === 自适应密集采样参数 ===
     // NFP 边密集采样的阈值比例：边长超过此值（取两个多边形中较小对角线长度的比例）时进行细分采样
@@ -24,7 +26,11 @@ public class PolygonStitcher {
         public final double boxAArea;
         public final double boxBArea;
         public final double boxABArea;
-        // score2 = 两个输入外接矩形面积之和 - 拼接后外接矩形面积，只保留正收益候选。
+        // 拼接后填充率 = (A 实际面积 + B 实际面积) / 拼接后外接矩形面积。
+        public final double combinedFillRate;
+        // 相对于主块 A 当前填充率的提升量，是本次 NFP 拼接的新评分。
+        public final double fillRateGain;
+        // 旧 score2 仅保留用于兼容结果输出和诊断，不再作为候选接受条件。
         public final double score2;
         public final List<Point> rotatedPolygonB;
         public final List<Point> translatedPolygonB;
@@ -42,6 +48,8 @@ public class PolygonStitcher {
                                    double boxAArea,
                                    double boxBArea,
                                    double boxABArea,
+                                   double combinedFillRate,
+                                   double fillRateGain,
                                    double score2,
                                    List<Point> rotatedPolygonB,
                                    List<Point> translatedPolygonB,
@@ -55,6 +63,8 @@ public class PolygonStitcher {
             this.boxAArea = boxAArea;
             this.boxBArea = boxBArea;
             this.boxABArea = boxABArea;
+            this.combinedFillRate = combinedFillRate;
+            this.fillRateGain = fillRateGain;
             this.score2 = score2;
             this.rotatedPolygonB = copyPolygon(rotatedPolygonB);
             this.translatedPolygonB = copyPolygon(translatedPolygonB);
@@ -118,13 +128,17 @@ public class PolygonStitcher {
         List<Integer> normalizedRotations = PolygonItem.normalizeRotations(movingRotationDegrees);
         List<StitchingCandidate> candidates = new ArrayList<>();
         String lastError = "No NFP contour to sample";
+        StitchingCandidate bestCandidate = null;
+        List<Point> bestOuterNfp = new ArrayList<>();
+        List<List<Point>> bestHoles = new ArrayList<>();
 
-        // 对每一个允许的旋转角，单独计算完整 NFP。
-        // 这里同时计算 outerNFP、holes 和 innerLoops，原因是凹多边形的有效贴合位置
-        // 经常落在孔洞/内部闭环边界上，只采样最大外边界会漏掉这类候选。
+        // 对每一个允许的旋转角，单独计算外 NFP。
+        // NFP 拼接是两个工件的外部相切，候选还会经过多边形重叠校验，因此只计算外 NFP。
+        // 修改理由：原来同时计算内 NFP；内 NFP 表示被移动工件位于固定工件内部的可行域，
+        // 这类候选最终会被 intersectionArea 判为重叠，属于当前外部拼接场景中的重复计算。
         for (Integer movingRotationDegree : normalizedRotations) {
             List<Point> rotatedPolygonB = Geometry.rotatePolygon(polygonB, movingRotationDegree);
-            NFPResult nfpResult = NFPComputer.computeNFP(polygonA, rotatedPolygonB, true, true);
+            NFPResult nfpResult = NFPComputer.computeNFP(polygonA, rotatedPolygonB, true, false);
             if (!nfpResult.success) {
                 lastError = nfpResult.errorMsg;
                 continue;
@@ -135,8 +149,9 @@ public class PolygonStitcher {
                 continue;
             }
 
+            List<StitchingCandidate> rotationCandidates = new ArrayList<>();
             for (NfpContour contour : contours) {
-                candidates.addAll(buildCandidates(
+                rotationCandidates.addAll(buildCandidates(
                         polygonA,
                         areaA,
                         boxAArea,
@@ -145,19 +160,24 @@ public class PolygonStitcher {
                         movingRotationDegree,
                         contour));
             }
+            candidates.addAll(rotationCandidates);
+
+            StitchingCandidate rotationBestCandidate = selectBestCandidate(rotationCandidates, polygonA);
+            if (isBetterCandidate(rotationBestCandidate, bestCandidate)) {
+                bestCandidate = rotationBestCandidate;
+                // 直接复用当前旋转已经计算出的 NFP，避免找到最佳候选后再次计算同一个 NFP。
+                bestOuterNfp = copyPolygon(nfpResult.outerNFP);
+                bestHoles = copyPolygonList(nfpResult.holes);
+            }
         }
 
-        StitchingCandidate bestCandidate = selectBestCandidate(candidates, polygonA);
         if (bestCandidate == null) {
             return rejected(lastError, polygonA, polygonB, new ArrayList<>(), new ArrayList<>(), candidates, null);
         }
 
-        // 返回 bestCandidate 对应旋转角的完整 NFP，便于后续调试/可视化查看外轮廓和孔洞。
-        NFPResult selectedNfp = NFPComputer.computeNFP(polygonA, bestCandidate.rotatedPolygonB, true, true);
-        List<Point> selectedOuterNfp = selectedNfp.success ? selectedNfp.outerNFP : new ArrayList<>();
-        List<List<Point>> selectedHoles = selectedNfp.success ? selectedNfp.holes : new ArrayList<>();
+        // 返回搜索过程中已经保存的最佳旋转对应 NFP，避免额外的重复几何计算。
         return new StitchingResult(true, true, "Best stitching placement found", polygonA, polygonB,
-                selectedOuterNfp, selectedHoles, candidates, bestCandidate);
+                bestOuterNfp, bestHoles, candidates, bestCandidate);
     }
 
     public static double boundingBoxArea(List<Point> polygon) {
@@ -308,16 +328,20 @@ public class PolygonStitcher {
 
         double boxBArea = boundingBoxArea(rotatedPolygonB);
         double boxABArea = boundingBoxArea(combinedCoordinates);
-        // score2 关注"当前两块分别占用的面积"与"合并后外包框面积"的差值，
-        // 这里越大表示越有拼接收益。
+        double baseFillRate = calculateFillRate(areaA, boxAArea);
+        double combinedFillRate = calculateFillRate(areaA + areaB, boxABArea);
+        double fillRateGain = combinedFillRate - baseFillRate;
+
+        // 保留旧 score2 供结果文件和可视化查看，但新的 NFP 选择改用填充率提升量。
         double score2 = boxAArea + boxBArea - boxABArea;
 
         return new StitchingCandidate(sourceType, edgeStartIndex, edgeEndIndex, movingRotationDegrees,
-                placementPoint, translation, boxAArea, boxBArea, boxABArea, score2,
+                placementPoint, translation, boxAArea, boxBArea, boxABArea,
+                combinedFillRate, fillRateGain, score2,
                 rotatedPolygonB, translatedPolygonB, combinedCoordinates);
     }
 
-    // ==== 候选选择：只按 score2 保留正收益最高候选 ====
+    // ==== 候选选择：按填充率提升量保留候选 ====
     private static StitchingCandidate selectBestCandidate(List<StitchingCandidate> candidates, List<Point> polygonA) {
         if (candidates.isEmpty()) {
             return null;
@@ -325,19 +349,64 @@ public class PolygonStitcher {
 
         StitchingCandidate bestCandidate = null;
         for (StitchingCandidate candidate : candidates) {
-            // 功能说明：score2<=0 表示拼接后外接矩形没有面积收益，直接不作为可用拼接候选。
-            if (candidate.score2 <= SCORE_EPS) {
+            // 只有拼接后填充率高于主块当前填充率，才允许继续向下拼接。
+            if (candidate.fillRateGain <= SCORE_EPS) {
                 continue;
             }
-            // 功能说明：NFP 采样点仍需做重叠面积校验，保证最终候选是合法相切或贴合位置。
-            if (intersectionArea(polygonA, candidate.translatedPolygonB) > SCORE_EPS) {
+            // 只有 bbox 可能产生正面积重叠时才执行精确相交；bbox 分离的候选本身就是合法的外部放置。
+            if (mayHavePositiveBBoxOverlap(polygonA, candidate.translatedPolygonB)
+                    && intersectionArea(polygonA, candidate.translatedPolygonB) > SCORE_EPS) {
                 continue;
             }
-            if (bestCandidate == null || candidate.score2 > bestCandidate.score2 + SCORE_EPS) {
+            if (isBetterCandidate(candidate, bestCandidate)) {
                 bestCandidate = candidate;
             }
         }
         return bestCandidate;
+    }
+
+    /**
+     * 比较两个 NFP 候选。
+     * 填充率提升量是主评分，拼接后填充率用于稳定排序，旧 score2 只作为最后的兼容性平局条件。
+     */
+    private static boolean isBetterCandidate(StitchingCandidate candidate,
+                                              StitchingCandidate currentBest) {
+        if (candidate == null) {
+            return false;
+        }
+        if (currentBest == null) {
+            return true;
+        }
+        if (candidate.fillRateGain > currentBest.fillRateGain + SCORE_EPS) {
+            return true;
+        }
+        if (Math.abs(candidate.fillRateGain - currentBest.fillRateGain) <= SCORE_EPS
+                && candidate.combinedFillRate > currentBest.combinedFillRate + SCORE_EPS) {
+            return true;
+        }
+        return Math.abs(candidate.fillRateGain - currentBest.fillRateGain) <= SCORE_EPS
+                && Math.abs(candidate.combinedFillRate - currentBest.combinedFillRate) <= SCORE_EPS
+                && candidate.score2 > currentBest.score2 + SCORE_EPS;
+    }
+
+    /** 面积相交前的包围盒快速判断，避免对明显分离的多边形创建 Area。 */
+    static boolean mayHavePositiveBBoxOverlap(List<Point> first, List<Point> second) {
+        if (first.size() < 3 || second.size() < 3) {
+            return false;
+        }
+        BBox firstBox = Geometry.polygonBBox(first);
+        BBox secondBox = Geometry.polygonBBox(second);
+        return firstBox.minX < secondBox.maxX - SCORE_EPS
+                && secondBox.minX < firstBox.maxX - SCORE_EPS
+                && firstBox.minY < secondBox.maxY - SCORE_EPS
+                && secondBox.minY < firstBox.maxY - SCORE_EPS;
+    }
+
+    private static double calculateFillRate(double area, double boxArea) {
+        if (boxArea <= SCORE_EPS) {
+            return 0.0;
+        }
+        return Math.max(0.0, Math.min(1.0, area / boxArea));
     }
 
     private static StitchingResult rejected(String message,

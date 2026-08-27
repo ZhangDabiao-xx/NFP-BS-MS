@@ -21,7 +21,7 @@ import java.util.Set;
 public class BatchBlockStitcher {
 
     private static final Path INPUT_DIRECTORY = Path.of("data", "inputData");
-    private static final Path OUTPUT_DIRECTORY = Path.of("data", "NFPresult3");
+    private static final Path OUTPUT_DIRECTORY = Path.of("data", "NFPresult4");
     private static final Gson GSON = new Gson();
 
     // 组合块外接矩形长边超过板材长度时无法进入第二阶段排样，因此这类候选不保留。
@@ -103,9 +103,9 @@ public class BatchBlockStitcher {
      * 2) smallItem=true 且几何上确认为矩形的物品只能作为被选择的单件候选，不能作为主拼接块；
      *    smallItem=true 的四角梯形等多边形仍可作为主拼接块参与搜索；
      * 3) 每轮对互不冲突的候选集合进行小规模集束搜索，并保留多个拼接后的状态；
-     * 4) 只有 score2 > 0 且组合块长边不超过 2440 的候选才保留，剩余无法被选中的物品自然作为单独块输出。
+     * 4) 只有拼接后填充率提高且组合块长边不超过 2440 的候选才保留；达到 98% 的块不再继续扩展。
      *
-     * 修改理由：旧策略每轮只提交一组按当前 score2 排序得到的贪心结果；
+     * 修改理由：旧策略每轮只提交一组按当前局部指标排序得到的贪心结果；
      * 新策略保留多个候选状态，使后续轮次仍有机会回到当前轮次的次优组合，从而降低局部最优风险。
      */
     public static List<Block> buildBlocks(List<PolygonItem> items) {
@@ -116,9 +116,10 @@ public class BatchBlockStitcher {
         int normalizedBeamWidth = Math.max(1, beamWidth);
         List<Block> finalBlocks = new ArrayList<>();
         List<Block> activeBlocks = new ArrayList<>();
+        List<PolygonItem> orderedItems = orderItemsByFillRateDescending(items);
 
         // 近矩形的大件已经适合第二阶段矩形排样，不进入第一阶段遍历池，避免制造无收益的大块。
-        for (PolygonItem item : items) {
+        for (PolygonItem item : orderedItems) {
             if (shouldKeepAsSingleBlock(item)) {
                 finalBlocks.add(Block.fromSingle(item));
             } else {
@@ -131,13 +132,30 @@ public class BatchBlockStitcher {
     }
 
     /**
+     * 按初始化阶段得到的填充率降序排列工件。
+     *
+     * 功能说明：保持整体工件顺序稳定，同时让填充率信息在组块入口处集中完成；
+     * NFP 候选生成时会再按升序选择主块，以优先处理填充率较低的工件。
+     */
+    private static List<PolygonItem> orderItemsByFillRateDescending(List<PolygonItem> items) {
+        List<PolygonItem> orderedItems = new ArrayList<>(items);
+        orderedItems.sort((left, right) -> {
+            if (Math.abs(left.fillRate - right.fillRate) > PolygonStitcher.SCORE_EPS) {
+                return Double.compare(right.fillRate, left.fillRate);
+            }
+            return left.id.compareTo(right.id);
+        });
+        return orderedItems;
+    }
+
+    /**
      * 使用 NFP 专用集束搜索完成组块。
      *
      * 搜索状态由当前仍未合并的 Block 集合表示。每个搜索层先生成当前状态的全部合法候选，
      * 再对互不冲突的候选组合进行一次小规模集束搜索，最后保留多个状态进入下一层。
      * 这样仍然保持原来“一轮可以合并多个互不冲突候选”的行为，但不会在当前轮只提交一个贪心结果。
      *
-     * 修改理由：原来的 selectTopNonOverlappingCandidates 只根据当前轮的 score2 做一次排序并立即提交，
+     * 修改理由：原来的 selectTopNonOverlappingCandidates 只根据当前轮的局部收益做一次排序并立即提交，
      * 当两个候选竞争同一个物品时，较高的当前收益可能导致后续整体收益更差。集束搜索保留多个分支，
      * 让后续拼接结果参与当前选择，从而降低局部最优风险。
      */
@@ -146,7 +164,7 @@ public class BatchBlockStitcher {
             return new ArrayList<>(initialBlocks);
         }
 
-        StitchSearchState initialState = new StitchSearchState(initialBlocks, 0.0);
+        StitchSearchState initialState = new StitchSearchState(initialBlocks);
         List<StitchSearchState> beam = new ArrayList<>();
         beam.add(initialState);
         StitchSearchState bestState = initialState;
@@ -176,8 +194,7 @@ public class BatchBlockStitcher {
                         continue;
                     }
 
-                    double cumulativeScore2 = state.cumulativeScore2 + matchingState.score2;
-                    successors.add(new StitchSearchState(nextBlocks, cumulativeScore2));
+                    successors.add(new StitchSearchState(nextBlocks));
                 }
             }
 
@@ -200,15 +217,14 @@ public class BatchBlockStitcher {
      * 为一个搜索状态生成所有合法的“主块 + 单件物品”候选。
      *
      * 功能说明：该方法沿用原有 NFP 候选生成与合法性检查规则；本次修改只改变候选如何被搜索和提交，
-     * 不改变 BackFrontPriority、旋转、重叠、score2 和板材尺寸约束。
+     * 不改变 BackFrontPriority、旋转、重叠和板材尺寸约束。
      */
     private static List<MergeCandidate> buildMergeCandidates(List<Block> activeBlocks) {
         List<MergeCandidate> candidates = new ArrayList<>();
-        for (int baseBlockIndex = 0; baseBlockIndex < activeBlocks.size(); baseBlockIndex++) {
+        // 基准块按填充率升序处理，低填充率块优先寻找可以改善自身填充率的拼接对象。
+        List<Integer> baseBlockIndexes = orderedBaseBlockIndexes(activeBlocks);
+        for (Integer baseBlockIndex : baseBlockIndexes) {
             Block baseBlock = activeBlocks.get(baseBlockIndex);
-            if (!canActAsBaseBlock(baseBlock)) {
-                continue;
-            }
 
             for (int itemBlockIndex = 0; itemBlockIndex < activeBlocks.size(); itemBlockIndex++) {
                 if (baseBlockIndex == itemBlockIndex) {
@@ -227,11 +243,35 @@ public class BatchBlockStitcher {
                             baseBlockIndex,
                             itemBlockIndex,
                             candidateBlock.block,
-                            candidateBlock.score2));
+                            candidateBlock.fillRateGain,
+                            candidateBlock.combinedFillRate));
                 }
             }
         }
         return candidates;
+    }
+
+    /** 返回可以继续扩展的基准块索引，并按填充率从低到高排列。 */
+    private static List<Integer> orderedBaseBlockIndexes(List<Block> activeBlocks) {
+        List<Integer> indexes = new ArrayList<>();
+        for (int blockIndex = 0; blockIndex < activeBlocks.size(); blockIndex++) {
+            if (canActAsBaseBlock(activeBlocks.get(blockIndex))) {
+                indexes.add(blockIndex);
+            }
+        }
+
+        indexes.sort((leftIndex, rightIndex) -> {
+            Block left = activeBlocks.get(leftIndex);
+            Block right = activeBlocks.get(rightIndex);
+            if (Math.abs(left.fillRate - right.fillRate) > PolygonStitcher.SCORE_EPS) {
+                return Double.compare(left.fillRate, right.fillRate);
+            }
+            if (left.memberCount() != right.memberCount()) {
+                return Integer.compare(right.memberCount(), left.memberCount());
+            }
+            return left.id.compareTo(right.id);
+        });
+        return indexes;
     }
 
     /**
@@ -313,12 +353,12 @@ public class BatchBlockStitcher {
     }
 
     /**
-     * 比较外层搜索状态：优先累计 score2，其次优先当前 Block 数更少的状态。
-     * 累计 score2 等价于初始各 Block 外接矩形面积之和减去当前面积之和，因此可以反映整体紧凑程度。
+     * 比较外层搜索状态：优先整体填充率，其次优先当前 Block 数更少的状态。
+     * 整体填充率使用所有当前 Block 的面积和除以外接矩形面积和，能够直接反映当前状态的紧凑程度。
      */
     private static int compareSearchStates(StitchSearchState left, StitchSearchState right) {
-        if (Math.abs(left.cumulativeScore2 - right.cumulativeScore2) > PolygonStitcher.SCORE_EPS) {
-            return Double.compare(right.cumulativeScore2, left.cumulativeScore2);
+        if (Math.abs(left.overallFillRate - right.overallFillRate) > PolygonStitcher.SCORE_EPS) {
+            return Double.compare(right.overallFillRate, left.overallFillRate);
         }
         if (left.blocks.size() != right.blocks.size()) {
             return Integer.compare(left.blocks.size(), right.blocks.size());
@@ -326,10 +366,10 @@ public class BatchBlockStitcher {
         return searchStateSignature(left).compareTo(searchStateSignature(right));
     }
 
-    /** 比较一轮内的候选组合，优先保留累计收益高且合并数量多的组合。 */
+    /** 比较一轮内的候选组合，优先保留填充率提升大且合并数量多的组合。 */
     private static int compareMatchingStates(MatchingState left, MatchingState right) {
-        if (Math.abs(left.score2 - right.score2) > PolygonStitcher.SCORE_EPS) {
-            return Double.compare(right.score2, left.score2);
+        if (Math.abs(left.fillRateGain - right.fillRateGain) > PolygonStitcher.SCORE_EPS) {
+            return Double.compare(right.fillRateGain, left.fillRateGain);
         }
         if (left.selectedCandidates.size() != right.selectedCandidates.size()) {
             return Integer.compare(right.selectedCandidates.size(), left.selectedCandidates.size());
@@ -339,8 +379,11 @@ public class BatchBlockStitcher {
 
     /** 比较单个拼接候选，供内层集束搜索按高收益优先扩展。 */
     private static int compareMergeCandidates(MergeCandidate left, MergeCandidate right) {
-        if (Math.abs(left.score2 - right.score2) > PolygonStitcher.SCORE_EPS) {
-            return Double.compare(right.score2, left.score2);
+        if (Math.abs(left.fillRateGain - right.fillRateGain) > PolygonStitcher.SCORE_EPS) {
+            return Double.compare(right.fillRateGain, left.fillRateGain);
+        }
+        if (Math.abs(left.combinedFillRate - right.combinedFillRate) > PolygonStitcher.SCORE_EPS) {
+            return Double.compare(right.combinedFillRate, left.combinedFillRate);
         }
         if (left.block.memberCount() != right.block.memberCount()) {
             return Integer.compare(right.block.memberCount(), left.block.memberCount());
@@ -353,6 +396,20 @@ public class BatchBlockStitcher {
             return Integer.compare(left.baseBlockIndex, right.baseBlockIndex);
         }
         return Integer.compare(left.itemBlockIndex, right.itemBlockIndex);
+    }
+
+    /** 计算当前搜索状态所有 Block 的总体填充率。 */
+    private static double calculateOverallFillRate(List<Block> blocks) {
+        double totalArea = 0.0;
+        double totalBoxArea = 0.0;
+        for (Block block : blocks) {
+            totalArea += block.areaSum;
+            totalBoxArea += block.boxArea;
+        }
+        if (totalBoxArea <= PolygonStitcher.SCORE_EPS) {
+            return 0.0;
+        }
+        return Math.max(0.0, Math.min(1.0, totalArea / totalBoxArea));
     }
 
     /**
@@ -399,6 +456,18 @@ public class BatchBlockStitcher {
         return signature.toString();
     }
 
+    /** 合并已有 Block 坐标和新工件坐标，仅用于创建 Block 前的尺寸预检查。 */
+    private static List<Point> combinePolygons(List<Point> first, List<Point> second) {
+        List<Point> combined = new ArrayList<>(first.size() + second.size());
+        for (Point point : first) {
+            combined.add(new Point(point.x, point.y));
+        }
+        for (Point point : second) {
+            combined.add(new Point(point.x, point.y));
+        }
+        return combined;
+    }
+
     private static boolean shouldKeepAsSingleBlock(PolygonItem item) {
         // 保留原职责：非 smallItem 且接近矩形的物品交给第二阶段，第一阶段不为它们额外制造复杂组合。
         return item.shouldStaySingle();
@@ -406,9 +475,10 @@ public class BatchBlockStitcher {
 
     private static boolean canActAsBaseBlock(Block block) {
         // 主拼接块必须还能容纳新物品，并且不能是 smallItem 矩形-only；
-        // 同时必须满足第二阶段可排样尺寸，避免继续扩展已经无法落入 2440×1220 板材的块。
+        // 同时必须满足第二阶段可排样尺寸和填充率上限，避免继续扩展已经足够紧凑的块。
         return block.memberCount() < Block.MAX_MEMBER_COUNT
                 && !isSmallRectangleOnlyBlock(block)
+                && block.fillRate < PolygonStitcher.TARGET_FILL_RATE - PolygonStitcher.SCORE_EPS
                 && fitsSecondStagePackingBounds(block);
     }
 
@@ -425,14 +495,25 @@ public class BatchBlockStitcher {
 
     private static boolean isSmallRectangleItem(PolygonItem item) {
         // smallItem 只是业务标记，必须叠加几何矩形判定，避免四角梯形被误当作小矩形排除。
-        return item.smallItem && Geometry.isRectangle(item.points);
+        return item.smallItem && item.rectangular;
     }
 
     private static boolean fitsSecondStagePackingBounds(Block block) {
-        if (block.combinedCoordinates.isEmpty()) {
+        return fitsSecondStagePackingBounds(block.combinedCoordinates, block.rotate);
+    }
+
+    /**
+     * 在创建新 Block 之前检查候选的板材尺寸。
+     *
+     * 修改理由：原逻辑先构造 Block，再检查尺寸；Block 构造会重新计算完整并集边界，
+     * 对最终必然被尺寸过滤的候选造成不必要的几何开销。
+     */
+    private static boolean fitsSecondStagePackingBounds(List<Point> combinedCoordinates,
+                                                         List<Integer> rotations) {
+        if (combinedCoordinates.isEmpty()) {
             return true;
         }
-        BBox box = Geometry.polygonBBox(block.combinedCoordinates);
+        BBox box = Geometry.polygonBBox(combinedCoordinates);
         double length = box.maxX - box.minX;
         double width = box.maxY - box.minY;
         double longSide = Math.max(length, width);
@@ -441,19 +522,20 @@ public class BatchBlockStitcher {
         }
         // 不允许 90°/270° 的块在 BeamSearch 中不能交换长宽；输出时 Width 对应 bbox 的 Y 向宽度。
         // 因此这类块必须额外满足 width<=1220，否则即使长边<=2440 也无法放入 2440×1220 板材。
-        return canRotateInSecondStage(block) || width <= MAX_FIXED_ORIENTATION_BLOCK_WIDTH + PolygonStitcher.SCORE_EPS;
+        return canRotateInSecondStage(rotations)
+                || width <= MAX_FIXED_ORIENTATION_BLOCK_WIDTH + PolygonStitcher.SCORE_EPS;
     }
 
-    private static boolean canRotateInSecondStage(Block block) {
+    private static boolean canRotateInSecondStage(List<Integer> rotations) {
         // 第二阶段矩形排样只区分原方向和长宽交换；允许 90° 或 270° 都表示该组合块可旋转。
-        return block.rotate.contains(90) || block.rotate.contains(270);
+        return rotations.contains(90) || rotations.contains(270);
     }
 
     /**
      * NFP 拼接的唯一入口。
      *
-     * 现在只保留常规 NFP 路径：PolygonStitcher 内部生成候选并统一使用 score2 评分，
-     * 不再混入其他拼接候选，避免多个评分体系互相污染。
+     * 现在只保留常规 NFP 路径：PolygonStitcher 内部生成候选并统一使用填充率提升评分，
+     * 不再使用旧 score2 作为拼接接受条件，避免多个评分体系互相影响。
      */
     private static CandidateBlock tryAddItem(Block block, PolygonItem item) {
         if (!block.canStitchWith(item)) {
@@ -473,23 +555,28 @@ public class BatchBlockStitcher {
         }
 
         PolygonStitcher.StitchingCandidate bestCandidate = nfpResult.bestCandidate;
-        if (block.validRotationsAfter(item, bestCandidate.movingRotationDegrees).isEmpty()) {
+        List<Integer> nextRotations = block.validRotationsAfter(item, bestCandidate.movingRotationDegrees);
+        if (nextRotations.isEmpty()) {
             return null;
         }
         if (block.hasPositiveOverlapWith(bestCandidate.translatedPolygonB)) {
             return null;
         }
 
+        // 新评分要求：拼接后填充率必须高于当前主块，否则不继续向下扩展。
+        if (bestCandidate.fillRateGain <= PolygonStitcher.SCORE_EPS
+                || bestCandidate.combinedFillRate <= block.fillRate + PolygonStitcher.SCORE_EPS) {
+            return null;
+        }
+
+        List<Point> nextCoordinates = combinePolygons(block.combinedCoordinates, bestCandidate.translatedPolygonB);
+        // 在创建 Block 前过滤尺寸不合格候选，避免为无效候选执行并集边界计算。
+        if (!fitsSecondStagePackingBounds(nextCoordinates, nextRotations)) {
+            return null;
+        }
+
         Block nextBlock = block.withAdditionalItem(item, bestCandidate);
-        // 功能说明：第一阶段只保留 score2 为正的拼接，score2<=0 表示合并后外接矩形没有面积收益。
-        if (nextBlock.score2 <= PolygonStitcher.SCORE_EPS) {
-            return null;
-        }
-        // 功能说明：过滤无法进入第二阶段板材的组合块；不可旋转块还必须满足 bbox 的 Y 向宽度不超过 1220。
-        if (!fitsSecondStagePackingBounds(nextBlock)) {
-            return null;
-        }
-        return new CandidateBlock(nextBlock, bestCandidate.score2);
+        return new CandidateBlock(nextBlock, bestCandidate.fillRateGain, bestCandidate.combinedFillRate);
     }
 
     private static void writeBlocks(Path outputFile, List<Block> blocks) throws IOException {
@@ -513,6 +600,8 @@ public class BatchBlockStitcher {
         writer.write("rotate=" + GSON.toJson(block.rotate));
         writer.newLine();
         writer.write(String.format(Locale.ROOT, "score2=%.6f", block.score2));
+        writer.newLine();
+        writer.write(String.format(Locale.ROOT, "fillRate=%.6f", block.fillRate));
         writer.newLine();
         writer.write(String.format(Locale.ROOT, "boxArea=%.6f", block.boxArea));
         writer.newLine();
@@ -623,12 +712,15 @@ public class BatchBlockStitcher {
 
     private static final class CandidateBlock {
         private final Block block;
-        // 本次拼接收益：主块外接矩形面积 + 被选物品外接矩形面积 - 拼接后外接矩形面积。
-        private final double score2;
+        // 本次拼接相对于主块的填充率提升量。
+        private final double fillRateGain;
+        // 拼接后的组合块填充率，用于判断是否达到终止阈值。
+        private final double combinedFillRate;
 
-        private CandidateBlock(Block block, double score2) {
+        private CandidateBlock(Block block, double fillRateGain, double combinedFillRate) {
             this.block = block;
-            this.score2 = score2;
+            this.fillRateGain = fillRateGain;
+            this.combinedFillRate = combinedFillRate;
         }
     }
 
@@ -636,15 +728,15 @@ public class BatchBlockStitcher {
      * 外层 NFP 搜索状态。
      *
      * blocks 完整描述了当前状态中所有尚未继续合并的 Block；
-     * cumulativeScore2 用于比较不同拼接路径的累计外接矩形收益。
+     * overallFillRate 用于比较不同拼接路径的总体紧凑程度。
      */
     private static final class StitchSearchState {
         private final List<Block> blocks;
-        private final double cumulativeScore2;
+        private final double overallFillRate;
 
-        private StitchSearchState(List<Block> blocks, double cumulativeScore2) {
+        private StitchSearchState(List<Block> blocks) {
             this.blocks = new ArrayList<>(blocks);
-            this.cumulativeScore2 = cumulativeScore2;
+            this.overallFillRate = calculateOverallFillRate(this.blocks);
         }
     }
 
@@ -658,14 +750,20 @@ public class BatchBlockStitcher {
         private final int baseBlockIndex;
         private final int itemBlockIndex;
         private final Block block;
-        // 当前合并动作带来的增量收益，不包含此前搜索层已经获得的累计收益。
-        private final double score2;
+        // 当前合并动作带来的填充率提升量，不包含此前搜索层的收益。
+        private final double fillRateGain;
+        private final double combinedFillRate;
 
-        private MergeCandidate(int baseBlockIndex, int itemBlockIndex, Block block, double score2) {
+        private MergeCandidate(int baseBlockIndex,
+                               int itemBlockIndex,
+                               Block block,
+                               double fillRateGain,
+                               double combinedFillRate) {
             this.baseBlockIndex = baseBlockIndex;
             this.itemBlockIndex = itemBlockIndex;
             this.block = block;
-            this.score2 = score2;
+            this.fillRateGain = fillRateGain;
+            this.combinedFillRate = combinedFillRate;
         }
     }
 
@@ -677,14 +775,14 @@ public class BatchBlockStitcher {
     private static final class MatchingState {
         private final List<MergeCandidate> selectedCandidates;
         private final boolean[] occupied;
-        private final double score2;
+        private final double fillRateGain;
 
         private MatchingState(List<MergeCandidate> selectedCandidates,
                               boolean[] occupied,
-                              double score2) {
+                              double fillRateGain) {
             this.selectedCandidates = selectedCandidates;
             this.occupied = occupied;
-            this.score2 = score2;
+            this.fillRateGain = fillRateGain;
         }
 
         private static MatchingState empty(int activeBlockCount) {
@@ -702,7 +800,7 @@ public class BatchBlockStitcher {
 
             List<MergeCandidate> nextCandidates = new ArrayList<>(selectedCandidates);
             nextCandidates.add(candidate);
-            return new MatchingState(nextCandidates, nextOccupied, score2 + candidate.score2);
+            return new MatchingState(nextCandidates, nextOccupied, fillRateGain + candidate.fillRateGain);
         }
     }
 }

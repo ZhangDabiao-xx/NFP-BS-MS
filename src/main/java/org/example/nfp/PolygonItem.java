@@ -16,8 +16,14 @@ public class PolygonItem {
     public final List<Point> points;
     public final List<Integer> rotate;
     public final boolean smallItem;
+    // 初始化阶段识别的规则矩形标记，避免 NFP 搜索中反复执行矩形判定。
+    public final boolean rectangular;
     public final double area;
     public final double boxArea;
+    // 填充率 = 工件实际面积 / 工件外接矩形面积，是新的 NFP 拼接评分基础。
+    public final double fillRate;
+    // 保留旧字段作为兼容别名，避免影响已有输出或外部调用；新的代码统一使用 fillRate。
+    @Deprecated
     public final double areaRate;
 
     public PolygonItem(String id,
@@ -29,19 +35,23 @@ public class PolygonItem {
         this.id = id;
         this.backFrontPriority = backFrontPriority;
         this.centerPoint = copyPoint(centerPoint);
-        this.points = copyPolygon(points);
+        // 在构造工件时一次性完成顶点清理和基础几何计算，后续候选搜索直接复用结果。
+        PolygonItemMetrics metrics = PolygonItemMetrics.calculate(points);
+        this.points = metrics.normalizedPoints;
         this.rotate = normalizeRotations(rotate);
         this.smallItem = smallItem;
-        this.area = Geometry.polygonAreaAbs(this.points);
-        this.boxArea = PolygonStitcher.boundingBoxArea(this.points);
-        this.areaRate = this.boxArea <= Geometry.EPS ? 0 : this.area / this.boxArea;
+        this.rectangular = metrics.rectangular;
+        this.area = metrics.area;
+        this.boxArea = metrics.boxArea;
+        this.fillRate = metrics.fillRate;
+        this.areaRate = this.fillRate;
     }
 
     public boolean shouldStaySingle() {
         // 旧入口保留，但语义已经收敛为：
         // 1) smallItem 直接进入组合池；
-        // 2) 非 smallItem 时，如果 areaRate 足够高，则保持单独块。
-        return !smallItem && areaRate > RECTANGULAR_AREA_RATE;
+        // 2) 非 smallItem 时，如果 fillRate 足够高，则保持单独块。
+        return !smallItem && fillRate > RECTANGULAR_AREA_RATE;
     }
 
     public List<Point> rotatedPoints(int rotationDegrees) {
@@ -71,14 +81,6 @@ public class PolygonItem {
             normalized += 360;
         }
         return normalized;
-    }
-
-    private static List<Point> copyPolygon(List<Point> polygon) {
-        List<Point> copy = new ArrayList<>(polygon.size());
-        for (Point point : polygon) {
-            copy.add(copyPoint(point));
-        }
-        return Collections.unmodifiableList(copy);
     }
 
     private static Point copyPoint(Point point) {

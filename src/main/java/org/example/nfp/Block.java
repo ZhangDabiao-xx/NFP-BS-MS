@@ -20,7 +20,10 @@ public class Block {
     public final double areaSum;
     public final double sourceBoxAreaSum;
     public final double boxArea;
-    // score2 = 子物品外接矩形面积之和 - 组合块外接矩形面积；值越大表示矩形化收益越高。
+    // 组合块填充率 = 块内工件实际面积之和 / 组合块外接矩形面积。
+    // NFP 拼接是否继续扩展以及候选排序均以该指标为准。
+    public final double fillRate;
+    // 保留旧 score2 输出，供已有可视化和结果文件读取逻辑使用；新的拼接决策不再依赖它。
     public final double score2;
 
     private Block(List<ItemPlacement> placements, List<Integer> rotate) {
@@ -34,6 +37,7 @@ public class Block {
         this.areaSum = sumArea(normalizedPlacements);
         this.sourceBoxAreaSum = sumSourceBoxArea(normalizedPlacements);
         this.boxArea = PolygonStitcher.boundingBoxArea(combinedCoordinates);
+        this.fillRate = calculateFillRate(areaSum, boxArea);
         this.score2 = sourceBoxAreaSum - boxArea;
     }
 
@@ -91,7 +95,10 @@ public class Block {
 
     public boolean hasPositiveOverlapWith(List<Point> polygon) {
         for (ItemPlacement placement : placements) {
-            if (PolygonStitcher.intersectionArea(placement.placedPoints, polygon) > PolygonStitcher.SCORE_EPS) {
+            // 先用 bbox 排除完全分离的零件，减少每个候选对已有成员逐一执行 Area 相交。
+            if (PolygonStitcher.mayHavePositiveBBoxOverlap(placement.placedPoints, polygon)
+                    && PolygonStitcher.intersectionArea(placement.placedPoints, polygon)
+                    > PolygonStitcher.SCORE_EPS) {
                 return true;
             }
         }
@@ -177,6 +184,13 @@ public class Block {
             sum += PolygonStitcher.boundingBoxArea(rotatedPoints);
         }
         return sum;
+    }
+
+    private static double calculateFillRate(double area, double boxArea) {
+        if (boxArea <= Geometry.EPS) {
+            return 0.0;
+        }
+        return Math.max(0.0, Math.min(1.0, area / boxArea));
     }
 
     private static String joinIds(List<ItemPlacement> placements) {
