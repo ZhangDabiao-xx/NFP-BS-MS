@@ -13,13 +13,15 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 
 public class BatchBlockStitcher {
 
     private static final Path INPUT_DIRECTORY = Path.of("data", "inputData");
-    private static final Path OUTPUT_DIRECTORY = Path.of("data", "NFPresult2");
+    private static final Path OUTPUT_DIRECTORY = Path.of("data", "NFPresult3");
     private static final Gson GSON = new Gson();
 
     // 组合块外接矩形长边超过板材长度时无法进入第二阶段排样，因此这类候选不保留。
@@ -27,24 +29,24 @@ public class BatchBlockStitcher {
     // 不允许旋转的组合块会按当前方向进入第二阶段，bbox 的 Y 向宽度不能超过板材宽度。
     private static final double MAX_FIXED_ORIENTATION_BLOCK_WIDTH = 1220.0;
 
-    // 每轮最多保留的非冲突拼接结果。该值作为默认 count，命令行第三个参数可覆盖。
-    // 修改理由：新策略需要一个明确的轮次宽度，避免全量遍历后一次性合并过多低质量结果。
-    private static final int DEFAULT_ROUND_RESULT_COUNT = 5;
+    // NFP 集束搜索默认保留的状态数量。命令行第三个参数仍然可以覆盖该值。
+    // 修改理由：第三个参数原来控制每轮贪心合并数量，现在改为控制搜索宽度；保留参数位置可以兼容原有启动方式。
+    private static final int DEFAULT_BEAM_WIDTH = 5;
 
     public static void main(String[] args) throws IOException {
         Path inputDirectory = args.length > 0 ? Path.of(args[0]) : INPUT_DIRECTORY;
         Path outputDirectory = args.length > 1 ? Path.of(args[1]) : OUTPUT_DIRECTORY;
-        int roundResultCount = args.length > 2
-                ? parsePositiveInt(args[2], DEFAULT_ROUND_RESULT_COUNT)
-                : DEFAULT_ROUND_RESULT_COUNT;
-        processDirectory(inputDirectory, outputDirectory, roundResultCount);
+        int beamWidth = args.length > 2
+                ? parsePositiveInt(args[2], DEFAULT_BEAM_WIDTH)
+                : DEFAULT_BEAM_WIDTH;
+        processDirectory(inputDirectory, outputDirectory, beamWidth);
     }
 
     public static void processDirectory(Path inputDirectory, Path outputDirectory) throws IOException {
-        processDirectory(inputDirectory, outputDirectory, DEFAULT_ROUND_RESULT_COUNT);
+        processDirectory(inputDirectory, outputDirectory, DEFAULT_BEAM_WIDTH);
     }
 
-    public static void processDirectory(Path inputDirectory, Path outputDirectory, int roundResultCount) throws IOException {
+    public static void processDirectory(Path inputDirectory, Path outputDirectory, int beamWidth) throws IOException {
         Files.createDirectories(outputDirectory);
         List<Path> inputFiles;
         try (var stream = Files.list(inputDirectory)) {
@@ -58,7 +60,7 @@ public class BatchBlockStitcher {
             List<PolygonItem> items = readItems(inputFile);
             // 仅统计第一阶段组块搜索耗时，避免文件写入时间干扰每个案例的求解时间判断。
             long solveStartNanos = System.nanoTime();
-            List<Block> blocks = buildBlocks(items, roundResultCount);
+            List<Block> blocks = buildBlocks(items, beamWidth);
             long solveElapsedNanos = System.nanoTime() - solveStartNanos;
             Path outputFile = outputDirectory.resolve(replaceExtension(inputFile.getFileName().toString(), ".txt"));
             writeBlocks(outputFile, blocks);
@@ -96,22 +98,22 @@ public class BatchBlockStitcher {
     /**
      * 第一阶段组块生成入口。
      *
-     * 新策略把所有需要拼接的非近矩形物品放入同一轮次搜索：
-     * 1) 每轮遍历当前块与所有仍为单件的候选物品，且只允许 BackFrontPriority、旋转约束兼容的组合进入 NFP；
+     * 新策略把所有需要拼接的非近矩形物品放入 NFP 集束搜索：
+     * 1) 每个搜索状态遍历当前块与所有仍为单件的候选物品，且只允许 BackFrontPriority、旋转约束兼容的组合进入 NFP；
      * 2) smallItem=true 且几何上确认为矩形的物品只能作为被选择的单件候选，不能作为主拼接块；
      *    smallItem=true 的四角梯形等多边形仍可作为主拼接块参与搜索；
-     * 3) 按 score2 从高到低选择最多 count 个结果，同一轮内任意物品只能出现一次；
+     * 3) 每轮对互不冲突的候选集合进行小规模集束搜索，并保留多个拼接后的状态；
      * 4) 只有 score2 > 0 且组合块长边不超过 2440 的候选才保留，剩余无法被选中的物品自然作为单独块输出。
      *
-     * 修改理由：旧策略由多个启发式阶段串联，容易让局部锚点或输入顺序提前锁死候选；
-     * 新策略把“谁与谁拼”收敛为统一的轮次匹配，保证同优先级物品都有机会互相尝试。
+     * 修改理由：旧策略每轮只提交一组按当前 score2 排序得到的贪心结果；
+     * 新策略保留多个候选状态，使后续轮次仍有机会回到当前轮次的次优组合，从而降低局部最优风险。
      */
     public static List<Block> buildBlocks(List<PolygonItem> items) {
-        return buildBlocks(items, DEFAULT_ROUND_RESULT_COUNT);
+        return buildBlocks(items, DEFAULT_BEAM_WIDTH);
     }
 
-    public static List<Block> buildBlocks(List<PolygonItem> items, int roundResultCount) {
-        int normalizedRoundResultCount = Math.max(1, roundResultCount);
+    public static List<Block> buildBlocks(List<PolygonItem> items, int beamWidth) {
+        int normalizedBeamWidth = Math.max(1, beamWidth);
         List<Block> finalBlocks = new ArrayList<>();
         List<Block> activeBlocks = new ArrayList<>();
 
@@ -124,41 +126,84 @@ public class BatchBlockStitcher {
             }
         }
 
-        finalBlocks.addAll(stitchByExhaustiveRounds(activeBlocks, normalizedRoundResultCount));
+        finalBlocks.addAll(stitchByBeamSearch(activeBlocks, normalizedBeamWidth));
         return finalBlocks;
     }
 
     /**
-     * 轮次式遍历拼接。
+     * 使用 NFP 专用集束搜索完成组块。
      *
-     * 修改理由：每一轮都基于当前仍可用的块重新生成全量候选，而不是沿输入顺序贪心推进；
-     * 这样 A-B、B-C 这类竞争关系会在同一个候选池里比较，选中一个后另一个因物品重复自动舍弃。
+     * 搜索状态由当前仍未合并的 Block 集合表示。每个搜索层先生成当前状态的全部合法候选，
+     * 再对互不冲突的候选组合进行一次小规模集束搜索，最后保留多个状态进入下一层。
+     * 这样仍然保持原来“一轮可以合并多个互不冲突候选”的行为，但不会在当前轮只提交一个贪心结果。
+     *
+     * 修改理由：原来的 selectTopNonOverlappingCandidates 只根据当前轮的 score2 做一次排序并立即提交，
+     * 当两个候选竞争同一个物品时，较高的当前收益可能导致后续整体收益更差。集束搜索保留多个分支，
+     * 让后续拼接结果参与当前选择，从而降低局部最优风险。
      */
-    private static List<Block> stitchByExhaustiveRounds(List<Block> initialBlocks, int roundResultCount) {
-        List<Block> activeBlocks = new ArrayList<>(initialBlocks);
+    private static List<Block> stitchByBeamSearch(List<Block> initialBlocks, int beamWidth) {
+        if (initialBlocks.size() < 2) {
+            return new ArrayList<>(initialBlocks);
+        }
 
-        while (true) {
-            List<RoundStitchCandidate> roundCandidates = buildRoundStitchCandidates(activeBlocks);
-            List<RoundStitchCandidate> selectedCandidates = selectTopNonOverlappingCandidates(
-                    roundCandidates,
-                    activeBlocks.size(),
-                    roundResultCount);
-            if (selectedCandidates.isEmpty()) {
+        StitchSearchState initialState = new StitchSearchState(initialBlocks, 0.0);
+        List<StitchSearchState> beam = new ArrayList<>();
+        beam.add(initialState);
+        StitchSearchState bestState = initialState;
+
+        while (!beam.isEmpty()) {
+            List<StitchSearchState> successors = new ArrayList<>();
+
+            for (StitchSearchState state : beam) {
+                List<MergeCandidate> candidates = buildMergeCandidates(state.blocks);
+                if (candidates.isEmpty()) {
+                    continue;
+                }
+
+                // 每轮允许提交的互不冲突候选数量沿用原有 count 的上限含义，
+                // 但不再把该数量当作唯一结果，而是由 beamWidth 决定保留多少搜索分支。
+                int maxMergesPerRound = Math.max(1, Math.min(beamWidth, state.blocks.size() / 2));
+                List<MatchingState> matchingStates = buildMatchingBeam(
+                        candidates,
+                        state.blocks.size(),
+                        maxMergesPerRound,
+                        beamWidth);
+
+                for (MatchingState matchingState : matchingStates) {
+                    List<Block> nextBlocks = applyMerges(state.blocks, matchingState.selectedCandidates);
+                    if (nextBlocks.size() >= state.blocks.size()) {
+                        // 防御性检查：没有实际合并的状态不能进入下一搜索层。
+                        continue;
+                    }
+
+                    double cumulativeScore2 = state.cumulativeScore2 + matchingState.score2;
+                    successors.add(new StitchSearchState(nextBlocks, cumulativeScore2));
+                }
+            }
+
+            if (successors.isEmpty()) {
                 break;
             }
-            activeBlocks = applyRoundCandidates(activeBlocks, selectedCandidates);
+
+            beam = selectBestSearchStates(successors, beamWidth);
+            for (StitchSearchState state : beam) {
+                if (compareSearchStates(state, bestState) < 0) {
+                    bestState = state;
+                }
+            }
         }
-        return activeBlocks;
+
+        return bestState.blocks;
     }
 
     /**
-     * 为当前轮生成候选：每个可作为主块的当前块都尝试拼接每个单件块。
+     * 为一个搜索状态生成所有合法的“主块 + 单件物品”候选。
      *
-     * 功能说明：smallItem=true 且几何上为矩形的单件块不作为主拼接块，避免小矩形主动吞并其他物品；
-     * 四角梯形等非矩形多边形即使 smallItem=true，也仍可作为 baseBlock 继续选择候选物品。
+     * 功能说明：该方法沿用原有 NFP 候选生成与合法性检查规则；本次修改只改变候选如何被搜索和提交，
+     * 不改变 BackFrontPriority、旋转、重叠、score2 和板材尺寸约束。
      */
-    private static List<RoundStitchCandidate> buildRoundStitchCandidates(List<Block> activeBlocks) {
-        List<RoundStitchCandidate> candidates = new ArrayList<>();
+    private static List<MergeCandidate> buildMergeCandidates(List<Block> activeBlocks) {
+        List<MergeCandidate> candidates = new ArrayList<>();
         for (int baseBlockIndex = 0; baseBlockIndex < activeBlocks.size(); baseBlockIndex++) {
             Block baseBlock = activeBlocks.get(baseBlockIndex);
             if (!canActAsBaseBlock(baseBlock)) {
@@ -178,7 +223,7 @@ public class BatchBlockStitcher {
                 PolygonItem item = itemBlock.placements.get(0).item;
                 CandidateBlock candidateBlock = tryAddItem(baseBlock, item);
                 if (candidateBlock != null) {
-                    candidates.add(new RoundStitchCandidate(
+                    candidates.add(new MergeCandidate(
                             baseBlockIndex,
                             itemBlockIndex,
                             candidateBlock.block,
@@ -190,47 +235,135 @@ public class BatchBlockStitcher {
     }
 
     /**
-     * 选择每轮 Top count，且同一轮内块/物品不能重复。
+     * 对当前轮的候选进行内层集束搜索。
      *
-     * 修改理由：当 A-B 与 B-C 分数相同或接近时，先按排序规则保留一个，另一个因 B 已被占用舍弃，
-     * 这正是“count 个结果中的物品不能重复”的约束。
+     * 一个 MatchingState 表示一组互不冲突的候选。每处理一个候选时，同时保留“跳过”和“选中”
+     * 两种可能，并把中间结果截断到 beamWidth，避免枚举全部组合导致组合数指数增长。
      */
-    private static List<RoundStitchCandidate> selectTopNonOverlappingCandidates(List<RoundStitchCandidate> candidates,
-                                                                                int activeBlockCount,
-                                                                                int roundResultCount) {
-        candidates.sort(BatchBlockStitcher::compareRoundCandidates);
-        boolean[] occupied = new boolean[activeBlockCount];
-        List<RoundStitchCandidate> selectedCandidates = new ArrayList<>();
+    private static List<MatchingState> buildMatchingBeam(List<MergeCandidate> candidates,
+                                                          int activeBlockCount,
+                                                          int maxMergesPerRound,
+                                                          int beamWidth) {
+        List<MergeCandidate> sortedCandidates = new ArrayList<>(candidates);
+        sortedCandidates.sort(BatchBlockStitcher::compareMergeCandidates);
 
-        for (RoundStitchCandidate candidate : candidates) {
-            if (occupied[candidate.baseBlockIndex] || occupied[candidate.itemBlockIndex]) {
+        List<MatchingState> partialStates = new ArrayList<>();
+        partialStates.add(MatchingState.empty(activeBlockCount));
+
+        for (MergeCandidate candidate : sortedCandidates) {
+            // 复制当前状态代表“跳过该候选”，保留原状态不会被后续选中分支修改。
+            List<MatchingState> expandedStates = new ArrayList<>(partialStates);
+            for (MatchingState partialState : partialStates) {
+                if (partialState.selectedCandidates.size() >= maxMergesPerRound
+                        || partialState.conflictsWith(candidate)) {
+                    continue;
+                }
+                expandedStates.add(partialState.add(candidate));
+            }
+            partialStates = selectBestMatchingStates(expandedStates, beamWidth);
+        }
+
+        List<MatchingState> result = new ArrayList<>();
+        for (MatchingState state : partialStates) {
+            if (!state.selectedCandidates.isEmpty()) {
+                result.add(state);
+            }
+        }
+        return result;
+    }
+
+    /** 保留外层集束搜索中评分最好的不同状态。 */
+    private static List<StitchSearchState> selectBestSearchStates(List<StitchSearchState> states,
+                                                                  int beamWidth) {
+        states.sort(BatchBlockStitcher::compareSearchStates);
+        List<StitchSearchState> selectedStates = new ArrayList<>();
+        Set<String> signatures = new HashSet<>();
+
+        for (StitchSearchState state : states) {
+            String signature = searchStateSignature(state);
+            if (!signatures.add(signature)) {
                 continue;
             }
-            selectedCandidates.add(candidate);
-            occupied[candidate.baseBlockIndex] = true;
-            occupied[candidate.itemBlockIndex] = true;
-            if (selectedCandidates.size() >= roundResultCount) {
+            selectedStates.add(state);
+            if (selectedStates.size() >= beamWidth) {
                 break;
             }
         }
-        return selectedCandidates;
+        return selectedStates;
     }
 
-    private static int compareRoundCandidates(RoundStitchCandidate left, RoundStitchCandidate right) {
+    /** 保留内层候选组合搜索中评分最好的不同匹配。 */
+    private static List<MatchingState> selectBestMatchingStates(List<MatchingState> states,
+                                                                int beamWidth) {
+        states.sort(BatchBlockStitcher::compareMatchingStates);
+        List<MatchingState> selectedStates = new ArrayList<>();
+        Set<String> signatures = new HashSet<>();
+
+        for (MatchingState state : states) {
+            String signature = matchingStateSignature(state);
+            if (!signatures.add(signature)) {
+                continue;
+            }
+            selectedStates.add(state);
+            if (selectedStates.size() >= beamWidth) {
+                break;
+            }
+        }
+        return selectedStates;
+    }
+
+    /**
+     * 比较外层搜索状态：优先累计 score2，其次优先当前 Block 数更少的状态。
+     * 累计 score2 等价于初始各 Block 外接矩形面积之和减去当前面积之和，因此可以反映整体紧凑程度。
+     */
+    private static int compareSearchStates(StitchSearchState left, StitchSearchState right) {
+        if (Math.abs(left.cumulativeScore2 - right.cumulativeScore2) > PolygonStitcher.SCORE_EPS) {
+            return Double.compare(right.cumulativeScore2, left.cumulativeScore2);
+        }
+        if (left.blocks.size() != right.blocks.size()) {
+            return Integer.compare(left.blocks.size(), right.blocks.size());
+        }
+        return searchStateSignature(left).compareTo(searchStateSignature(right));
+    }
+
+    /** 比较一轮内的候选组合，优先保留累计收益高且合并数量多的组合。 */
+    private static int compareMatchingStates(MatchingState left, MatchingState right) {
+        if (Math.abs(left.score2 - right.score2) > PolygonStitcher.SCORE_EPS) {
+            return Double.compare(right.score2, left.score2);
+        }
+        if (left.selectedCandidates.size() != right.selectedCandidates.size()) {
+            return Integer.compare(right.selectedCandidates.size(), left.selectedCandidates.size());
+        }
+        return matchingStateSignature(left).compareTo(matchingStateSignature(right));
+    }
+
+    /** 比较单个拼接候选，供内层集束搜索按高收益优先扩展。 */
+    private static int compareMergeCandidates(MergeCandidate left, MergeCandidate right) {
         if (Math.abs(left.score2 - right.score2) > PolygonStitcher.SCORE_EPS) {
             return Double.compare(right.score2, left.score2);
         }
         if (left.block.memberCount() != right.block.memberCount()) {
             return Integer.compare(right.block.memberCount(), left.block.memberCount());
         }
-        return left.block.id.compareTo(right.block.id);
+        int idComparison = left.block.id.compareTo(right.block.id);
+        if (idComparison != 0) {
+            return idComparison;
+        }
+        if (left.baseBlockIndex != right.baseBlockIndex) {
+            return Integer.compare(left.baseBlockIndex, right.baseBlockIndex);
+        }
+        return Integer.compare(left.itemBlockIndex, right.itemBlockIndex);
     }
 
-    private static List<Block> applyRoundCandidates(List<Block> activeBlocks, List<RoundStitchCandidate> selectedCandidates) {
+    /**
+     * 将一轮中互不冲突的候选应用到当前 Block 集合。
+     * 候选使用当前状态中的索引，因此先标记被消耗的旧块，再加入新的组合块。
+     */
+    private static List<Block> applyMerges(List<Block> activeBlocks, List<MergeCandidate> selectedCandidates) {
         boolean[] consumed = new boolean[activeBlocks.size()];
         List<Block> nextBlocks = new ArrayList<>();
 
-        for (RoundStitchCandidate candidate : selectedCandidates) {
+        for (MergeCandidate candidate : selectedCandidates) {
             consumed[candidate.baseBlockIndex] = true;
             consumed[candidate.itemBlockIndex] = true;
             nextBlocks.add(candidate.block);
@@ -242,6 +375,28 @@ public class BatchBlockStitcher {
             }
         }
         return nextBlocks;
+    }
+
+    /** 通过排序后的 Block id 生成状态签名，用于去除相同 Block 集合的重复分支。 */
+    private static String searchStateSignature(StitchSearchState state) {
+        List<String> blockIds = new ArrayList<>();
+        for (Block block : state.blocks) {
+            blockIds.add(block.id);
+        }
+        blockIds.sort(String::compareTo);
+        return String.join("|", blockIds);
+    }
+
+    /** 通过候选的当前状态索引生成匹配签名，用于内层集束搜索去重。 */
+    private static String matchingStateSignature(MatchingState state) {
+        StringBuilder signature = new StringBuilder();
+        for (MergeCandidate candidate : state.selectedCandidates) {
+            signature.append(candidate.baseBlockIndex)
+                    .append('-')
+                    .append(candidate.itemBlockIndex)
+                    .append('|');
+        }
+        return signature.toString();
     }
 
     private static boolean shouldKeepAsSingleBlock(PolygonItem item) {
@@ -478,23 +633,76 @@ public class BatchBlockStitcher {
     }
 
     /**
-     * 单轮遍历拼接候选。
+     * 外层 NFP 搜索状态。
      *
-     * 修改理由：需要同时记录“被扩展的当前块”和“被吸收的单件块”，
-     * 这样 Top count 选择时才能准确执行同一轮物品不重复约束。
+     * blocks 完整描述了当前状态中所有尚未继续合并的 Block；
+     * cumulativeScore2 用于比较不同拼接路径的累计外接矩形收益。
      */
-    private static final class RoundStitchCandidate {
+    private static final class StitchSearchState {
+        private final List<Block> blocks;
+        private final double cumulativeScore2;
+
+        private StitchSearchState(List<Block> blocks, double cumulativeScore2) {
+            this.blocks = new ArrayList<>(blocks);
+            this.cumulativeScore2 = cumulativeScore2;
+        }
+    }
+
+    /**
+     * 当前搜索状态中的一条合法合并边。
+     *
+     * baseBlockIndex 和 itemBlockIndex 指向所属 StitchSearchState 的 blocks，
+     * 只有索引不冲突的 MergeCandidate 才能在同一轮一起应用。
+     */
+    private static final class MergeCandidate {
         private final int baseBlockIndex;
         private final int itemBlockIndex;
         private final Block block;
-        // 用于本轮 Top count 排序的 score2，不使用块的累计 score2，避免历史收益影响当前轮选择。
+        // 当前合并动作带来的增量收益，不包含此前搜索层已经获得的累计收益。
         private final double score2;
 
-        private RoundStitchCandidate(int baseBlockIndex, int itemBlockIndex, Block block, double score2) {
+        private MergeCandidate(int baseBlockIndex, int itemBlockIndex, Block block, double score2) {
             this.baseBlockIndex = baseBlockIndex;
             this.itemBlockIndex = itemBlockIndex;
             this.block = block;
             this.score2 = score2;
+        }
+    }
+
+    /**
+     * 一轮内互不冲突候选的中间状态。
+     *
+     * occupied 记录当前轮已经使用的 Block 索引，避免同一个物品同时出现在两个拼接结果中。
+     */
+    private static final class MatchingState {
+        private final List<MergeCandidate> selectedCandidates;
+        private final boolean[] occupied;
+        private final double score2;
+
+        private MatchingState(List<MergeCandidate> selectedCandidates,
+                              boolean[] occupied,
+                              double score2) {
+            this.selectedCandidates = selectedCandidates;
+            this.occupied = occupied;
+            this.score2 = score2;
+        }
+
+        private static MatchingState empty(int activeBlockCount) {
+            return new MatchingState(new ArrayList<>(), new boolean[activeBlockCount], 0.0);
+        }
+
+        private boolean conflictsWith(MergeCandidate candidate) {
+            return occupied[candidate.baseBlockIndex] || occupied[candidate.itemBlockIndex];
+        }
+
+        private MatchingState add(MergeCandidate candidate) {
+            boolean[] nextOccupied = occupied.clone();
+            nextOccupied[candidate.baseBlockIndex] = true;
+            nextOccupied[candidate.itemBlockIndex] = true;
+
+            List<MergeCandidate> nextCandidates = new ArrayList<>(selectedCandidates);
+            nextCandidates.add(candidate);
+            return new MatchingState(nextCandidates, nextOccupied, score2 + candidate.score2);
         }
     }
 }
