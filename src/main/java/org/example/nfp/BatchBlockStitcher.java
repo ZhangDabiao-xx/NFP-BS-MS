@@ -23,7 +23,7 @@ import java.util.Set;
 public class BatchBlockStitcher {
 
     private static final Path INPUT_DIRECTORY = Path.of("data", "inputData");
-    private static final Path OUTPUT_DIRECTORY = Path.of("data", "NFPresult8");
+    private static final Path OUTPUT_DIRECTORY = Path.of("data", "NFPresult9");
     private static final Gson GSON = new Gson();
 
     // 组合块外接矩形长边超过板材长度时无法进入第二阶段排样，因此这类候选不保留。
@@ -153,33 +153,144 @@ public class BatchBlockStitcher {
     }
 
     /**
-     * 以根工件为单位完成 NFP 组块。
+     * 反复执行“所有根工件生成候选块—候选块冲突竞争—未使用工件回池”。
      *
-     * 该方法只负责外层的工件分配：一次确定一个根工件的最终组合块，
-     * 再把该块中的工件从剩余池中移除。真正的 AB、AC、ACG 分层搜索由
-     * searchBestBlockFromRoot(...) 完成。
+     * 每一轮都会让当前所有非矩形工件分别作为根工件，独立执行
+     * searchBestBlockFromRoot(...)，因此即使某个工件已经出现在另一个候选块中，
+     * 仍然可以继续作为本轮其他根工件的拼接候选。生成完所有根候选后，再按块质量
+     * 选择互不冲突的 Block；未被选中 Block 消耗的工件不会丢失，而是在下一轮重新参与搜索。
      *
-     * 修改理由：必须先完成同一个根 A 的候选竞争，再把选定块提交到全局结果；
-     * 不能把不同根节点的无关合并混在一个 Beam 状态中比较。
+     * 修改理由：原实现处理一个根工件后立即从全局池删除其成员，导致后处理的根工件
+     * 无法再尝试已经被前一个 Block 占用的工件。新的外层策略把“根节点内 Beam 搜索”
+     * 与“不同根节点之间的资源冲突处理”分开，能够实现 ABC 与 BED 的全局竞争，
+     * 并在保留 BED 后让 ABC 中未被占用的工件重新回池。
      */
     private static List<Block> stitchByBeamSearch(List<Block> initialBlocks, int beamWidth) {
-        List<PolygonItem> remainingItems = collectItems(initialBlocks);
+        List<PolygonItem> availableItems = collectItems(initialBlocks);
         List<Block> result = new ArrayList<>();
 
-        // 不同根节点和不同 Beam 分支可能重复计算相同的 NFP，缓存贯穿整个案例复用。
+        // 所有轮次共享 NFP 缓存；候选块冲突淘汰后，下一轮只改变可用工件集合，
+        // 相同的“固定几何 + 待插入工件 + 旋转策略”仍可直接复用。
         Map<String, PolygonStitcher.StitchingResult> nfpCache = new HashMap<>();
 
-        while (!remainingItems.isEmpty()) {
-            PolygonItem rootItem = selectNextRootItem(remainingItems);
-            Block bestBlock = searchBestBlockFromRoot(rootItem, remainingItems, beamWidth, nfpCache);
-            result.add(bestBlock);
+        while (!availableItems.isEmpty()) {
+            // 本轮先让所有不规则工件作为根工件生成各自的最佳候选块，不能在生成阶段
+            // 因为候选工件已出现在其他候选块中就提前排除它。
+            List<Block> candidateBlocks = buildAllRootCandidates(availableItems, beamWidth, nfpCache);
+            List<Block> selectedBlocks = selectNonConflictingCandidates(candidateBlocks);
 
-            // 选定根 A 的最终块后，块内所有工件均不能再参与其他根节点的搜索。
-            Set<String> usedItemIds = collectItemIds(bestBlock);
-            remainingItems.removeIf(item -> usedItemIds.contains(item.id));
+            if (selectedBlocks.isEmpty()) {
+                // 当前剩余工件已经无法形成新的有效拼接块，剩余工件保持单件输出，
+                // 避免为了继续循环而生成无效 Block。
+                appendSingleBlocks(result, availableItems);
+                break;
+            }
+
+            Set<String> committedItemIds = new HashSet<>();
+            for (Block selectedBlock : selectedBlocks) {
+                result.add(selectedBlock);
+                committedItemIds.addAll(collectItemIds(selectedBlock));
+            }
+
+            // 只从全局池移除本轮真正提交的 Block 成员；被冲突淘汰的候选块成员仍留在池中，
+            // 下一轮会在更小的资源集合上重新搜索，从而得到例如 AC 的替代组合。
+            availableItems.removeIf(item -> committedItemIds.contains(item.id));
         }
 
         return result;
+    }
+
+    /**
+     * 为当前可用工件集合中的每个非矩形根工件生成一个最佳候选 Block。
+     *
+     * 功能说明：这是外层的“暴力遍历根工件”步骤；真正的多层 AB、AC、ACG 分支
+     * 仍由每个根内部的 Beam Search 完成。这里不提前占用工件，因此不同根之间
+     * 可以观察到同一件候选工件，交由后续冲突竞争统一处理。
+     */
+    private static List<Block> buildAllRootCandidates(
+            List<PolygonItem> availableItems,
+            int beamWidth,
+            Map<String, PolygonStitcher.StitchingResult> nfpCache) {
+        List<Block> candidateBlocks = new ArrayList<>();
+        for (PolygonItem rootItem : availableItems) {
+            if (isSmallRectangleItem(rootItem)) {
+                // 规则小矩形继续只作为被插入工件，不单独发起第一阶段 NFP 搜索。
+                continue;
+            }
+
+            Block bestBlock = searchBestBlockFromRoot(rootItem, availableItems, beamWidth, nfpCache);
+            if (bestBlock.memberCount() > 1) {
+                // 单件结果不是竞争候选；它会在没有可行拼接时由外层统一输出。
+                candidateBlocks.add(bestBlock);
+            }
+        }
+        return candidateBlocks;
+    }
+
+    /**
+     * 按全局质量从高到低选择互不冲突的候选块。
+     *
+     * 功能说明：如果候选块 ABC 和 BED 共享工件 B，则质量更高的候选先占用 B，
+     * 质量较低的候选被淘汰；淘汰块中的 A、C 或 D、E 等未被选中成员不会在此处删除，
+     * 它们会在下一轮回到可用工件池重新寻找组合。
+     */
+    private static List<Block> selectNonConflictingCandidates(List<Block> candidateBlocks) {
+        List<Block> orderedCandidates = new ArrayList<>(candidateBlocks);
+        orderedCandidates.sort(BatchBlockStitcher::compareCandidateBlocks);
+
+        List<Block> selectedBlocks = new ArrayList<>();
+        Set<String> committedItemIds = new HashSet<>();
+        for (Block candidateBlock : orderedCandidates) {
+            Set<String> candidateItemIds = collectItemIds(candidateBlock);
+            if (hasItemConflict(candidateItemIds, committedItemIds)) {
+                // 只淘汰当前候选块，不删除其未被其他块占用的工件。
+                continue;
+            }
+
+            selectedBlocks.add(candidateBlock);
+            committedItemIds.addAll(candidateItemIds);
+        }
+        return selectedBlocks;
+    }
+
+    /** 判断候选块是否与本轮已经提交的 Block 共享工件。 */
+    private static boolean hasItemConflict(Set<String> candidateItemIds,
+                                           Set<String> committedItemIds) {
+        for (String itemId : candidateItemIds) {
+            if (committedItemIds.contains(itemId)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 比较不同根工件生成的候选块。
+     *
+     * 填充率是主要质量指标；填充率相同时优先选择 score2 更高、成员更多的块，
+     * 最后用外接框面积和 ID 作为稳定平局规则，保证每轮结果可复现。
+     */
+    private static int compareCandidateBlocks(Block left, Block right) {
+        if (Math.abs(left.fillRate - right.fillRate) > PolygonStitcher.SCORE_EPS) {
+            return Double.compare(right.fillRate, left.fillRate);
+        }
+        if (Math.abs(left.score2 - right.score2) > PolygonStitcher.SCORE_EPS) {
+            return Double.compare(right.score2, left.score2);
+        }
+        if (left.memberCount() != right.memberCount()) {
+            return Integer.compare(right.memberCount(), left.memberCount());
+        }
+        if (Math.abs(left.boxArea - right.boxArea) > PolygonStitcher.SCORE_EPS) {
+            return Double.compare(left.boxArea, right.boxArea);
+        }
+        return left.id.compareTo(right.id);
+    }
+
+    /** 将无法继续组块的剩余工件以单件 Block 形式追加到结果。 */
+    private static void appendSingleBlocks(List<Block> result, List<PolygonItem> availableItems) {
+        for (PolygonItem item : availableItems) {
+            result.add(Block.fromSingle(item));
+        }
     }
 
     /**
@@ -277,38 +388,6 @@ public class BatchBlockStitcher {
             children.add(state.withAddedItem(item, childBlock));
         }
         return children;
-    }
-
-    /**
-     * 选择下一次处理的根工件。
-     *
-     * 优先选择非矩形小件中的低填充率工件，以便先处理最需要通过凹槽拼接改善的形状；
-     * 只有没有其他可作为根的工件时，才把矩形小件作为单独结果输出。
-     * 这样可以保证矩形小件仍然留在候选池中，优先尝试插入其他根工件。
-     */
-    private static PolygonItem selectNextRootItem(List<PolygonItem> remainingItems) {
-        PolygonItem selected = null;
-        for (PolygonItem item : remainingItems) {
-            if (isSmallRectangleItem(item)) {
-                continue;
-            }
-            if (selected == null || compareRootItems(item, selected) < 0) {
-                selected = item;
-            }
-        }
-
-        if (selected != null) {
-            return selected;
-        }
-        return remainingItems.get(0);
-    }
-
-    /** 按初始填充率升序选择根工件；ID 作为稳定的平局规则。 */
-    private static int compareRootItems(PolygonItem left, PolygonItem right) {
-        if (Math.abs(left.fillRate - right.fillRate) > PolygonStitcher.SCORE_EPS) {
-            return Double.compare(left.fillRate, right.fillRate);
-        }
-        return left.id.compareTo(right.id);
     }
 
     /** 从输入的单件 Block 中提取仍待处理的原始工件。 */
@@ -488,8 +567,8 @@ public class BatchBlockStitcher {
      * NFP 拼接的唯一入口。
      *
      * PolygonStitcher 会对所有允许角度和 NFP 外/孔洞轮廓进行评分，但只返回一个全局最优位置。
-     * smallItem 会要求候选完全位于当前 Block 外接框内，优先填补已有凹腔；
-     * 非 smallItem 的外边界候选也必须通过 score2 和明显收益检查。
+     * smallItem 默认优先填补已有凹腔；只有达到目标填充率且具有有效边界接触的外边界互补闭合
+     * 才作为例外放行。非 smallItem 的普通外边界候选仍必须通过 score2 和明显收益检查。
      * 这里再执行 Block 级别的旋转、重叠和板材尺寸校验，最终每个“主块 + 单件工件”只产生一个后继。
      */
     private static Block tryAddItem(Block block,
@@ -533,8 +612,10 @@ public class BatchBlockStitcher {
             return null;
         }
 
-        if (item.smallItem && !candidate.cavityInsertion) {
-            // 这是 NFP 层之外的第二道保护：小件不得通过外边界扩张组合块。
+        if (item.smallItem
+                && !candidate.cavityInsertion
+                && !PolygonStitcher.isHighQualityOuterClosure(candidate)) {
+            // 修改理由：解除 smallItem 对高质量互补闭合的绝对禁止，但继续阻止普通小件外扩。
             return null;
         }
         if (!candidate.cavityInsertion
@@ -752,8 +833,8 @@ public class BatchBlockStitcher {
      * 以一个根工件 A 为中心的 Beam 节点。
      *
      * block 保存当前 A 根拼接出的完整几何；usedItemIds 保存该分支已经消耗的工件，
-     * 用于防止同一个工件在同一条拼接路径中重复加入。不同根节点之间不会共享该状态，
-     * 只有最终选定的 Block 才会回写到外层结果。
+     * 用于防止同一个工件在同一条拼接路径中重复加入。不同根节点之间不会共享该状态；
+     * 根级候选即使最终因工件冲突被淘汰，也不会修改其它根的状态，外层会让未提交成员回池。
      */
     private static final class RootBeamState {
         private final Block block;

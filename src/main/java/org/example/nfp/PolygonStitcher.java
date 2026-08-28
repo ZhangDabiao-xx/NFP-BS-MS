@@ -522,15 +522,36 @@ public class PolygonStitcher {
     }
 
     /**
+     * 判断候选是否属于高质量的外边界互补闭合。
+     *
+     * 修改理由：smallItem 通常用于填补凹腔，但某些小型不规则工件也可能与另一个工件
+     * 沿斜边互补，直接把组合块闭合成接近矩形的形状。此类候选虽然会越过当前 Block
+     * 的外接框，却不属于之前需要拦截的“低质量向外扩张”。
+     *
+     * 这里只提供“高质量闭合”的例外条件，不放行一般外扩：
+     * 1) 拼接后填充率达到目标值；
+     * 2) 组合块没有明显损失外接框面积，允许 score2 在数值误差范围内等于 0；
+     * 3) 两个工件有足够长度的边界接触。
+     * 正面积重叠、并集连通性等条件仍由 filterValidCandidates 后续检查。
+     */
+    static boolean isHighQualityOuterClosure(StitchingCandidate candidate) {
+        return candidate != null
+                && candidate.combinedFillRate >= TARGET_FILL_RATE - SCORE_EPS
+                && candidate.score2 >= -SCORE_EPS
+                && candidate.contactLength >= MIN_CONTACT_LENGTH - SCORE_EPS;
+    }
+
+    /**
      * 过滤候选的几何质量和硬约束。
      *
      * 修改理由：仅要求“填充率增加”会把沿 Block 外边界添加长条矩形也视为有效拼接。
      * 这类候选可能增加组合块尺寸、得到负 score2，并降低第二阶段矩形排样能力。
-     * 现在把候选分成两类：
+     * 现在把候选分成三类：
      * 1) 凹腔候选：移动工件完全位于当前 Block 外接框内，优先保留；
-     * 2) 外边界候选：只有局部外接框收益为正且填充率有明显提升时才允许。
+     * 2) 高质量外边界闭合：填充率达到目标值，可以作为 smallItem 的有限例外；
+     * 3) 普通外边界候选：只有局部外接框收益为正且填充率有明显提升时才允许。
      *
-     * requireCavityInsertion=true 时只保留第一类候选，供 smallItem 插入使用。
+     * requireCavityInsertion=true 时仍然禁止普通外边界候选，只有第二类闭合候选可以通过。
      */
     private static List<StitchingCandidate> filterValidCandidates(List<StitchingCandidate> candidates,
                                                                     List<List<Point>> fixedPolygons,
@@ -541,15 +562,17 @@ public class PolygonStitcher {
                 continue;
             }
 
-            if (requireCavityInsertion && !candidate.cavityInsertion) {
-                // 小件的职责是填补已有 Block 的凹槽/空洞，不允许借助小件向外扩张 Block。
+            boolean highQualityOuterClosure = isHighQualityOuterClosure(candidate);
+            if (requireCavityInsertion && !candidate.cavityInsertion && !highQualityOuterClosure) {
+                // smallItem 仍不能进行普通外扩；高质量互补闭合由专门的例外条件放行。
                 continue;
             }
 
             if (!candidate.cavityInsertion
+                    && !highQualityOuterClosure
                     && (candidate.score2 <= SCORE_EPS
                     || candidate.fillRateGain < MIN_OUTER_FILL_RATE_GAIN - SCORE_EPS)) {
-                // score2<=0 表示没有节省外接矩形面积；收益过小的外扩也会制造不可排样的大块。
+                // 普通外扩若没有节省外接矩形面积，或收益过小，仍会制造不可排样的大块。
                 continue;
             }
 
