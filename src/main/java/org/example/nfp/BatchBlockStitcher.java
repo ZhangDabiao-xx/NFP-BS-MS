@@ -23,7 +23,7 @@ import java.util.Set;
 public class BatchBlockStitcher {
 
     private static final Path INPUT_DIRECTORY = Path.of("data", "inputData");
-    private static final Path OUTPUT_DIRECTORY = Path.of("data", "NFPresult6");
+    private static final Path OUTPUT_DIRECTORY = Path.of("data", "NFPresult7");
     private static final Gson GSON = new Gson();
 
     // 组合块外接矩形长边超过板材长度时无法进入第二阶段排样，因此这类候选不保留。
@@ -100,15 +100,17 @@ public class BatchBlockStitcher {
     /**
      * 第一阶段组块生成入口。
      *
-     * 新策略把所有需要拼接的非近矩形物品放入 NFP 集束搜索：
-     * 1) 每个搜索状态遍历当前块与所有仍为单件的候选物品，且只允许 BackFrontPriority、旋转约束兼容的组合进入 NFP；
-     * 2) smallItem=true 且几何上确认为矩形的物品只能作为被选择的单件候选，不能作为主拼接块；
-     *    smallItem=true 的四角梯形等多边形仍可作为主拼接块参与搜索；
-     * 3) 每个搜索层把 A+B、A+C、A+D 等“单次拼接”分别作为后继状态，按填充率保留 w 个状态；
-     * 4) 只有拼接后填充率提高且组合块长边不超过 2440 的候选才保留；达到 98% 的块不再继续扩展。
+     * 组块过程分为两层：
+     * 1) 外层依次选择一个尚未使用的根工件 A；
+     * 2) 内层以 A 为固定根节点，逐层生成 AB、AC、ACG 等拼接分支，
+     *    每层只保留填充率最高的 beamWidth 个分支；
+     * 3) 某个分支无法继续扩展时进入终止集合，所有分支结束后再选择根 A 的最优结果；
+     * 4) 选定的最终块消耗其中的工件，外层再为剩余工件选择下一个根节点。
      *
-     * 修改理由：旧策略每轮只提交一组按当前局部指标排序得到的贪心结果；
-     * 新策略保留多个候选状态，使后续轮次仍有机会回到当前轮次的次优组合，从而降低局部最优风险。
+     * 修改理由：原实现把“所有当前 Block 的集合”作为 Beam 节点，并按整体填充率比较。
+     * 这样 AB 和 ACG 不会作为同一个根 A 下的候选直接竞争，AB 还可能随着其他无关 Block
+     * 的合并继续留在状态中。本实现把 Beam 节点改为单个根 A 的拼接方案，使搜索语义
+     * 与“AB、AC、AD 中保留前 w 个，后续 ACG 淘汰 AB”的要求一致。
      */
     public static List<Block> buildBlocks(List<PolygonItem> items) {
         return buildBlocks(items, DEFAULT_BEAM_WIDTH);
@@ -151,130 +153,193 @@ public class BatchBlockStitcher {
     }
 
     /**
-     * 使用 NFP 专用集束搜索完成组块。
+     * 以根工件为单位完成 NFP 组块。
      *
-     * 搜索状态由当前仍未合并的 Block 集合表示。每个搜索层对每个主块遍历其他单件工件，
-     * 生成一次 A+B、A+C、A+D 等后继状态，然后只保留填充率最高的 w 个不同状态进入下一层。
-     * 每个后继只应用一次合并，下一层再继续扩展，因此不会把一轮中多个互相竞争的局部决定同时提交。
+     * 该方法只负责外层的工件分配：一次确定一个根工件的最终组合块，
+     * 再把该块中的工件从剩余池中移除。真正的 AB、AC、ACG 分层搜索由
+     * searchBestBlockFromRoot(...) 完成。
      *
-     * 修改理由：原来的 selectTopNonOverlappingCandidates 只根据当前轮的局部收益做一次排序并立即提交，
-     * 当两个候选竞争同一个物品时，较高的当前收益可能导致后续整体收益更差。集束搜索保留多个分支，
-     * 让后续拼接结果参与当前选择，从而降低局部最优风险。
+     * 修改理由：必须先完成同一个根 A 的候选竞争，再把选定块提交到全局结果；
+     * 不能把不同根节点的无关合并混在一个 Beam 状态中比较。
      */
     private static List<Block> stitchByBeamSearch(List<Block> initialBlocks, int beamWidth) {
-        if (initialBlocks.size() < 2) {
-            return new ArrayList<>(initialBlocks);
-        }
+        List<PolygonItem> remainingItems = collectItems(initialBlocks);
+        List<Block> result = new ArrayList<>();
 
-        StitchSearchState initialState = new StitchSearchState(initialBlocks);
-        List<StitchSearchState> beam = new ArrayList<>();
-        beam.add(initialState);
-        // 同一搜索层的不同 beam 分支可能重复遇到相同的“固定几何 + 新工件 + 旋转”输入；
-        // 缓存贯穿整个案例，而不是每个状态重新建立，以减少复合 NFP 的重复计算。
+        // 不同根节点和不同 Beam 分支可能重复计算相同的 NFP，缓存贯穿整个案例复用。
         Map<String, PolygonStitcher.StitchingResult> nfpCache = new HashMap<>();
 
-        while (!beam.isEmpty()) {
-            List<StitchSearchState> successors = new ArrayList<>();
+        while (!remainingItems.isEmpty()) {
+            PolygonItem rootItem = selectNextRootItem(remainingItems);
+            Block bestBlock = searchBestBlockFromRoot(rootItem, remainingItems, beamWidth, nfpCache);
+            result.add(bestBlock);
 
-            for (StitchSearchState state : beam) {
-                List<MergeCandidate> candidates = buildMergeCandidates(state.blocks, nfpCache);
-                if (candidates.isEmpty()) {
-                    continue;
-                }
-
-                // 每个候选只执行一次合并；例如同一个主块 A 的 AB、AC、AD、AE
-                // 都是独立后继，最终由 selectBestSearchStates 保留其中填充率最高的 w 个分支。
-                for (MergeCandidate candidate : candidates) {
-                    List<Block> nextBlocks = applyMerge(state.blocks, candidate);
-                    if (nextBlocks.size() < state.blocks.size()) {
-                        successors.add(new StitchSearchState(nextBlocks));
-                    }
-                }
-            }
-
-            if (successors.isEmpty()) {
-                break;
-            }
-
-            beam = selectBestSearchStates(successors, beamWidth);
+            // 选定根 A 的最终块后，块内所有工件均不能再参与其他根节点的搜索。
+            Set<String> usedItemIds = collectItemIds(bestBlock);
+            remainingItems.removeIf(item -> usedItemIds.contains(item.id));
         }
 
-        // beam 保留的是最后一个仍能继续扩展或已经无法扩展的搜索层，
-        // 返回最终层而不是历史中间层，确保所有“仍能提高填充率”的分支都已尝试完毕。
-        return beam.isEmpty() ? initialState.blocks : beam.get(0).blocks;
+        return result;
     }
 
     /**
-     * 为一个搜索状态生成所有合法的“主块 + 单件物品”候选。
+     * 为根工件 A 生成最终组合块。
      *
-     * 功能说明：该方法沿用原有 NFP 候选生成与合法性检查规则；每个“主块 + 单件工件”只返回
-     * 一个最优角度/最优位置，集束宽度由外层 beamWidth 控制，不在这里重复保留多个位置。
-     * BackFrontPriority、旋转、重叠和板材尺寸约束保持不变。
+     * Beam 的每个节点只表示一个“根 A 当前已经拼接出的 Block”，并记录该分支已经使用的
+     * 工件 ID。每层从每个节点遍历所有尚未使用的工件生成后继：
+     *
+     *     A -> AB、AC、AD -> ACG、ACD ...
+     *
+     * 没有后继的节点进入 completedStates，不能因为其他分支仍能扩展就被静默丢弃。
+     * 最终只从 completedStates 中选择质量最高的节点。
+     *
+     * 修改理由：旧方法把不同根节点和无关 Block 的合并放进同一个状态，无法保证
+     * ACG 与 AB 在同一个根节点下竞争。这里保留原有 tryAddItem 的 NFP、旋转、
+     * 重叠、连通性和尺寸检查，只改变 Beam 的状态范围。
      */
-    private static List<MergeCandidate> buildMergeCandidates(
-            List<Block> activeBlocks,
+    private static Block searchBestBlockFromRoot(
+            PolygonItem rootItem,
+            List<PolygonItem> remainingItems,
+            int beamWidth,
             Map<String, PolygonStitcher.StitchingResult> nfpCache) {
-        List<MergeCandidate> candidates = new ArrayList<>();
-        // 基准块按填充率升序处理，低填充率块优先寻找可以改善自身填充率的拼接对象。
-        List<Integer> baseBlockIndexes = orderedBaseBlockIndexes(activeBlocks);
-        for (Integer baseBlockIndex : baseBlockIndexes) {
-            Block baseBlock = activeBlocks.get(baseBlockIndex);
+        Block rootBlock = Block.fromSingle(rootItem);
+        RootBeamState initialState = RootBeamState.fromRoot(rootBlock);
 
-            for (int itemBlockIndex = 0; itemBlockIndex < activeBlocks.size(); itemBlockIndex++) {
-                if (baseBlockIndex == itemBlockIndex) {
+        // 小矩形只作为被插入物品，不作为根节点继续扩展，保持原有业务规则。
+        if (!canActAsBaseBlock(rootBlock)) {
+            return rootBlock;
+        }
+
+        List<RootBeamState> beam = new ArrayList<>();
+        beam.add(initialState);
+        List<RootBeamState> completedStates = new ArrayList<>();
+
+        while (!beam.isEmpty()) {
+            List<RootBeamState> nextBeamCandidates = new ArrayList<>();
+
+            for (RootBeamState state : beam) {
+                if (!canActAsBaseBlock(state.block)) {
+                    // 达到 98%、尺寸上限或其他根节点限制后，当前节点成为终止方案。
+                    completedStates.add(state);
                     continue;
                 }
 
-                Block itemBlock = activeBlocks.get(itemBlockIndex);
-                if (itemBlock.memberCount() != 1) {
+                List<RootBeamState> children = buildRootChildren(state, remainingItems, nfpCache);
+                if (children.isEmpty()) {
+                    // 当前根块没有任何合法且能提升填充率的后继，保存它供最终比较。
+                    completedStates.add(state);
                     continue;
                 }
 
-                PolygonItem item = itemBlock.placements.get(0).item;
-                Block candidateBlock = tryAddItem(baseBlock, item, nfpCache);
-                if (candidateBlock != null) {
-                    candidates.add(new MergeCandidate(
-                            baseBlockIndex,
-                            itemBlockIndex,
-                            candidateBlock));
-                }
+                nextBeamCandidates.addAll(children);
             }
-        }
-        return candidates;
-    }
 
-    /** 返回可以继续扩展的基准块索引，并按填充率从低到高排列。 */
-    private static List<Integer> orderedBaseBlockIndexes(List<Block> activeBlocks) {
-        List<Integer> indexes = new ArrayList<>();
-        for (int blockIndex = 0; blockIndex < activeBlocks.size(); blockIndex++) {
-            if (canActAsBaseBlock(activeBlocks.get(blockIndex))) {
-                indexes.add(blockIndex);
+            if (nextBeamCandidates.isEmpty()) {
+                break;
             }
+
+            // 在同一层的全部后继中统一排序，只保留前 beamWidth 个根 A 分支。
+            beam = selectBestRootStates(nextBeamCandidates, beamWidth);
         }
 
-        indexes.sort((leftIndex, rightIndex) -> {
-            Block left = activeBlocks.get(leftIndex);
-            Block right = activeBlocks.get(rightIndex);
-            if (Math.abs(left.fillRate - right.fillRate) > PolygonStitcher.SCORE_EPS) {
-                return Double.compare(left.fillRate, right.fillRate);
-            }
-            if (left.memberCount() != right.memberCount()) {
-                return Integer.compare(right.memberCount(), left.memberCount());
-            }
-            return left.id.compareTo(right.id);
-        });
-        return indexes;
+        // 正常情况下每条路径最终都会进入 completedStates；这里保留防御性回退，
+        // 避免异常几何或未来新增终止条件导致根工件丢失。
+        if (completedStates.isEmpty()) {
+            completedStates.addAll(beam);
+        }
+        if (completedStates.isEmpty()) {
+            return rootBlock;
+        }
+        return selectBestRootState(completedStates).block;
     }
 
-    /** 保留外层集束搜索中评分最好的不同状态。 */
-    private static List<StitchSearchState> selectBestSearchStates(List<StitchSearchState> states,
-                                                                  int beamWidth) {
-        states.sort(BatchBlockStitcher::compareSearchStates);
-        List<StitchSearchState> selectedStates = new ArrayList<>();
+    /**
+     * 为一个根 Beam 节点生成下一层的全部单工件后继。
+     *
+     * 功能说明：例如当前节点是 AC，则该方法只尝试把尚未使用的 B、D、G 等单件
+     * 继续加入 AC，生成 ACB、ACD、ACG。它不会重新选择根，也不会合并其他无关 Block。
+     */
+    private static List<RootBeamState> buildRootChildren(
+            RootBeamState state,
+            List<PolygonItem> remainingItems,
+            Map<String, PolygonStitcher.StitchingResult> nfpCache) {
+        List<RootBeamState> children = new ArrayList<>();
+        for (PolygonItem item : remainingItems) {
+            if (state.usedItemIds.contains(item.id)) {
+                continue;
+            }
+
+            Block childBlock = tryAddItem(state.block, item, nfpCache);
+            if (childBlock == null) {
+                continue;
+            }
+
+            children.add(state.withAddedItem(item, childBlock));
+        }
+        return children;
+    }
+
+    /**
+     * 选择下一次处理的根工件。
+     *
+     * 优先选择非矩形小件中的低填充率工件，以便先处理最需要通过凹槽拼接改善的形状；
+     * 只有没有其他可作为根的工件时，才把矩形小件作为单独结果输出。
+     * 这样可以保证矩形小件仍然留在候选池中，优先尝试插入其他根工件。
+     */
+    private static PolygonItem selectNextRootItem(List<PolygonItem> remainingItems) {
+        PolygonItem selected = null;
+        for (PolygonItem item : remainingItems) {
+            if (isSmallRectangleItem(item)) {
+                continue;
+            }
+            if (selected == null || compareRootItems(item, selected) < 0) {
+                selected = item;
+            }
+        }
+
+        if (selected != null) {
+            return selected;
+        }
+        return remainingItems.get(0);
+    }
+
+    /** 按初始填充率升序选择根工件；ID 作为稳定的平局规则。 */
+    private static int compareRootItems(PolygonItem left, PolygonItem right) {
+        if (Math.abs(left.fillRate - right.fillRate) > PolygonStitcher.SCORE_EPS) {
+            return Double.compare(left.fillRate, right.fillRate);
+        }
+        return left.id.compareTo(right.id);
+    }
+
+    /** 从输入的单件 Block 中提取仍待处理的原始工件。 */
+    private static List<PolygonItem> collectItems(List<Block> blocks) {
+        List<PolygonItem> items = new ArrayList<>();
+        for (Block block : blocks) {
+            for (Block.ItemPlacement placement : block.placements) {
+                items.add(placement.item);
+            }
+        }
+        return items;
+    }
+
+    /** 收集一个最终组合块中的工件 ID，用于从全局剩余池中移除已使用工件。 */
+    private static Set<String> collectItemIds(Block block) {
+        Set<String> itemIds = new HashSet<>();
+        for (Block.ItemPlacement placement : block.placements) {
+            itemIds.add(placement.item.id);
+        }
+        return itemIds;
+    }
+
+    /** 保留当前根 A 搜索层中质量最高的不同拼接方案。 */
+    private static List<RootBeamState> selectBestRootStates(List<RootBeamState> states,
+                                                            int beamWidth) {
+        states.sort(BatchBlockStitcher::compareRootStates);
+        List<RootBeamState> selectedStates = new ArrayList<>();
         Set<String> signatures = new HashSet<>();
 
-        for (StitchSearchState state : states) {
-            String signature = searchStateSignature(state);
+        for (RootBeamState state : states) {
+            String signature = rootStateSignature(state);
             if (!signatures.add(signature)) {
                 continue;
             }
@@ -287,60 +352,40 @@ public class BatchBlockStitcher {
     }
 
     /**
-     * 比较外层搜索状态：优先整体填充率，其次优先当前 Block 数更少的状态。
-     * 整体填充率使用所有当前 Block 的面积和除以外接矩形面积和，能够直接反映当前状态的紧凑程度。
-     */
-    private static int compareSearchStates(StitchSearchState left, StitchSearchState right) {
-        if (Math.abs(left.overallFillRate - right.overallFillRate) > PolygonStitcher.SCORE_EPS) {
-            return Double.compare(right.overallFillRate, left.overallFillRate);
-        }
-        if (left.blocks.size() != right.blocks.size()) {
-            return Integer.compare(left.blocks.size(), right.blocks.size());
-        }
-        return searchStateSignature(left).compareTo(searchStateSignature(right));
-    }
-
-    /** 计算当前搜索状态所有 Block 的总体填充率。 */
-    private static double calculateOverallFillRate(List<Block> blocks) {
-        double totalArea = 0.0;
-        double totalBoxArea = 0.0;
-        for (Block block : blocks) {
-            totalArea += block.areaSum;
-            totalBoxArea += block.boxArea;
-        }
-        if (totalBoxArea <= PolygonStitcher.SCORE_EPS) {
-            return 0.0;
-        }
-        return Math.max(0.0, Math.min(1.0, totalArea / totalBoxArea));
-    }
-
-    /**
-     * 将一个单次拼接候选应用到当前 Block 集合。
+     * 比较同一个根 A 的拼接方案。
      *
-     * 修改理由：本次 beam search 每个后继状态只提交一个 A+B，下一层再继续拼接；
-     * 因此不再一次提交多个互不冲突的局部候选。
+     * 主指标是当前组合块填充率；填充率相同时优先成员更多的方案，
+     * 再使用累计 score2 和块 ID 稳定排序。这里不再使用所有 Block 的总体填充率，
+     * 避免无关工件的状态影响 A 根分支的竞争结果。
      */
-    private static List<Block> applyMerge(List<Block> activeBlocks, MergeCandidate candidate) {
-        List<Block> nextBlocks = new ArrayList<>();
-        nextBlocks.add(candidate.block);
-        for (int blockIndex = 0; blockIndex < activeBlocks.size(); blockIndex++) {
-            if (blockIndex != candidate.baseBlockIndex
-                    && blockIndex != candidate.itemBlockIndex) {
-                nextBlocks.add(activeBlocks.get(blockIndex));
-            }
+    private static int compareRootStates(RootBeamState left, RootBeamState right) {
+        if (Math.abs(left.block.fillRate - right.block.fillRate) > PolygonStitcher.SCORE_EPS) {
+            return Double.compare(right.block.fillRate, left.block.fillRate);
         }
-        return nextBlocks;
+        if (left.block.memberCount() != right.block.memberCount()) {
+            return Integer.compare(right.block.memberCount(), left.block.memberCount());
+        }
+        if (Math.abs(left.block.score2 - right.block.score2) > PolygonStitcher.SCORE_EPS) {
+            return Double.compare(right.block.score2, left.block.score2);
+        }
+        return left.block.id.compareTo(right.block.id);
     }
 
-    /** 通过排序后的 Block id 生成状态签名，用于去除相同 Block 集合的重复分支。 */
-    private static String searchStateSignature(StitchSearchState state) {
-        List<String> blockIds = new ArrayList<>();
-        for (Block block : state.blocks) {
-            // 仅使用工件 ID 会把同一组工件的不同几何放置误判为同一状态，导致 beam 分支被错误删除。
-            blockIds.add(blockGeometrySignature(block));
+    /** 从终止集合中取出当前根 A 的最优方案。 */
+    private static RootBeamState selectBestRootState(List<RootBeamState> states) {
+        states.sort(BatchBlockStitcher::compareRootStates);
+        return states.get(0);
+    }
+
+    /** 使用根块几何和已使用工件生成当前 Beam 分支的唯一签名。 */
+    private static String rootStateSignature(RootBeamState state) {
+        StringBuilder signature = new StringBuilder(blockGeometrySignature(state.block));
+        List<String> sortedItemIds = new ArrayList<>(state.usedItemIds);
+        sortedItemIds.sort(String::compareTo);
+        for (String itemId : sortedItemIds) {
+            signature.append('|').append(itemId);
         }
-        blockIds.sort(String::compareTo);
-        return String.join("|", blockIds);
+        return signature.toString();
     }
 
     /**
@@ -685,38 +730,35 @@ public class BatchBlockStitcher {
     }
 
     /**
-     * 外层 NFP 搜索状态。
+     * 以一个根工件 A 为中心的 Beam 节点。
      *
-     * blocks 完整描述了当前状态中所有尚未继续合并的 Block；
-     * overallFillRate 用于比较不同拼接路径的总体紧凑程度。
+     * block 保存当前 A 根拼接出的完整几何；usedItemIds 保存该分支已经消耗的工件，
+     * 用于防止同一个工件在同一条拼接路径中重复加入。不同根节点之间不会共享该状态，
+     * 只有最终选定的 Block 才会回写到外层结果。
      */
-    private static final class StitchSearchState {
-        private final List<Block> blocks;
-        private final double overallFillRate;
-
-        private StitchSearchState(List<Block> blocks) {
-            this.blocks = new ArrayList<>(blocks);
-            this.overallFillRate = calculateOverallFillRate(this.blocks);
-        }
-    }
-
-    /**
-     * 当前搜索状态中的一条合法合并边。
-     *
-     * baseBlockIndex 和 itemBlockIndex 指向所属 StitchSearchState 的 blocks；
-     * 每条边只表示一次“主块 + 单件工件”的拼接后继。
-     */
-    private static final class MergeCandidate {
-        private final int baseBlockIndex;
-        private final int itemBlockIndex;
+    private static final class RootBeamState {
         private final Block block;
+        private final Set<String> usedItemIds;
 
-        private MergeCandidate(int baseBlockIndex,
-                               int itemBlockIndex,
-                               Block block) {
-            this.baseBlockIndex = baseBlockIndex;
-            this.itemBlockIndex = itemBlockIndex;
+        private RootBeamState(Block block, Set<String> usedItemIds) {
             this.block = block;
+            // 每个节点拥有自己的集合副本，避免后续分支互相修改已使用工件集合。
+            this.usedItemIds = new HashSet<>(usedItemIds);
+        }
+
+        private static RootBeamState fromRoot(Block rootBlock) {
+            Set<String> rootItemIds = new HashSet<>();
+            for (Block.ItemPlacement placement : rootBlock.placements) {
+                rootItemIds.add(placement.item.id);
+            }
+            return new RootBeamState(rootBlock, rootItemIds);
+        }
+
+        /** 创建加入一个新工件后的子节点，并保留父节点的使用集合。 */
+        private RootBeamState withAddedItem(PolygonItem item, Block childBlock) {
+            Set<String> nextUsedItemIds = new HashSet<>(usedItemIds);
+            nextUsedItemIds.add(item.id);
+            return new RootBeamState(childBlock, nextUsedItemIds);
         }
     }
 
