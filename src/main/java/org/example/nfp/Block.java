@@ -16,6 +16,10 @@ public class Block {
     public final List<Integer> rotate;
     public final List<ItemPlacement> placements;
     public final List<Point> combinedCoordinates;
+    // 保存并集返回的全部路径，避免不连通工件或孔洞被压缩成一个错误的单轮廓。
+    public final List<List<Point>> unionContours;
+    // 外部连通分量数量。真正用于继续 NFP 拼接的 Block 必须只有一个外部连通分量。
+    public final int unionComponentCount;
     public final List<Point> outline;
     public final double areaSum;
     public final double sourceBoxAreaSum;
@@ -33,7 +37,11 @@ public class Block {
         this.id = joinIds(normalizedPlacements);
         this.backFrontPriority = normalizedPlacements.get(0).item.backFrontPriority;
         this.combinedCoordinates = Collections.unmodifiableList(buildCombinedCoordinates(normalizedPlacements));
-        this.outline = Collections.unmodifiableList(buildOutline(normalizedPlacmentsAsPolygons(normalizedPlacements), combinedCoordinates));
+        List<List<Point>> calculatedUnionContours = PolygonStitcher.unionBoundaries(
+                normalizedPlacmentsAsPolygons(normalizedPlacements));
+        this.unionContours = Collections.unmodifiableList(copyPolygonList(calculatedUnionContours));
+        this.unionComponentCount = PolygonStitcher.countOuterUnionComponents(calculatedUnionContours);
+        this.outline = Collections.unmodifiableList(buildOutline(calculatedUnionContours, combinedCoordinates));
         this.areaSum = sumArea(normalizedPlacements);
         this.sourceBoxAreaSum = sumSourceBoxArea(normalizedPlacements);
         this.boxArea = PolygonStitcher.boundingBoxArea(combinedCoordinates);
@@ -161,10 +169,21 @@ public class Block {
         return polygons;
     }
 
-    private static List<Point> buildOutline(List<List<Point>> polygons, List<Point> combinedCoordinates) {
-        List<Point> unionBoundary = PolygonStitcher.largestUnionBoundary(polygons);
-        if (!unionBoundary.isEmpty()) {
-            return unionBoundary;
+    private static List<Point> buildOutline(List<List<Point>> unionContours,
+                                            List<Point> combinedCoordinates) {
+        List<List<Point>> outerContours = PolygonStitcher.outerUnionBoundaries(unionContours);
+        if (!outerContours.isEmpty()) {
+            List<Point> largestContour = outerContours.get(0);
+            double largestArea = Geometry.polygonAreaAbs(largestContour);
+            for (int i = 1; i < outerContours.size(); i++) {
+                List<Point> contour = outerContours.get(i);
+                double contourArea = Geometry.polygonAreaAbs(contour);
+                if (contourArea > largestArea) {
+                    largestContour = contour;
+                    largestArea = contourArea;
+                }
+            }
+            return copyPolygon(largestContour);
         }
         return Geometry.convexHull(combinedCoordinates);
     }
@@ -209,6 +228,14 @@ public class Block {
         return copy;
     }
 
+    private static List<List<Point>> copyPolygonList(List<List<Point>> polygons) {
+        List<List<Point>> copy = new ArrayList<>(polygons.size());
+        for (List<Point> polygon : polygons) {
+            copy.add(Collections.unmodifiableList(copyPolygon(polygon)));
+        }
+        return copy;
+    }
+
     public static final class ItemPlacement {
         public final PolygonItem item;
         public final int selectedRelativeRotation;
@@ -217,29 +244,40 @@ public class Block {
         // 保存最终采用的 NFP 来源和 score2，便于追踪每个子物品进入组合块时的面积收益。
         public final String sourceType;
         public final double candidateScore2;
+        // 记录候选的接触质量，便于结果文件和可视化定位低质量拼接。
+        public final double candidateContactLength;
+        public final double candidateMinBoundaryDistance;
+        public final double candidateCombinedFillRate;
 
         private ItemPlacement(PolygonItem item,
                               int selectedRelativeRotation,
                               Point translation,
                               List<Point> placedPoints,
                               String sourceType,
-                              double candidateScore2) {
+                              double candidateScore2,
+                              double candidateContactLength,
+                              double candidateMinBoundaryDistance,
+                              double candidateCombinedFillRate) {
             this.item = item;
             this.selectedRelativeRotation = PolygonItem.normalizeRotation(selectedRelativeRotation);
             this.translation = new Point(translation.x, translation.y);
             this.placedPoints = Collections.unmodifiableList(copyPolygon(placedPoints));
             this.sourceType = sourceType;
             this.candidateScore2 = candidateScore2;
+            this.candidateContactLength = candidateContactLength;
+            this.candidateMinBoundaryDistance = candidateMinBoundaryDistance;
+            this.candidateCombinedFillRate = candidateCombinedFillRate;
         }
 
         private static ItemPlacement fromItem(PolygonItem item) {
             return new ItemPlacement(item, 0, new Point(0, 0), item.points,
-                    "SINGLE", 0);
+                    "SINGLE", 0, 0, 0, item.fillRate);
         }
 
         private static ItemPlacement fromCandidate(PolygonItem item, PolygonStitcher.StitchingCandidate candidate) {
             return new ItemPlacement(item, candidate.movingRotationDegrees, candidate.translation, candidate.translatedPolygonB,
-                    candidate.sourceType, candidate.score2);
+                    candidate.sourceType, candidate.score2, candidate.contactLength,
+                    candidate.minBoundaryDistance, candidate.combinedFillRate);
         }
 
         private ItemPlacement translated(Point offset) {
@@ -248,7 +286,10 @@ public class Block {
                     translation.add(offset),
                     Geometry.translatePolygon(placedPoints, offset),
                     sourceType,
-                    candidateScore2);
+                    candidateScore2,
+                    candidateContactLength,
+                    candidateMinBoundaryDistance,
+                    candidateCombinedFillRate);
         }
     }
 }

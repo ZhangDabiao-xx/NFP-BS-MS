@@ -2,13 +2,26 @@ package org.example.nfp;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 public class PolygonStitcher {
 
     public static final double SCORE_EPS = 1e-6;
     // 组合块达到 98% 填充率后已经足够紧凑，不再把它作为后续 NFP 拼接的主块。
     public static final double TARGET_FILL_RATE = 0.98;
+    // 新组合块的最低绝对填充率。仅仅比原块提高一点但整体仍很松散的候选不再接受。
+    // 0.85 作为默认底线，既能排除明显松散的组合，又不会把有长边有效接触的可用块全部过滤掉。
+    public static final double MIN_COMBINED_FILL_RATE = 0.85;
+    // NFP 边界经过整数缩放和布尔运算后允许的接触距离，单位与输入坐标一致。
+    public static final double CONTACT_DISTANCE_TOLERANCE = 0.01;
+    // 组合块至少需要一段有实际长度的边界接触，避免仅角点接触或近距离分离被当成拼接。
+    public static final double MIN_CONTACT_LENGTH = 5.0;
+    // 每个“主块 + 工件”组合返回的候选位置数量，供外层 beam search 保留不同几何方案。
+    public static final int DEFAULT_TOP_CANDIDATE_COUNT = 3;
+    // 每个旋转最多保留的精确连通候选数；先按廉价指标排序，再对少量前排候选执行布尔并集。
+    private static final int MAX_CONNECTED_CANDIDATES_PER_ROTATION = DEFAULT_TOP_CANDIDATE_COUNT;
 
     // === 自适应密集采样参数 ===
     // NFP 边密集采样的阈值比例：边长超过此值（取两个多边形中较小对角线长度的比例）时进行细分采样
@@ -30,6 +43,10 @@ public class PolygonStitcher {
         public final double combinedFillRate;
         // 相对于主块 A 当前填充率的提升量，是本次 NFP 拼接的新评分。
         public final double fillRateGain;
+        // 候选位置处两个多边形边界的最小距离，用于排除 NFP 误差造成的远距离放置。
+        public final double minBoundaryDistance;
+        // 候选位置处可重合的最长近似共线边界长度，用于保证形成有效边接触。
+        public final double contactLength;
         // 旧 score2 仅保留用于兼容结果输出和诊断，不再作为候选接受条件。
         public final double score2;
         public final List<Point> rotatedPolygonB;
@@ -50,6 +67,8 @@ public class PolygonStitcher {
                                    double boxABArea,
                                    double combinedFillRate,
                                    double fillRateGain,
+                                   double minBoundaryDistance,
+                                   double contactLength,
                                    double score2,
                                    List<Point> rotatedPolygonB,
                                    List<Point> translatedPolygonB,
@@ -65,6 +84,8 @@ public class PolygonStitcher {
             this.boxABArea = boxABArea;
             this.combinedFillRate = combinedFillRate;
             this.fillRateGain = fillRateGain;
+            this.minBoundaryDistance = minBoundaryDistance;
+            this.contactLength = contactLength;
             this.score2 = score2;
             this.rotatedPolygonB = copyPolygon(rotatedPolygonB);
             this.translatedPolygonB = copyPolygon(translatedPolygonB);
@@ -81,6 +102,8 @@ public class PolygonStitcher {
         public final List<Point> outerNFP;
         public final List<List<Point>> holes;
         public final List<StitchingCandidate> candidates;
+        // 经过重叠、接触和绝对填充率校验的候选，按质量从高到低排列。
+        public final List<StitchingCandidate> validCandidates;
         public final StitchingCandidate bestCandidate;
 
         private StitchingResult(boolean success,
@@ -91,6 +114,7 @@ public class PolygonStitcher {
                                 List<Point> outerNFP,
                                 List<List<Point>> holes,
                                 List<StitchingCandidate> candidates,
+                                List<StitchingCandidate> validCandidates,
                                 StitchingCandidate bestCandidate) {
             this.success = success;
             this.stitched = stitched;
@@ -100,7 +124,25 @@ public class PolygonStitcher {
             this.outerNFP = copyPolygon(outerNFP);
             this.holes = copyPolygonList(holes);
             this.candidates = new ArrayList<>(candidates);
+            this.validCandidates = Collections.unmodifiableList(new ArrayList<>(validCandidates));
             this.bestCandidate = bestCandidate;
+        }
+
+        /** 返回当前 NFP 搜索中最优的若干个不同放置位置，供 beam search 使用。 */
+        public List<StitchingCandidate> topCandidates(int limit) {
+            int count = Math.max(1, limit);
+            List<StitchingCandidate> result = new ArrayList<>();
+            Set<String> signatures = new HashSet<>();
+            for (StitchingCandidate candidate : validCandidates) {
+                if (!signatures.add(candidateSignature(candidate))) {
+                    continue;
+                }
+                result.add(candidate);
+                if (result.size() >= count) {
+                    break;
+                }
+            }
+            return result;
         }
     }
 
@@ -122,11 +164,12 @@ public class PolygonStitcher {
                                                  List<Integer> movingRotationDegrees) {
         if (polygonA.size() < 3 || polygonB.size() < 3) {
             return rejected("Invalid polygon: less than 3 vertices", polygonA, polygonB,
-                    new ArrayList<>(), new ArrayList<>(), new ArrayList<>(), null);
+                    new ArrayList<>(), new ArrayList<>(), new ArrayList<>(), new ArrayList<>(), null);
         }
 
         List<Integer> normalizedRotations = PolygonItem.normalizeRotations(movingRotationDegrees);
         List<StitchingCandidate> candidates = new ArrayList<>();
+        List<StitchingCandidate> validCandidates = new ArrayList<>();
         String lastError = "No NFP contour to sample";
         StitchingCandidate bestCandidate = null;
         List<Point> bestOuterNfp = new ArrayList<>();
@@ -162,7 +205,12 @@ public class PolygonStitcher {
             }
             candidates.addAll(rotationCandidates);
 
-            StitchingCandidate rotationBestCandidate = selectBestCandidate(rotationCandidates, polygonA);
+            // 先执行统一合法性过滤，再将有效候选加入结果；这样调用方可以保留同一对工件的多个位置。
+            List<StitchingCandidate> validRotationCandidates = filterValidCandidates(
+                    rotationCandidates, polygonA);
+            validCandidates.addAll(validRotationCandidates);
+
+            StitchingCandidate rotationBestCandidate = selectBestCandidate(validRotationCandidates);
             if (isBetterCandidate(rotationBestCandidate, bestCandidate)) {
                 bestCandidate = rotationBestCandidate;
                 // 直接复用当前旋转已经计算出的 NFP，避免找到最佳候选后再次计算同一个 NFP。
@@ -172,12 +220,15 @@ public class PolygonStitcher {
         }
 
         if (bestCandidate == null) {
-            return rejected(lastError, polygonA, polygonB, new ArrayList<>(), new ArrayList<>(), candidates, null);
+            return rejected(lastError, polygonA, polygonB, new ArrayList<>(), new ArrayList<>(),
+                    candidates, validCandidates, null);
         }
+
+        validCandidates.sort(PolygonStitcher::compareCandidates);
 
         // 返回搜索过程中已经保存的最佳旋转对应 NFP，避免额外的重复几何计算。
         return new StitchingResult(true, true, "Best stitching placement found", polygonA, polygonB,
-                bestOuterNfp, bestHoles, candidates, bestCandidate);
+                bestOuterNfp, bestHoles, candidates, validCandidates, bestCandidate);
     }
 
     public static double boundingBoxArea(List<Point> polygon) {
@@ -202,7 +253,13 @@ public class PolygonStitcher {
         return area;
     }
 
-    public static List<Point> largestUnionBoundary(List<List<Point>> polygons) {
+    /**
+     * 计算多个工件并集的全部边界轮廓。
+     *
+     * 旧实现只返回面积最大的轮廓，多个不连通工件组成的 Block 会因此丢失部分几何信息。
+     * 这里保留所有布尔并集路径，调用方可以据此判断连通分量并完整绘制组合块。
+     */
+    public static List<List<Point>> unionBoundaries(List<List<Point>> polygons) {
         List<List<long[]>> paths = new ArrayList<>();
         for (List<Point> polygon : polygons) {
             if (polygon.size() >= 3) {
@@ -210,49 +267,92 @@ public class PolygonStitcher {
             }
         }
         List<List<long[]>> unionPaths = ClipperBridge.unionAllPolygons(paths);
-        if (unionPaths.isEmpty()) {
-            return new ArrayList<>();
-        }
-
-        List<long[]> bestPath = null;
-        double bestArea = -1;
+        List<List<Point>> boundaries = new ArrayList<>(unionPaths.size());
         for (List<long[]> unionPath : unionPaths) {
-            double area = Math.abs(ClipperBridge.intPathArea(unionPath));
-            if (area > bestArea) {
-                bestArea = area;
-                bestPath = unionPath;
+            List<Point> boundary = ClipperBridge.fromIntPath(unionPath);
+            boundary = Geometry.removeCollinearPoints(boundary);
+            if (boundary.size() >= 3 && Geometry.polygonAreaAbs(boundary) > Geometry.EPS) {
+                Geometry.ensureCCW(boundary);
+                boundaries.add(boundary);
             }
         }
-        if (bestPath == null) {
+        return boundaries;
+    }
+
+    /**
+     * 从并集路径中筛选外轮廓。
+     *
+     * Java2D Area 会同时返回外轮廓和孔洞。孔洞的首点位于其他路径内部，不能被当成独立工件分量。
+     */
+    public static List<List<Point>> outerUnionBoundaries(List<List<Point>> unionBoundaries) {
+        List<List<Point>> outerBoundaries = new ArrayList<>();
+        for (int i = 0; i < unionBoundaries.size(); i++) {
+            List<Point> boundary = unionBoundaries.get(i);
+            if (boundary.isEmpty()) {
+                continue;
+            }
+
+            boolean isHole = false;
+            Point probe = boundary.get(0);
+            for (int j = 0; j < unionBoundaries.size(); j++) {
+                if (i == j) {
+                    continue;
+                }
+                if (Geometry.pointInPolygon(probe, unionBoundaries.get(j)) == 1) {
+                    isHole = true;
+                    break;
+                }
+            }
+            if (!isHole) {
+                outerBoundaries.add(copyPolygon(boundary));
+            }
+        }
+        return outerBoundaries;
+    }
+
+    /** 返回并集中的外部连通分量数量。 */
+    public static int countOuterUnionComponents(List<List<Point>> unionBoundaries) {
+        return outerUnionBoundaries(unionBoundaries).size();
+    }
+
+    /**
+     * 兼容旧调用方的最大外轮廓接口。
+     * 新的 Block 不再依赖该方法表示完整组合块，而是保存 unionBoundaries 的全部路径。
+     */
+    @Deprecated
+    public static List<Point> largestUnionBoundary(List<List<Point>> polygons) {
+        List<List<Point>> allBoundaries = unionBoundaries(polygons);
+        List<List<Point>> outerBoundaries = outerUnionBoundaries(allBoundaries);
+        List<List<Point>> candidates = outerBoundaries.isEmpty() ? allBoundaries : outerBoundaries;
+        if (candidates.isEmpty()) {
             return new ArrayList<>();
         }
 
-        List<Point> boundary = ClipperBridge.fromIntPath(bestPath);
-        boundary = Geometry.removeCollinearPoints(boundary);
-        Geometry.ensureCCW(boundary);
-        return boundary;
+        List<Point> bestBoundary = candidates.get(0);
+        double bestArea = Geometry.polygonAreaAbs(bestBoundary);
+        for (int i = 1; i < candidates.size(); i++) {
+            List<Point> boundary = candidates.get(i);
+            double area = Geometry.polygonAreaAbs(boundary);
+            if (area > bestArea) {
+                bestArea = area;
+                bestBoundary = boundary;
+            }
+        }
+        return copyPolygon(bestBoundary);
     }
 
     /**
      * 收集 NFPComputer 返回的全部候选轮廓。
      *
-     * 用途：凹多边形的 NFP 不一定是单个外边界；holes 和 inner loops 往往对应凹槽、
-     * 内部缺陷或局部可贴合边界。统一遍历这些闭环可以扩大候选空间，避免只适配凸多边形。
+     * 外部拼接使用外 NFP 的外边界和孔洞边界：孔洞边界可能对应凹槽内的合法接触位置。
+     * 所有候选仍必须通过无正面积重叠、接触长度和精确并集连通校验；内 NFP 表示包含关系，
+     * 不属于当前的外部拼接场景，因此明确排除。
      */
     private static List<NfpContour> collectNfpContours(NFPResult nfpResult) {
         List<NfpContour> contours = new ArrayList<>();
         addContourIfValid(contours, "OUTER_NFP", nfpResult.outerNFP);
-
         for (int i = 0; i < nfpResult.holes.size(); i++) {
             addContourIfValid(contours, "HOLE_NFP_" + i, nfpResult.holes.get(i));
-        }
-
-        if (!nfpResult.innerLoops.isEmpty()) {
-            for (int i = 0; i < nfpResult.innerLoops.size(); i++) {
-                addContourIfValid(contours, "INNER_LOOP_" + i, nfpResult.innerLoops.get(i));
-            }
-        } else {
-            addContourIfValid(contours, "INNER_NFP", nfpResult.innerNFP);
         }
         return contours;
     }
@@ -273,7 +373,7 @@ public class PolygonStitcher {
                                                             NfpContour contour) {
         List<Point> contourPoints = contour.points;
         // 计算密集采样阈值：取两个多边形中较小包围盒对角线长度的比例。
-        // 该阈值对所有 NFP 闭环生效，避免 holes/innerLoops 的长边只采样端点和中点。
+        // 该阈值对外 NFP 的每条边生效，避免凹边只采样端点和中点。
         double boxBArea = boundingBoxArea(rotatedPolygonB);
         double diagA = Math.sqrt(boxAArea > 0 ? boxAArea : 1);
         double diagB = Math.sqrt(boxBArea > 0 ? boxBArea : 1);
@@ -293,7 +393,7 @@ public class PolygonStitcher {
             candidates.add(scoreCandidate(contour.sourceType + "_MIDPOINT", i, (i + 1) % vertexCount, movingRotationDegrees,
                     midpoint(current, next), polygonA, areaA, boxAArea, rotatedPolygonB, areaB));
 
-            // 密集采样：holes/innerLoops 的长边可能对应完整凹槽边界，额外采样能提高凹多边形候选质量。
+            // 密集采样：外 NFP 的长边可能对应完整凹槽边界，额外采样能提高凹多边形候选质量。
             double edgeLength = current.distance(next);
             if (edgeLength > denseSampleThreshold) {
                 int extraSamples = Math.min(
@@ -331,38 +431,81 @@ public class PolygonStitcher {
         double baseFillRate = calculateFillRate(areaA, boxAArea);
         double combinedFillRate = calculateFillRate(areaA + areaB, boxABArea);
         double fillRateGain = combinedFillRate - baseFillRate;
+        double minBoundaryDistance = minimumBoundaryDistance(polygonA, translatedPolygonB);
+        double contactLength = maximumContactLength(
+                polygonA, translatedPolygonB, CONTACT_DISTANCE_TOLERANCE);
 
         // 保留旧 score2 供结果文件和可视化查看，但新的 NFP 选择改用填充率提升量。
         double score2 = boxAArea + boxBArea - boxABArea;
 
         return new StitchingCandidate(sourceType, edgeStartIndex, edgeEndIndex, movingRotationDegrees,
                 placementPoint, translation, boxAArea, boxBArea, boxABArea,
-                combinedFillRate, fillRateGain, score2,
+                combinedFillRate, fillRateGain, minBoundaryDistance, contactLength, score2,
                 rotatedPolygonB, translatedPolygonB, combinedCoordinates);
     }
 
-    // ==== 候选选择：按填充率提升量保留候选 ====
-    private static StitchingCandidate selectBestCandidate(List<StitchingCandidate> candidates, List<Point> polygonA) {
-        if (candidates.isEmpty()) {
-            return null;
-        }
-
-        StitchingCandidate bestCandidate = null;
+    /**
+     * 过滤候选的几何质量和硬约束。
+     *
+     * 修改理由：单纯“不重叠且外接矩形变小”会接受远距离、只角点接触或彼此不连通的工件组合。
+     * 这里把绝对填充率、边界距离、接触长度和并集连通性都纳入拼接的底层合法性判断。
+     */
+    private static List<StitchingCandidate> filterValidCandidates(List<StitchingCandidate> candidates,
+                                                                    List<Point> polygonA) {
+        List<StitchingCandidate> geometricCandidates = new ArrayList<>();
         for (StitchingCandidate candidate : candidates) {
-            // 只有拼接后填充率高于主块当前填充率，才允许继续向下拼接。
-            if (candidate.fillRateGain <= SCORE_EPS) {
+            if (candidate.fillRateGain <= SCORE_EPS
+                    || candidate.combinedFillRate < MIN_COMBINED_FILL_RATE - SCORE_EPS) {
                 continue;
             }
-            // 只有 bbox 可能产生正面积重叠时才执行精确相交；bbox 分离的候选本身就是合法的外部放置。
+
+            if (candidate.minBoundaryDistance > CONTACT_DISTANCE_TOLERANCE + SCORE_EPS
+                    || candidate.contactLength < MIN_CONTACT_LENGTH - SCORE_EPS) {
+                continue;
+            }
+
+            // NFP 边界候选仍需经过精确重叠检测，避免数值误差产生正面积穿透。
             if (mayHavePositiveBBoxOverlap(polygonA, candidate.translatedPolygonB)
                     && intersectionArea(polygonA, candidate.translatedPolygonB) > SCORE_EPS) {
                 continue;
             }
-            if (isBetterCandidate(candidate, bestCandidate)) {
-                bestCandidate = candidate;
+
+            // 接触长度和距离是第一层快速筛选；先收集候选，后续按评分排序后再做精确连通校验。
+            geometricCandidates.add(candidate);
+        }
+
+        geometricCandidates.sort(PolygonStitcher::compareCandidates);
+
+        List<StitchingCandidate> validCandidates = new ArrayList<>();
+        for (StitchingCandidate candidate : geometricCandidates) {
+            // 修改理由：仅靠接触长度仍可能接受小间隙，导致不连通候选抢占 Top-K；
+            // 对排序靠前的候选执行精确并集，确保送入 beam search 的位置确实属于同一连通块。
+            if (!hasSingleOuterUnionComponent(polygonA, candidate.translatedPolygonB)) {
+                continue;
+            }
+            validCandidates.add(candidate);
+            // 每个旋转保留少量已确认连通的候选即可覆盖不同放置位置，避免对全部采样点执行 Area 并集。
+            if (validCandidates.size() >= MAX_CONNECTED_CANDIDATES_PER_ROTATION) {
+                break;
             }
         }
-        return bestCandidate;
+        return validCandidates;
+    }
+
+    /** 精确判断两个不重叠工件的并集是否只有一个外部连通分量。 */
+    private static boolean hasSingleOuterUnionComponent(List<Point> first, List<Point> second) {
+        List<List<Point>> polygons = new ArrayList<>(2);
+        polygons.add(first);
+        polygons.add(second);
+        return countOuterUnionComponents(unionBoundaries(polygons)) == 1;
+    }
+
+    // ==== 候选选择：按绝对填充率、接触质量和增益排序 ====
+    private static StitchingCandidate selectBestCandidate(List<StitchingCandidate> candidates) {
+        if (candidates.isEmpty()) {
+            return null;
+        }
+        return candidates.get(0);
     }
 
     /**
@@ -377,16 +520,39 @@ public class PolygonStitcher {
         if (currentBest == null) {
             return true;
         }
-        if (candidate.fillRateGain > currentBest.fillRateGain + SCORE_EPS) {
+        if (candidate.combinedFillRate > currentBest.combinedFillRate + SCORE_EPS) {
             return true;
         }
-        if (Math.abs(candidate.fillRateGain - currentBest.fillRateGain) <= SCORE_EPS
-                && candidate.combinedFillRate > currentBest.combinedFillRate + SCORE_EPS) {
+        if (Math.abs(candidate.combinedFillRate - currentBest.combinedFillRate) <= SCORE_EPS
+                && candidate.contactLength > currentBest.contactLength + SCORE_EPS) {
             return true;
         }
-        return Math.abs(candidate.fillRateGain - currentBest.fillRateGain) <= SCORE_EPS
-                && Math.abs(candidate.combinedFillRate - currentBest.combinedFillRate) <= SCORE_EPS
+        if (Math.abs(candidate.combinedFillRate - currentBest.combinedFillRate) <= SCORE_EPS
+                && Math.abs(candidate.contactLength - currentBest.contactLength) <= SCORE_EPS
+                && candidate.fillRateGain > currentBest.fillRateGain + SCORE_EPS) {
+            return true;
+        }
+        return Math.abs(candidate.combinedFillRate - currentBest.combinedFillRate) <= SCORE_EPS
+                && Math.abs(candidate.contactLength - currentBest.contactLength) <= SCORE_EPS
+                && Math.abs(candidate.fillRateGain - currentBest.fillRateGain) <= SCORE_EPS
                 && candidate.score2 > currentBest.score2 + SCORE_EPS;
+    }
+
+    /** 与 isBetterCandidate 相同的排序方向，供有效候选和 beam search 稳定排序。 */
+    private static int compareCandidates(StitchingCandidate left, StitchingCandidate right) {
+        if (Math.abs(left.combinedFillRate - right.combinedFillRate) > SCORE_EPS) {
+            return Double.compare(right.combinedFillRate, left.combinedFillRate);
+        }
+        if (Math.abs(left.contactLength - right.contactLength) > SCORE_EPS) {
+            return Double.compare(right.contactLength, left.contactLength);
+        }
+        if (Math.abs(left.fillRateGain - right.fillRateGain) > SCORE_EPS) {
+            return Double.compare(right.fillRateGain, left.fillRateGain);
+        }
+        if (Math.abs(left.minBoundaryDistance - right.minBoundaryDistance) > SCORE_EPS) {
+            return Double.compare(left.minBoundaryDistance, right.minBoundaryDistance);
+        }
+        return Double.compare(right.score2, left.score2);
     }
 
     /** 面积相交前的包围盒快速判断，避免对明显分离的多边形创建 Area。 */
@@ -402,6 +568,194 @@ public class PolygonStitcher {
                 && secondBox.minY < firstBox.maxY - SCORE_EPS;
     }
 
+    /**
+     * 计算两个多边形边界之间的最小距离。
+     *
+     * 该方法只处理边界距离，不把两个多边形的外接矩形重叠误认为工件接触。
+     * 由于候选数量较多，先用边段外接盒做一次廉价剪枝，再计算线段距离。
+     */
+    public static double minimumBoundaryDistance(List<Point> first, List<Point> second) {
+        if (first.size() < 3 || second.size() < 3) {
+            return Double.POSITIVE_INFINITY;
+        }
+
+        double minimumDistance = Double.POSITIVE_INFINITY;
+        for (int i = 0; i < first.size(); i++) {
+            Point firstStart = first.get(i);
+            Point firstEnd = first.get((i + 1) % first.size());
+            for (int j = 0; j < second.size(); j++) {
+                Point secondStart = second.get(j);
+                Point secondEnd = second.get((j + 1) % second.size());
+
+                if (segmentBoxesAreFartherThan(firstStart, firstEnd,
+                        secondStart, secondEnd, minimumDistance)) {
+                    continue;
+                }
+                double distance = segmentDistance(firstStart, firstEnd, secondStart, secondEnd);
+                if (distance < minimumDistance) {
+                    minimumDistance = distance;
+                    if (minimumDistance <= Geometry.EPS) {
+                        return 0.0;
+                    }
+                }
+            }
+        }
+        return minimumDistance;
+    }
+
+    /**
+     * 计算两个多边形之间最长的近似共线接触边长度。
+     *
+     * 只统计方向平行且位于 CONTACT_DISTANCE_TOLERANCE 内的边段重叠长度，
+     * 因此单点接触不会被误判为高质量拼接。
+     */
+    public static double maximumContactLength(List<Point> first,
+                                              List<Point> second,
+                                              double distanceTolerance) {
+        if (first.size() < 3 || second.size() < 3) {
+            return 0.0;
+        }
+
+        double maximumLength = 0.0;
+        for (int i = 0; i < first.size(); i++) {
+            Point firstStart = first.get(i);
+            Point firstEnd = first.get((i + 1) % first.size());
+            Point firstVector = firstEnd.sub(firstStart);
+            double firstLength = firstVector.length();
+            if (firstLength <= Geometry.EPS) {
+                continue;
+            }
+
+            Point firstDirection = firstVector.div(firstLength);
+            for (int j = 0; j < second.size(); j++) {
+                Point secondStart = second.get(j);
+                Point secondEnd = second.get((j + 1) % second.size());
+                Point secondVector = secondEnd.sub(secondStart);
+                double secondLength = secondVector.length();
+                if (secondLength <= Geometry.EPS) {
+                    continue;
+                }
+
+                Point secondDirection = secondVector.div(secondLength);
+                if (Math.abs(firstDirection.cross(secondDirection)) > 1e-6) {
+                    continue;
+                }
+
+                double lineDistanceStart = Math.abs(firstVector.cross(secondStart.sub(firstStart)))
+                        / firstLength;
+                double lineDistanceEnd = Math.abs(firstVector.cross(secondEnd.sub(firstStart)))
+                        / firstLength;
+                if (lineDistanceStart > distanceTolerance || lineDistanceEnd > distanceTolerance) {
+                    continue;
+                }
+
+                double firstProjectionStart = 0.0;
+                double firstProjectionEnd = firstLength;
+                double secondProjectionStart = secondStart.sub(firstStart).dot(firstDirection);
+                double secondProjectionEnd = secondEnd.sub(firstStart).dot(firstDirection);
+                double secondMinimum = Math.min(secondProjectionStart, secondProjectionEnd);
+                double secondMaximum = Math.max(secondProjectionStart, secondProjectionEnd);
+                double overlapLength = Math.min(firstProjectionEnd, secondMaximum)
+                        - Math.max(firstProjectionStart, secondMinimum);
+                if (overlapLength > maximumLength) {
+                    maximumLength = overlapLength;
+                }
+            }
+        }
+        return maximumLength;
+    }
+
+    private static boolean segmentBoxesAreFartherThan(Point firstStart,
+                                                       Point firstEnd,
+                                                       Point secondStart,
+                                                       Point secondEnd,
+                                                       double distance) {
+        if (!Double.isFinite(distance)) {
+            return false;
+        }
+
+        double firstMinX = Math.min(firstStart.x, firstEnd.x);
+        double firstMaxX = Math.max(firstStart.x, firstEnd.x);
+        double firstMinY = Math.min(firstStart.y, firstEnd.y);
+        double firstMaxY = Math.max(firstStart.y, firstEnd.y);
+        double secondMinX = Math.min(secondStart.x, secondEnd.x);
+        double secondMaxX = Math.max(secondStart.x, secondEnd.x);
+        double secondMinY = Math.min(secondStart.y, secondEnd.y);
+        double secondMaxY = Math.max(secondStart.y, secondEnd.y);
+
+        double horizontalGap = Math.max(0.0,
+                Math.max(firstMinX - secondMaxX, secondMinX - firstMaxX));
+        double verticalGap = Math.max(0.0,
+                Math.max(firstMinY - secondMaxY, secondMinY - firstMaxY));
+        return Math.hypot(horizontalGap, verticalGap) > distance;
+    }
+
+    private static double segmentDistance(Point firstStart,
+                                          Point firstEnd,
+                                          Point secondStart,
+                                          Point secondEnd) {
+        if (segmentsIntersectOrTouch(firstStart, firstEnd, secondStart, secondEnd)) {
+            return 0.0;
+        }
+
+        double firstToSecondStart = pointToSegmentDistance(secondStart, firstStart, firstEnd);
+        double firstToSecondEnd = pointToSegmentDistance(secondEnd, firstStart, firstEnd);
+        double secondToFirstStart = pointToSegmentDistance(firstStart, secondStart, secondEnd);
+        double secondToFirstEnd = pointToSegmentDistance(firstEnd, secondStart, secondEnd);
+        return Math.min(Math.min(firstToSecondStart, firstToSecondEnd),
+                Math.min(secondToFirstStart, secondToFirstEnd));
+    }
+
+    private static double pointToSegmentDistance(Point point, Point start, Point end) {
+        Point direction = end.sub(start);
+        double lengthSq = direction.lengthSq();
+        if (lengthSq <= Geometry.EPS) {
+            return point.distance(start);
+        }
+
+        double parameter = point.sub(start).dot(direction) / lengthSq;
+        parameter = Math.max(0.0, Math.min(1.0, parameter));
+        Point projection = start.add(direction.mul(parameter));
+        return point.distance(projection);
+    }
+
+    private static boolean segmentsIntersectOrTouch(Point firstStart,
+                                                     Point firstEnd,
+                                                     Point secondStart,
+                                                     Point secondEnd) {
+        double firstOrientation = Geometry.cross(firstStart, firstEnd, secondStart);
+        double secondOrientation = Geometry.cross(firstStart, firstEnd, secondEnd);
+        double thirdOrientation = Geometry.cross(secondStart, secondEnd, firstStart);
+        double fourthOrientation = Geometry.cross(secondStart, secondEnd, firstEnd);
+
+        boolean properIntersection = ((firstOrientation > SCORE_EPS && secondOrientation < -SCORE_EPS)
+                || (firstOrientation < -SCORE_EPS && secondOrientation > SCORE_EPS))
+                && ((thirdOrientation > SCORE_EPS && fourthOrientation < -SCORE_EPS)
+                || (thirdOrientation < -SCORE_EPS && fourthOrientation > SCORE_EPS));
+        if (properIntersection) {
+            return true;
+        }
+
+        return (Math.abs(firstOrientation) <= SCORE_EPS
+                && Geometry.onSegment(secondStart, firstStart, firstEnd))
+                || (Math.abs(secondOrientation) <= SCORE_EPS
+                && Geometry.onSegment(secondEnd, firstStart, firstEnd))
+                || (Math.abs(thirdOrientation) <= SCORE_EPS
+                && Geometry.onSegment(firstStart, secondStart, secondEnd))
+                || (Math.abs(fourthOrientation) <= SCORE_EPS
+                && Geometry.onSegment(firstEnd, secondStart, secondEnd));
+    }
+
+    private static String candidateSignature(StitchingCandidate candidate) {
+        return candidate.movingRotationDegrees
+                + ":" + roundedCoordinate(candidate.translation.x)
+                + ":" + roundedCoordinate(candidate.translation.y);
+    }
+
+    private static long roundedCoordinate(double coordinate) {
+        return Math.round(coordinate * 1_000.0);
+    }
+
     private static double calculateFillRate(double area, double boxArea) {
         if (boxArea <= SCORE_EPS) {
             return 0.0;
@@ -415,8 +769,10 @@ public class PolygonStitcher {
                                             List<Point> outerNFP,
                                             List<List<Point>> holes,
                                             List<StitchingCandidate> candidates,
+                                            List<StitchingCandidate> validCandidates,
                                             StitchingCandidate bestCandidate) {
-        return new StitchingResult(true, false, message, polygonA, polygonB, outerNFP, holes, candidates, bestCandidate);
+        return new StitchingResult(true, false, message, polygonA, polygonB, outerNFP, holes,
+                candidates, validCandidates, bestCandidate);
     }
 
     private static List<Point> combinePolygons(List<Point> polygonA, List<Point> polygonB) {
@@ -453,8 +809,8 @@ public class PolygonStitcher {
     /**
      * NFP 候选来源轮廓。
      *
-     * 用途：把 outerNFP、holes、innerLoops 统一成同一种输入，
-     * buildCandidates 不再关心轮廓来源，只负责遍历顶点、中点和密集采样点。
+     * 用途：统一封装外 NFP 轮廓，使 buildCandidates 不必关心轮廓对象的来源，
+     * 只负责遍历顶点、中点和密集采样点。
      */
     private static final class NfpContour {
         private final String sourceType;

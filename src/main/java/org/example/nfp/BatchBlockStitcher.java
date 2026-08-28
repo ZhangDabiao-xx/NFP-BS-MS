@@ -13,15 +13,17 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 public class BatchBlockStitcher {
 
     private static final Path INPUT_DIRECTORY = Path.of("data", "inputData");
-    private static final Path OUTPUT_DIRECTORY = Path.of("data", "NFPresult4");
+    private static final Path OUTPUT_DIRECTORY = Path.of("data", "NFPresult5");
     private static final Gson GSON = new Gson();
 
     // 组合块外接矩形长边超过板材长度时无法进入第二阶段排样，因此这类候选不保留。
@@ -32,6 +34,8 @@ public class BatchBlockStitcher {
     // NFP 集束搜索默认保留的状态数量。命令行第三个参数仍然可以覆盖该值。
     // 修改理由：第三个参数原来控制每轮贪心合并数量，现在改为控制搜索宽度；保留参数位置可以兼容原有启动方式。
     private static final int DEFAULT_BEAM_WIDTH = 5;
+    // 每个主块和单件工件保留多个合法位置，避免 NFP 的单个局部最优位置提前截断 beam search。
+    private static final int TOP_STITCH_CANDIDATE_COUNT = 2;
 
     public static void main(String[] args) throws IOException {
         Path inputDirectory = args.length > 0 ? Path.of(args[0]) : INPUT_DIRECTORY;
@@ -221,6 +225,8 @@ public class BatchBlockStitcher {
      */
     private static List<MergeCandidate> buildMergeCandidates(List<Block> activeBlocks) {
         List<MergeCandidate> candidates = new ArrayList<>();
+        // 同一状态内常有几何完全相同但 ID 不同的工件；缓存相同几何输入的 NFP，避免重复求解。
+        Map<String, PolygonStitcher.StitchingResult> nfpCache = new HashMap<>();
         // 基准块按填充率升序处理，低填充率块优先寻找可以改善自身填充率的拼接对象。
         List<Integer> baseBlockIndexes = orderedBaseBlockIndexes(activeBlocks);
         for (Integer baseBlockIndex : baseBlockIndexes) {
@@ -237,14 +243,15 @@ public class BatchBlockStitcher {
                 }
 
                 PolygonItem item = itemBlock.placements.get(0).item;
-                CandidateBlock candidateBlock = tryAddItem(baseBlock, item);
-                if (candidateBlock != null) {
+                List<CandidateBlock> candidateBlocks = tryAddItem(baseBlock, item, nfpCache);
+                for (CandidateBlock candidateBlock : candidateBlocks) {
                     candidates.add(new MergeCandidate(
                             baseBlockIndex,
                             itemBlockIndex,
                             candidateBlock.block,
                             candidateBlock.fillRateGain,
-                            candidateBlock.combinedFillRate));
+                            candidateBlock.combinedFillRate,
+                            candidateBlock.contactLength));
                 }
             }
         }
@@ -379,11 +386,14 @@ public class BatchBlockStitcher {
 
     /** 比较单个拼接候选，供内层集束搜索按高收益优先扩展。 */
     private static int compareMergeCandidates(MergeCandidate left, MergeCandidate right) {
-        if (Math.abs(left.fillRateGain - right.fillRateGain) > PolygonStitcher.SCORE_EPS) {
-            return Double.compare(right.fillRateGain, left.fillRateGain);
-        }
         if (Math.abs(left.combinedFillRate - right.combinedFillRate) > PolygonStitcher.SCORE_EPS) {
             return Double.compare(right.combinedFillRate, left.combinedFillRate);
+        }
+        if (Math.abs(left.contactLength - right.contactLength) > PolygonStitcher.SCORE_EPS) {
+            return Double.compare(right.contactLength, left.contactLength);
+        }
+        if (Math.abs(left.fillRateGain - right.fillRateGain) > PolygonStitcher.SCORE_EPS) {
+            return Double.compare(right.fillRateGain, left.fillRateGain);
         }
         if (left.block.memberCount() != right.block.memberCount()) {
             return Integer.compare(right.block.memberCount(), left.block.memberCount());
@@ -395,7 +405,11 @@ public class BatchBlockStitcher {
         if (left.baseBlockIndex != right.baseBlockIndex) {
             return Integer.compare(left.baseBlockIndex, right.baseBlockIndex);
         }
-        return Integer.compare(left.itemBlockIndex, right.itemBlockIndex);
+        int itemIndexComparison = Integer.compare(left.itemBlockIndex, right.itemBlockIndex);
+        if (itemIndexComparison != 0) {
+            return itemIndexComparison;
+        }
+        return blockGeometrySignature(left.block).compareTo(blockGeometrySignature(right.block));
     }
 
     /** 计算当前搜索状态所有 Block 的总体填充率。 */
@@ -438,7 +452,8 @@ public class BatchBlockStitcher {
     private static String searchStateSignature(StitchSearchState state) {
         List<String> blockIds = new ArrayList<>();
         for (Block block : state.blocks) {
-            blockIds.add(block.id);
+            // 仅使用工件 ID 会把同一组工件的不同几何放置误判为同一状态，导致 beam 分支被错误删除。
+            blockIds.add(blockGeometrySignature(block));
         }
         blockIds.sort(String::compareTo);
         return String.join("|", blockIds);
@@ -451,7 +466,21 @@ public class BatchBlockStitcher {
             signature.append(candidate.baseBlockIndex)
                     .append('-')
                     .append(candidate.itemBlockIndex)
+                    .append('-')
+                    .append(blockGeometrySignature(candidate.block))
                     .append('|');
+        }
+        return signature.toString();
+    }
+
+    /** 生成包含轮廓坐标的 Block 签名，使 beam search 能区分同一组工件的不同放置方案。 */
+    private static String blockGeometrySignature(Block block) {
+        StringBuilder signature = new StringBuilder(block.id);
+        for (Point point : block.outline) {
+            signature.append(':')
+                    .append(Math.round(point.x * 1_000.0))
+                    .append(',')
+                    .append(Math.round(point.y * 1_000.0));
         }
         return signature.toString();
     }
@@ -478,6 +507,7 @@ public class BatchBlockStitcher {
         // 同时必须满足第二阶段可排样尺寸和填充率上限，避免继续扩展已经足够紧凑的块。
         return block.memberCount() < Block.MAX_MEMBER_COUNT
                 && !isSmallRectangleOnlyBlock(block)
+                && block.unionComponentCount == 1
                 && block.fillRate < PolygonStitcher.TARGET_FILL_RATE - PolygonStitcher.SCORE_EPS
                 && fitsSecondStagePackingBounds(block);
     }
@@ -537,46 +567,97 @@ public class BatchBlockStitcher {
      * 现在只保留常规 NFP 路径：PolygonStitcher 内部生成候选并统一使用填充率提升评分，
      * 不再使用旧 score2 作为拼接接受条件，避免多个评分体系互相影响。
      */
-    private static CandidateBlock tryAddItem(Block block, PolygonItem item) {
+    private static List<CandidateBlock> tryAddItem(Block block,
+                                                    PolygonItem item,
+                                                    Map<String, PolygonStitcher.StitchingResult> nfpCache) {
+        List<CandidateBlock> candidateBlocks = new ArrayList<>();
         if (!block.canStitchWith(item)) {
-            return null;
+            return candidateBlocks;
+        }
+        if (block.unionComponentCount != 1) {
+            // 多连通分量没有单一外轮廓，不能继续调用只接受单多边形的 NFP 接口。
+            return candidateBlocks;
         }
 
-        PolygonStitcher.StitchingResult nfpResult = PolygonStitcher.findBestStitch(
-                block.outline,
-                block.areaSum,
-                block.boxArea,
-                item.points,
-                item.area,
-                block.relativeRotationsFor(item));
+        List<Integer> relativeRotations = block.relativeRotationsFor(item);
+        String cacheKey = stitchInputSignature(block.outline, block.areaSum, block.boxArea,
+                item.points, item.area, relativeRotations);
+        PolygonStitcher.StitchingResult nfpResult = nfpCache.get(cacheKey);
+        if (nfpResult == null) {
+            nfpResult = PolygonStitcher.findBestStitch(
+                    block.outline,
+                    block.areaSum,
+                    block.boxArea,
+                    item.points,
+                    item.area,
+                    relativeRotations);
+            nfpCache.put(cacheKey, nfpResult);
+        }
 
         if (!nfpResult.stitched || nfpResult.bestCandidate == null) {
-            return null;
+            return candidateBlocks;
         }
 
-        PolygonStitcher.StitchingCandidate bestCandidate = nfpResult.bestCandidate;
-        List<Integer> nextRotations = block.validRotationsAfter(item, bestCandidate.movingRotationDegrees);
-        if (nextRotations.isEmpty()) {
-            return null;
-        }
-        if (block.hasPositiveOverlapWith(bestCandidate.translatedPolygonB)) {
-            return null;
-        }
+        // 同一对工件保留多个不同位置；这些位置已经在 PolygonStitcher 中通过 NFP、接触和并集校验。
+        for (PolygonStitcher.StitchingCandidate candidate : nfpResult.topCandidates(TOP_STITCH_CANDIDATE_COUNT)) {
+            List<Integer> nextRotations = block.validRotationsAfter(item, candidate.movingRotationDegrees);
+            if (nextRotations.isEmpty()) {
+                continue;
+            }
+            if (block.hasPositiveOverlapWith(candidate.translatedPolygonB)) {
+                continue;
+            }
 
-        // 新评分要求：拼接后填充率必须高于当前主块，否则不继续向下扩展。
-        if (bestCandidate.fillRateGain <= PolygonStitcher.SCORE_EPS
-                || bestCandidate.combinedFillRate <= block.fillRate + PolygonStitcher.SCORE_EPS) {
-            return null;
-        }
+            // 新评分要求：拼接后填充率必须高于当前主块，且达到最低绝对质量。
+            if (candidate.fillRateGain <= PolygonStitcher.SCORE_EPS
+                    || candidate.combinedFillRate <= block.fillRate + PolygonStitcher.SCORE_EPS
+                    || candidate.combinedFillRate < PolygonStitcher.MIN_COMBINED_FILL_RATE
+                    - PolygonStitcher.SCORE_EPS) {
+                continue;
+            }
 
-        List<Point> nextCoordinates = combinePolygons(block.combinedCoordinates, bestCandidate.translatedPolygonB);
-        // 在创建 Block 前过滤尺寸不合格候选，避免为无效候选执行并集边界计算。
-        if (!fitsSecondStagePackingBounds(nextCoordinates, nextRotations)) {
-            return null;
-        }
+            List<Point> nextCoordinates = combinePolygons(block.combinedCoordinates, candidate.translatedPolygonB);
+            // 在创建新 Block 前过滤尺寸不合格候选，避免为无效候选执行并集边界计算。
+            if (!fitsSecondStagePackingBounds(nextCoordinates, nextRotations)) {
+                continue;
+            }
 
-        Block nextBlock = block.withAdditionalItem(item, bestCandidate);
-        return new CandidateBlock(nextBlock, bestCandidate.fillRateGain, bestCandidate.combinedFillRate);
+            Block nextBlock = block.withAdditionalItem(item, candidate);
+            if (nextBlock.unionComponentCount != 1) {
+                // 二次校验防止布尔并集的精度差异让不连通块进入后续 NFP。
+                continue;
+            }
+            candidateBlocks.add(new CandidateBlock(nextBlock, candidate.fillRateGain,
+                    candidate.combinedFillRate, candidate.contactLength));
+        }
+        return candidateBlocks;
+    }
+
+    /** 以几何坐标而非工件 ID 构造 NFP 缓存键，重复形状可以复用同一组候选位置。 */
+    private static String stitchInputSignature(List<Point> basePolygon,
+                                               double baseArea,
+                                               double baseBoxArea,
+                                               List<Point> itemPolygon,
+                                               double itemArea,
+                                               List<Integer> rotations) {
+        StringBuilder signature = new StringBuilder();
+        signature.append(baseArea).append('|')
+                .append(baseBoxArea).append('|')
+                .append(itemArea).append('|')
+                .append(rotations).append('|');
+        appendPolygonSignature(signature, basePolygon);
+        signature.append('|');
+        appendPolygonSignature(signature, itemPolygon);
+        return signature.toString();
+    }
+
+    private static void appendPolygonSignature(StringBuilder signature, List<Point> polygon) {
+        for (Point point : polygon) {
+            signature.append(Math.round(point.x * 1_000.0))
+                    .append(',')
+                    .append(Math.round(point.y * 1_000.0))
+                    .append(';');
+        }
     }
 
     private static void writeBlocks(Path outputFile, List<Block> blocks) throws IOException {
@@ -605,7 +686,11 @@ public class BatchBlockStitcher {
         writer.newLine();
         writer.write(String.format(Locale.ROOT, "boxArea=%.6f", block.boxArea));
         writer.newLine();
+        writer.write("unionComponentCount=" + block.unionComponentCount);
+        writer.newLine();
         writer.write("outline=" + pointsToJson(block.outline));
+        writer.newLine();
+        writer.write("unionContours=" + polygonsToJson(block.unionContours));
         writer.newLine();
         writer.write("combinedCoordinates=" + pointsToJson(block.combinedCoordinates));
         writer.newLine();
@@ -631,6 +716,14 @@ public class BatchBlockStitcher {
         writer.write("    sourceType=" + placement.sourceType);
         writer.newLine();
         writer.write(String.format(Locale.ROOT, "    candidateScore2=%.6f", placement.candidateScore2));
+        writer.newLine();
+        writer.write(String.format(Locale.ROOT, "    candidateContactLength=%.6f", placement.candidateContactLength));
+        writer.newLine();
+        writer.write(String.format(Locale.ROOT, "    candidateMinBoundaryDistance=%.6f",
+                placement.candidateMinBoundaryDistance));
+        writer.newLine();
+        writer.write(String.format(Locale.ROOT, "    candidateCombinedFillRate=%.6f",
+                placement.candidateCombinedFillRate));
         writer.newLine();
         writer.write("    centPt=" + pointToJson(item.centerPoint));
         writer.newLine();
@@ -680,6 +773,19 @@ public class BatchBlockStitcher {
         return GSON.toJson(values);
     }
 
+    /** 将多个轮廓序列化为二维点数组，供可视化完整恢复 Block 的并集边界。 */
+    private static String polygonsToJson(List<List<Point>> polygons) {
+        List<List<List<Double>>> values = new ArrayList<>(polygons.size());
+        for (List<Point> polygon : polygons) {
+            List<List<Double>> polygonValues = new ArrayList<>(polygon.size());
+            for (Point point : polygon) {
+                polygonValues.add(List.of(round(point.x), round(point.y)));
+            }
+            values.add(polygonValues);
+        }
+        return GSON.toJson(values);
+    }
+
     private static String pointToJson(Point point) {
         return GSON.toJson(List.of(round(point.x), round(point.y)));
     }
@@ -716,11 +822,17 @@ public class BatchBlockStitcher {
         private final double fillRateGain;
         // 拼接后的组合块填充率，用于判断是否达到终止阈值。
         private final double combinedFillRate;
+        // 接触长度作为评分平局时的几何质量指标。
+        private final double contactLength;
 
-        private CandidateBlock(Block block, double fillRateGain, double combinedFillRate) {
+        private CandidateBlock(Block block,
+                               double fillRateGain,
+                               double combinedFillRate,
+                               double contactLength) {
             this.block = block;
             this.fillRateGain = fillRateGain;
             this.combinedFillRate = combinedFillRate;
+            this.contactLength = contactLength;
         }
     }
 
@@ -753,17 +865,20 @@ public class BatchBlockStitcher {
         // 当前合并动作带来的填充率提升量，不包含此前搜索层的收益。
         private final double fillRateGain;
         private final double combinedFillRate;
+        private final double contactLength;
 
         private MergeCandidate(int baseBlockIndex,
                                int itemBlockIndex,
                                Block block,
                                double fillRateGain,
-                               double combinedFillRate) {
+                               double combinedFillRate,
+                               double contactLength) {
             this.baseBlockIndex = baseBlockIndex;
             this.itemBlockIndex = itemBlockIndex;
             this.block = block;
             this.fillRateGain = fillRateGain;
             this.combinedFillRate = combinedFillRate;
+            this.contactLength = contactLength;
         }
     }
 

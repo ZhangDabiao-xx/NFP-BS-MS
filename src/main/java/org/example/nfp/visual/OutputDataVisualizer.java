@@ -20,35 +20,25 @@ import javax.imageio.ImageIO;
 
 public final class OutputDataVisualizer {
 
-    private static final Path DEFAULT_OUTPUT_DIRECTORY = Path.of("data", "NFPresult4");
-    private static final Path DEFAULT_PICTURE_DIRECTORY = Path.of("data", "NFPpicture4");
+    private static final Path DEFAULT_OUTPUT_DIRECTORY = Path.of("data", "NFPresult5");
+    private static final Path DEFAULT_PICTURE_DIRECTORY = Path.of("data", "NFPpicture5");
 
     // 目标渲染尺寸越大，图片细节越清楚；过小时会自动放大。
     private static final double TARGET_RENDER_SIZE = 900.0;
     private static final double MAX_RENDER_SCALE = 4.0;
     private static final int PADDING = 60;
-    private static final int TITLE_HEIGHT = 48;
+    // 为标题和诊断副标题预留独立行，避免两行文字叠加影响结果检查。
+    private static final int TITLE_HEIGHT = 64;
 
     private static final Color BACKGROUND_COLOR = Color.WHITE;
     private static final Color OUTLINE_COLOR = new Color(30, 30, 30);
     private static final Color BORDER_COLOR = new Color(210, 210, 210);
     private static final Color TITLE_COLOR = new Color(40, 40, 40);
-    private static final Color ITEM_STROKE_COLOR = new Color(60, 60, 60);
-
-    private static final Color[] ITEM_COLORS = new Color[] {
-            new Color(239, 83, 80, 140),
-            new Color(255, 167, 38, 140),
-            new Color(102, 187, 106, 140),
-            new Color(66, 165, 245, 140),
-            new Color(171, 71, 188, 140),
-            new Color(38, 198, 218, 140),
-            new Color(255, 238, 88, 140),
-            new Color(141, 110, 99, 140),
-            new Color(126, 87, 194, 140),
-            new Color(77, 182, 172, 140),
-            new Color(244, 143, 177, 140),
-            new Color(156, 204, 101, 140)
-    };
+    // 优先零件使用暖色，普通零件使用冷色；颜色由业务属性决定，不随绘制顺序变化。
+    private static final Color PRIORITY_ITEM_COLOR = new Color(239, 83, 80, 155);
+    private static final Color NORMAL_ITEM_COLOR = new Color(66, 165, 245, 155);
+    private static final Color PRIORITY_STROKE_COLOR = new Color(170, 35, 35);
+    private static final Color NORMAL_STROKE_COLOR = new Color(25, 85, 145);
 
     private OutputDataVisualizer() {
     }
@@ -132,19 +122,37 @@ public final class OutputDataVisualizer {
             }
             if (line.startsWith("BackFrontPriority=")) {
                 boolean value = Boolean.parseBoolean(line.substring("BackFrontPriority=".length()));
-                currentBlock.backFrontPriority = value;
+                // 原始解析先 trim 了缩进，若不区分层级，子工件的属性会覆盖 Block 属性。
+                if (currentItem != null && rawLine.startsWith("    ")) {
+                    currentItem.backFrontPriority = value;
+                } else {
+                    currentBlock.backFrontPriority = value;
+                }
                 continue;
             }
             if (line.startsWith("score2=")) {
                 currentBlock.score2 = parseDouble(line.substring("score2=".length()));
                 continue;
             }
+            if (line.startsWith("fillRate=")) {
+                currentBlock.fillRate = parseDouble(line.substring("fillRate=".length()));
+                continue;
+            }
             if (line.startsWith("boxArea=")) {
                 currentBlock.boxArea = parseDouble(line.substring("boxArea=".length()));
                 continue;
             }
+            if (line.startsWith("unionComponentCount=")) {
+                currentBlock.unionComponentCount = Integer.parseInt(
+                        line.substring("unionComponentCount=".length()));
+                continue;
+            }
             if (line.startsWith("outline=")) {
                 currentBlock.outline = parsePoints(line.substring("outline=".length()));
+                continue;
+            }
+            if (line.startsWith("unionContours=")) {
+                currentBlock.unionContours = parsePolygonList(line.substring("unionContours=".length()));
                 continue;
             }
             if (line.startsWith("combinedCoordinates=")) {
@@ -170,10 +178,12 @@ public final class OutputDataVisualizer {
     private static void renderBlock(BlockRecord block, String caseName, int blockIndex, Path imageFile) throws IOException {
         List<PointData> allPoints = new ArrayList<>();
         allPoints.addAll(block.outline);
+        for (List<PointData> contour : block.unionContours) {
+            allPoints.addAll(contour);
+        }
         allPoints.addAll(block.combinedCoordinates);
         for (ItemRecord item : block.items) {
             allPoints.addAll(item.placedPoints);
-            allPoints.addAll(item.originalPoints);
         }
 
         Bounds bounds = Bounds.fromPoints(allPoints);
@@ -195,14 +205,23 @@ public final class OutputDataVisualizer {
 
             for (int i = 0; i < block.items.size(); i++) {
                 ItemRecord item = block.items.get(i);
-                Color fillColor = ITEM_COLORS[i % ITEM_COLORS.length];
-                drawPolygon(graphics, item.placedPoints, scale, offsetX, offsetY, fillColor, ITEM_STROKE_COLOR, 2.0f);
+                Color fillColor = item.backFrontPriority ? PRIORITY_ITEM_COLOR : NORMAL_ITEM_COLOR;
+                Color strokeColor = item.backFrontPriority ? PRIORITY_STROKE_COLOR : NORMAL_STROKE_COLOR;
+                drawPolygon(graphics, item.placedPoints, scale, offsetX, offsetY,
+                        fillColor, strokeColor, 2.0f);
                 drawItemLabel(graphics, item, scale, offsetX, offsetY, i + 1);
             }
 
-            // 外轮廓放到最上层，方便一眼看出拼接后的整体边界。
-            if (!block.outline.isEmpty()) {
-                drawPolygon(graphics, block.outline, scale, offsetX, offsetY, new Color(0, 0, 0, 0), OUTLINE_COLOR, 3.0f);
+            // 将并集的全部轮廓放到最上层，避免不连通工件只显示其中一个外轮廓。
+            if (!block.unionContours.isEmpty()) {
+                for (List<PointData> contour : block.unionContours) {
+                    drawPolygon(graphics, contour, scale, offsetX, offsetY,
+                            new Color(0, 0, 0, 0), OUTLINE_COLOR, 3.0f);
+                }
+            } else if (!block.outline.isEmpty()) {
+                // 兼容没有 unionContours 字段的历史结果文件。
+                drawPolygon(graphics, block.outline, scale, offsetX, offsetY,
+                        new Color(0, 0, 0, 0), OUTLINE_COLOR, 3.0f);
             }
 
             graphics.setColor(BORDER_COLOR);
@@ -219,20 +238,22 @@ public final class OutputDataVisualizer {
         graphics.setColor(TITLE_COLOR);
         graphics.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 18));
         String title = String.format(Locale.ROOT,
-                "%s | block %d | id=%s | score2=%.4f",
+                "%s | block %d | id=%s | fillRate=%.4f",
                 caseName,
                 blockIndex,
                 block.blockId == null ? "unknown" : block.blockId,
-                block.score2);
+                block.fillRate);
         FontMetrics fontMetrics = graphics.getFontMetrics();
         graphics.drawString(title, PADDING, Math.max(24, fontMetrics.getAscent() + 16));
 
         graphics.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
         String subTitle = String.format(Locale.ROOT,
-                "items=%d, backFrontPriority=%s, boxArea=%.2f",
+                "items=%d, priority=%s, components=%d, boxArea=%.2f, score2=%.2f",
                 block.items.size(),
                 block.backFrontPriority,
-                block.boxArea);
+                block.unionComponentCount,
+                block.boxArea,
+                block.score2);
         graphics.drawString(subTitle, PADDING, TITLE_HEIGHT - 14);
     }
 
@@ -328,6 +349,37 @@ public final class OutputDataVisualizer {
         return points;
     }
 
+    /** 解析 unionContours 的三层数组格式：[[[x,y],...], [[x,y],...]]。 */
+    private static List<List<PointData>> parsePolygonList(String value) {
+        List<List<PointData>> polygons = new ArrayList<>();
+        int bracketDepth = 0;
+        int polygonStart = -1;
+
+        for (int i = 0; i < value.length(); i++) {
+            char character = value.charAt(i);
+            if (character == '[') {
+                bracketDepth++;
+                if (bracketDepth == 2) {
+                    polygonStart = i;
+                }
+                continue;
+            }
+
+            if (character == ']') {
+                if (bracketDepth == 2 && polygonStart >= 0) {
+                    String polygonValue = value.substring(polygonStart, i + 1);
+                    List<PointData> polygon = parsePoints(polygonValue);
+                    if (polygon.size() >= 3) {
+                        polygons.add(polygon);
+                    }
+                    polygonStart = -1;
+                }
+                bracketDepth--;
+            }
+        }
+        return polygons;
+    }
+
     private static PointData centroid(List<PointData> points) {
         double sumX = 0.0;
         double sumY = 0.0;
@@ -367,14 +419,18 @@ public final class OutputDataVisualizer {
         private String blockId;
         private boolean backFrontPriority;
         private double score2;
+        private double fillRate;
         private double boxArea;
+        private int unionComponentCount;
         private List<PointData> outline = new ArrayList<>();
+        private List<List<PointData>> unionContours = new ArrayList<>();
         private List<PointData> combinedCoordinates = new ArrayList<>();
         private final List<ItemRecord> items = new ArrayList<>();
     }
 
     private static final class ItemRecord {
         private String id;
+        private boolean backFrontPriority;
         private List<PointData> originalPoints = new ArrayList<>();
         private List<PointData> placedPoints = new ArrayList<>();
     }
