@@ -20,8 +20,8 @@ import javax.imageio.ImageIO;
 
 public final class OutputDataVisualizer {
 
-    private static final Path DEFAULT_OUTPUT_DIRECTORY = Path.of("data", "NFPresult7");
-    private static final Path DEFAULT_PICTURE_DIRECTORY = Path.of("data", "NFPpicture7");
+    private static final Path DEFAULT_OUTPUT_DIRECTORY = Path.of("data", "NFPresult8");
+    private static final Path DEFAULT_PICTURE_DIRECTORY = Path.of("data", "NFPpicture8");
 
     // 目标渲染尺寸越大，图片细节越清楚；过小时会自动放大。
     private static final double TARGET_RENDER_SIZE = 900.0;

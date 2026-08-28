@@ -23,7 +23,7 @@ import java.util.Set;
 public class BatchBlockStitcher {
 
     private static final Path INPUT_DIRECTORY = Path.of("data", "inputData");
-    private static final Path OUTPUT_DIRECTORY = Path.of("data", "NFPresult7");
+    private static final Path OUTPUT_DIRECTORY = Path.of("data", "NFPresult8");
     private static final Gson GSON = new Gson();
 
     // 组合块外接矩形长边超过板材长度时无法进入第二阶段排样，因此这类候选不保留。
@@ -488,6 +488,8 @@ public class BatchBlockStitcher {
      * NFP 拼接的唯一入口。
      *
      * PolygonStitcher 会对所有允许角度和 NFP 外/孔洞轮廓进行评分，但只返回一个全局最优位置。
+     * smallItem 会要求候选完全位于当前 Block 外接框内，优先填补已有凹腔；
+     * 非 smallItem 的外边界候选也必须通过 score2 和明显收益检查。
      * 这里再执行 Block 级别的旋转、重叠和板材尺寸校验，最终每个“主块 + 单件工件”只产生一个后继。
      */
     private static Block tryAddItem(Block block,
@@ -500,7 +502,7 @@ public class BatchBlockStitcher {
         List<Integer> relativeRotations = block.relativeRotationsFor(item);
         List<List<Point>> fixedPolygons = block.placedPolygons();
         String cacheKey = stitchInputSignature(fixedPolygons, block.areaSum, block.boxArea,
-                item.points, item.area, relativeRotations);
+                item.points, item.area, relativeRotations, item.smallItem);
         PolygonStitcher.StitchingResult nfpResult = nfpCache.get(cacheKey);
         if (nfpResult == null) {
             nfpResult = PolygonStitcher.findBestStitchForFixedPolygons(
@@ -509,7 +511,8 @@ public class BatchBlockStitcher {
                     block.boxArea,
                     item.points,
                     item.area,
-                    relativeRotations);
+                    relativeRotations,
+                    item.smallItem);
             nfpCache.put(cacheKey, nfpResult);
         }
 
@@ -527,6 +530,18 @@ public class BatchBlockStitcher {
         // 避免大凹块第一次只能得到较低填充率时被提前截断，后续小件也就没有机会进入凹槽。
         if (candidate.fillRateGain <= PolygonStitcher.SCORE_EPS
                 || candidate.combinedFillRate <= block.fillRate + PolygonStitcher.SCORE_EPS) {
+            return null;
+        }
+
+        if (item.smallItem && !candidate.cavityInsertion) {
+            // 这是 NFP 层之外的第二道保护：小件不得通过外边界扩张组合块。
+            return null;
+        }
+        if (!candidate.cavityInsertion
+                && (candidate.score2 <= PolygonStitcher.SCORE_EPS
+                || candidate.fillRateGain < PolygonStitcher.MIN_OUTER_FILL_RATE_GAIN
+                - PolygonStitcher.SCORE_EPS)) {
+            // 防止缓存旧结果或未来新增候选路径绕过 PolygonStitcher 的外扩过滤。
             return null;
         }
 
@@ -550,12 +565,16 @@ public class BatchBlockStitcher {
                                                double baseBoxArea,
                                                List<Point> itemPolygon,
                                                double itemArea,
-                                               List<Integer> rotations) {
+                                               List<Integer> rotations,
+                                               boolean requireCavityInsertion) {
         StringBuilder signature = new StringBuilder();
         signature.append(baseArea).append('|')
                 .append(baseBoxArea).append('|')
                 .append(itemArea).append('|')
                 .append(rotations).append('|');
+        // 同一几何可能同时出现在 smallItem 和普通工件中；两者的候选过滤策略不同，
+        // 因此必须把该策略写入缓存键，避免复用错误的 NFP 结果。
+        signature.append(requireCavityInsertion).append('|');
         for (List<Point> basePolygon : basePolygons) {
             appendPolygonSignature(signature, basePolygon);
             signature.append('|');

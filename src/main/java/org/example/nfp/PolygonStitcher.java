@@ -13,6 +13,9 @@ public class PolygonStitcher {
     public static final double CONTACT_DISTANCE_TOLERANCE = 0.01;
     // 组合块至少需要一段有实际长度的边界接触，避免仅角点接触或近距离分离被当成拼接。
     public static final double MIN_CONTACT_LENGTH = 5.0;
+    // 外边界扩展必须带来明显的填充率收益；凹腔内部候选仍只需满足正收益。
+    // 修改理由：仅有极小的正收益也会让小矩形不断向外叠加，形成尺寸变大的无效 Block。
+    public static final double MIN_OUTER_FILL_RATE_GAIN = 0.005;
 
     public static final class StitchingCandidate {
         public final String sourceType;
@@ -28,11 +31,15 @@ public class PolygonStitcher {
         public final double combinedFillRate;
         // 相对于主块 A 当前填充率的提升量，是本次 NFP 拼接的新评分。
         public final double fillRateGain;
+        // 新工件是否完全位于当前主块外接框内。该指标用于识别开放凹槽和内部空洞中的插入。
+        public final boolean cavityInsertion;
+        // 拼接后外接矩形相对于主块外接矩形增加的面积；外扩候选需要额外受到该指标约束。
+        public final double boxExpansionArea;
         // 候选位置处两个多边形边界的最小距离，用于排除 NFP 误差造成的远距离放置。
         public final double minBoundaryDistance;
         // 候选位置处可重合的最长近似共线边界长度，用于保证形成有效边接触。
         public final double contactLength;
-        // 旧 score2 仅保留用于兼容结果输出和诊断，不再作为候选接受条件。
+        // score2 继续用于结果输出和诊断；外边界候选还必须通过该指标的紧凑性约束。
         public final double score2;
         public final List<Point> rotatedPolygonB;
         public final List<Point> translatedPolygonB;
@@ -52,6 +59,8 @@ public class PolygonStitcher {
                                    double boxABArea,
                                    double combinedFillRate,
                                    double fillRateGain,
+                                   boolean cavityInsertion,
+                                   double boxExpansionArea,
                                    double minBoundaryDistance,
                                    double contactLength,
                                    double score2,
@@ -69,6 +78,8 @@ public class PolygonStitcher {
             this.boxABArea = boxABArea;
             this.combinedFillRate = combinedFillRate;
             this.fillRateGain = fillRateGain;
+            this.cavityInsertion = cavityInsertion;
+            this.boxExpansionArea = boxExpansionArea;
             this.minBoundaryDistance = minBoundaryDistance;
             this.contactLength = contactLength;
             this.score2 = score2;
@@ -171,6 +182,31 @@ public class PolygonStitcher {
             List<Point> polygonB,
             double areaB,
             List<Integer> movingRotationDegrees) {
+        // 兼容旧调用方：未声明为小件时，仍允许经过紧凑性检查的外边界拼接。
+        return findBestStitchForFixedPolygons(
+                fixedPolygons,
+                areaA,
+                boxAArea,
+                polygonB,
+                areaB,
+                movingRotationDegrees,
+                false);
+    }
+
+    /**
+     * 为复合 Block 求解带有插入策略的 NFP 拼接。
+     *
+     * @param requireCavityInsertion 是否要求移动工件完全落在当前 Block 外接框内。
+     *                               小件使用该模式，避免其沿 Block 外边界继续扩张。
+     */
+    public static StitchingResult findBestStitchForFixedPolygons(
+            List<List<Point>> fixedPolygons,
+            double areaA,
+            double boxAArea,
+            List<Point> polygonB,
+            double areaB,
+            List<Integer> movingRotationDegrees,
+            boolean requireCavityInsertion) {
         List<Point> firstFixedPolygon = fixedPolygons == null || fixedPolygons.isEmpty()
                 ? new ArrayList<>()
                 : fixedPolygons.get(0);
@@ -229,7 +265,7 @@ public class PolygonStitcher {
 
             // 每个旋转只返回一个通过精确连通性校验的最佳位置，随后再在角度之间比较全局最优。
             List<StitchingCandidate> validRotationCandidates = filterValidCandidates(
-                    rotationCandidates, fixedPolygons);
+                    rotationCandidates, fixedPolygons, requireCavityInsertion);
             StitchingCandidate rotationBestCandidate = selectBestCandidate(validRotationCandidates);
             if (isBetterCandidate(rotationBestCandidate, bestCandidate)) {
                 bestCandidate = rotationBestCandidate;
@@ -255,6 +291,33 @@ public class PolygonStitcher {
         double width = Math.max(0, box.maxX - box.minX);
         double height = Math.max(0, box.maxY - box.minY);
         return width * height;
+    }
+
+    /** 计算多个固定工件合并后的轴对齐外接框，供凹腔候选判定复用。 */
+    private static BBox boundingBoxOfPolygons(List<List<Point>> polygons) {
+        List<Point> allPoints = new ArrayList<>();
+        for (List<Point> polygon : polygons) {
+            if (polygon != null) {
+                allPoints.addAll(polygon);
+            }
+        }
+        if (allPoints.isEmpty()) {
+            return new BBox(0, 0, 0, 0);
+        }
+        return Geometry.polygonBBox(allPoints);
+    }
+
+    /**
+     * 判断移动工件的外接框是否完全位于当前 Block 的外接框内。
+     *
+     * 这不是用外接框代替最终几何合法性检查；重叠和并集连通性仍由后续精确检查负责。
+     * 该判断只用于识别“有机会填入现有空白区域”的候选，并阻止小件向外扩张 Block。
+     */
+    private static boolean isInsideBoundingBox(BBox movingBox, BBox baseBox) {
+        return movingBox.minX >= baseBox.minX - CONTACT_DISTANCE_TOLERANCE
+                && movingBox.maxX <= baseBox.maxX + CONTACT_DISTANCE_TOLERANCE
+                && movingBox.minY >= baseBox.minY - CONTACT_DISTANCE_TOLERANCE
+                && movingBox.maxY <= baseBox.maxY + CONTACT_DISTANCE_TOLERANCE;
     }
 
     public static double intersectionArea(List<Point> first, List<Point> second) {
@@ -394,6 +457,9 @@ public class PolygonStitcher {
         // 修改理由：原来的长边密集采样会使候选数量随边长线性膨胀，且大量候选的几何质量
         // 相近；顶点负责角点卡位，中点负责长边贴合，已经覆盖本次拼接所需的代表位置。
         List<StitchingCandidate> candidates = new ArrayList<>(contourPoints.size() * 2);
+        // 固定多边形的外接框在同一个 NFP 轮廓中不变，提前计算一次，
+        // 用于判断候选是否落入现有 Block 的凹槽/空洞区域。
+        BBox baseBox = boundingBoxOfPolygons(fixedPolygons);
         int vertexCount = contourPoints.size();
         for (int i = 0; i < vertexCount; i++) {
             Point current = contourPoints.get(i);
@@ -401,11 +467,11 @@ public class PolygonStitcher {
 
             // 顶点候选：对应 NFP 轮廓上的临界接触位置，适合捕捉角点卡入凹槽的方案。
             candidates.add(scoreCandidate(contour.sourceType + "_VERTEX", i, i, movingRotationDegrees, current,
-                    fixedPolygons, areaA, boxAArea, rotatedPolygonB, areaB));
+                    fixedPolygons, baseBox, areaA, boxAArea, rotatedPolygonB, areaB));
 
             // 中点候选：补足仅采样顶点时容易漏掉的边贴合位置，尤其适合矩形小件贴合长凹边。
             candidates.add(scoreCandidate(contour.sourceType + "_MIDPOINT", i, (i + 1) % vertexCount, movingRotationDegrees,
-                    midpoint(current, next), fixedPolygons, areaA, boxAArea, rotatedPolygonB, areaB));
+                    midpoint(current, next), fixedPolygons, baseBox, areaA, boxAArea, rotatedPolygonB, areaB));
         }
         return candidates;
     }
@@ -416,6 +482,7 @@ public class PolygonStitcher {
                                                      int movingRotationDegrees,
                                                      Point placementPoint,
                                                      List<List<Point>> fixedPolygons,
+                                                     BBox baseBox,
                                                      double areaA,
                                                      double boxAArea,
                                                      List<Point> rotatedPolygonB,
@@ -430,6 +497,9 @@ public class PolygonStitcher {
         double baseFillRate = calculateFillRate(areaA, boxAArea);
         double combinedFillRate = calculateFillRate(areaA + areaB, boxABArea);
         double fillRateGain = combinedFillRate - baseFillRate;
+        BBox movingBox = Geometry.polygonBBox(translatedPolygonB);
+        boolean cavityInsertion = isInsideBoundingBox(movingBox, baseBox);
+        double boxExpansionArea = Math.max(0.0, boxABArea - boxAArea);
         double minBoundaryDistance = Double.POSITIVE_INFINITY;
         double contactLength = 0.0;
         for (List<Point> fixedPolygon : fixedPolygons) {
@@ -441,28 +511,45 @@ public class PolygonStitcher {
                     maximumContactLength(fixedPolygon, translatedPolygonB, CONTACT_DISTANCE_TOLERANCE));
         }
 
-        // 保留旧 score2 供结果文件和可视化查看，但新的 NFP 选择改用填充率提升量。
+        // score2 表示合并后节省的外接矩形面积；它用于限制外扩候选，避免只看填充率。
         double score2 = boxAArea + boxBArea - boxABArea;
 
         return new StitchingCandidate(sourceType, edgeStartIndex, edgeEndIndex, movingRotationDegrees,
                 placementPoint, translation, boxAArea, boxBArea, boxABArea,
-                combinedFillRate, fillRateGain, minBoundaryDistance, contactLength, score2,
+                combinedFillRate, fillRateGain, cavityInsertion, boxExpansionArea,
+                minBoundaryDistance, contactLength, score2,
                 rotatedPolygonB, translatedPolygonB, combinedCoordinates);
     }
 
     /**
      * 过滤候选的几何质量和硬约束。
      *
-     * 修改理由：单纯“不重叠且外接矩形变小”会接受远距离、只角点接触或彼此不连通的工件组合。
-     * 这里把填充率提升、边界距离、接触长度和并集连通性都纳入拼接的底层合法性判断。
-     * 不再设置固定的绝对填充率下限：例如大凹块先和小件形成 0.84 的中间块，
-     * 仍可能为下一件小工件打开有效凹槽；只要本次确实提高填充率，就不能提前过滤。
+     * 修改理由：仅要求“填充率增加”会把沿 Block 外边界添加长条矩形也视为有效拼接。
+     * 这类候选可能增加组合块尺寸、得到负 score2，并降低第二阶段矩形排样能力。
+     * 现在把候选分成两类：
+     * 1) 凹腔候选：移动工件完全位于当前 Block 外接框内，优先保留；
+     * 2) 外边界候选：只有局部外接框收益为正且填充率有明显提升时才允许。
+     *
+     * requireCavityInsertion=true 时只保留第一类候选，供 smallItem 插入使用。
      */
     private static List<StitchingCandidate> filterValidCandidates(List<StitchingCandidate> candidates,
-                                                                    List<List<Point>> fixedPolygons) {
+                                                                    List<List<Point>> fixedPolygons,
+                                                                    boolean requireCavityInsertion) {
         List<StitchingCandidate> geometricCandidates = new ArrayList<>();
         for (StitchingCandidate candidate : candidates) {
             if (candidate.fillRateGain <= SCORE_EPS) {
+                continue;
+            }
+
+            if (requireCavityInsertion && !candidate.cavityInsertion) {
+                // 小件的职责是填补已有 Block 的凹槽/空洞，不允许借助小件向外扩张 Block。
+                continue;
+            }
+
+            if (!candidate.cavityInsertion
+                    && (candidate.score2 <= SCORE_EPS
+                    || candidate.fillRateGain < MIN_OUTER_FILL_RATE_GAIN - SCORE_EPS)) {
+                // score2<=0 表示没有节省外接矩形面积；收益过小的外扩也会制造不可排样的大块。
                 continue;
             }
 
@@ -494,7 +581,8 @@ public class PolygonStitcher {
             // 修改理由：仅靠接触长度仍可能接受小间隙；对排序后的候选执行精确并集，
             // 确保送入 beam search 的位置确实属于同一连通块。
             if (hasSingleOuterUnionComponent(fixedPolygons, candidate.translatedPolygonB)) {
-                // 每个旋转只保留第一个通过精确校验的候选；它已经是该旋转的最高填充率位置。
+                // 每个旋转只保留一个通过精确校验的候选；排序已优先选择凹腔候选，
+                // 外边界候选则优先选择更高 score2 和更小的外接框扩张。
                 return Collections.singletonList(candidate);
             }
         }
@@ -520,7 +608,9 @@ public class PolygonStitcher {
 
     /**
      * 比较两个 NFP 候选。
-     * 填充率提升量是主评分，拼接后填充率用于稳定排序，旧 score2 只作为最后的兼容性平局条件。
+     *
+     * 修改理由：旧排序只按填充率，可能让外边界扩展候选压过真正的凹腔候选。
+     * 现在先比较候选类型，再比较外接框收益，最后比较填充率，确保“填凹腔”优先于“向外摊开”。
      */
     private static boolean isBetterCandidate(StitchingCandidate candidate,
                                               StitchingCandidate currentBest) {
@@ -530,26 +620,23 @@ public class PolygonStitcher {
         if (currentBest == null) {
             return true;
         }
-        if (candidate.combinedFillRate > currentBest.combinedFillRate + SCORE_EPS) {
-            return true;
-        }
-        if (Math.abs(candidate.combinedFillRate - currentBest.combinedFillRate) <= SCORE_EPS
-                && candidate.contactLength > currentBest.contactLength + SCORE_EPS) {
-            return true;
-        }
-        if (Math.abs(candidate.combinedFillRate - currentBest.combinedFillRate) <= SCORE_EPS
-                && Math.abs(candidate.contactLength - currentBest.contactLength) <= SCORE_EPS
-                && candidate.fillRateGain > currentBest.fillRateGain + SCORE_EPS) {
-            return true;
-        }
-        return Math.abs(candidate.combinedFillRate - currentBest.combinedFillRate) <= SCORE_EPS
-                && Math.abs(candidate.contactLength - currentBest.contactLength) <= SCORE_EPS
-                && Math.abs(candidate.fillRateGain - currentBest.fillRateGain) <= SCORE_EPS
-                && candidate.score2 > currentBest.score2 + SCORE_EPS;
+        return compareCandidates(candidate, currentBest) < 0;
     }
 
-    /** 与 isBetterCandidate 相同的排序方向，供有效候选和 beam search 稳定排序。 */
+    /**
+     * 与 isBetterCandidate 相同的排序方向，供有效候选和跨旋转候选稳定排序。
+     * 凹腔候选优先；外边界候选先比较 score2 和外接框扩张，再比较填充率。
+     */
     private static int compareCandidates(StitchingCandidate left, StitchingCandidate right) {
+        if (left.cavityInsertion != right.cavityInsertion) {
+            return left.cavityInsertion ? -1 : 1;
+        }
+        if (!left.cavityInsertion && Math.abs(left.score2 - right.score2) > SCORE_EPS) {
+            return Double.compare(right.score2, left.score2);
+        }
+        if (Math.abs(left.boxExpansionArea - right.boxExpansionArea) > SCORE_EPS) {
+            return Double.compare(left.boxExpansionArea, right.boxExpansionArea);
+        }
         if (Math.abs(left.combinedFillRate - right.combinedFillRate) > SCORE_EPS) {
             return Double.compare(right.combinedFillRate, left.combinedFillRate);
         }

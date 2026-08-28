@@ -27,7 +27,7 @@ public class Block {
     // 组合块填充率 = 块内工件实际面积之和 / 组合块外接矩形面积。
     // NFP 拼接是否继续扩展以及候选排序均以该指标为准。
     public final double fillRate;
-    // 保留旧 score2 输出，供已有可视化和结果文件读取逻辑使用；新的拼接决策不再依赖它。
+    // score2 同时用于结果输出和外边界候选的紧凑性判断，帮助排除会摊大 Block 的拼接。
     public final double score2;
 
     private Block(List<ItemPlacement> placements, List<Integer> rotate) {
