@@ -2,32 +2,17 @@ package org.example.nfp;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 
 public class PolygonStitcher {
 
     public static final double SCORE_EPS = 1e-6;
     // 组合块达到 98% 填充率后已经足够紧凑，不再把它作为后续 NFP 拼接的主块。
     public static final double TARGET_FILL_RATE = 0.98;
-    // 新组合块的最低绝对填充率。仅仅比原块提高一点但整体仍很松散的候选不再接受。
-    // 0.85 作为默认底线，既能排除明显松散的组合，又不会把有长边有效接触的可用块全部过滤掉。
-    public static final double MIN_COMBINED_FILL_RATE = 0.85;
     // NFP 边界经过整数缩放和布尔运算后允许的接触距离，单位与输入坐标一致。
     public static final double CONTACT_DISTANCE_TOLERANCE = 0.01;
     // 组合块至少需要一段有实际长度的边界接触，避免仅角点接触或近距离分离被当成拼接。
     public static final double MIN_CONTACT_LENGTH = 5.0;
-    // 每个“主块 + 工件”组合返回的候选位置数量，供外层 beam search 保留不同几何方案。
-    public static final int DEFAULT_TOP_CANDIDATE_COUNT = 3;
-    // 每个旋转最多保留的精确连通候选数；先按廉价指标排序，再对少量前排候选执行布尔并集。
-    private static final int MAX_CONNECTED_CANDIDATES_PER_ROTATION = DEFAULT_TOP_CANDIDATE_COUNT;
-
-    // === 自适应密集采样参数 ===
-    // NFP 边密集采样的阈值比例：边长超过此值（取两个多边形中较小对角线长度的比例）时进行细分采样
-    private static final double DENSE_SAMPLE_DIAGONAL_RATIO = 0.05;
-    // 单条边最多额外插入的采样点数，防止候选数量爆炸
-    private static final int MAX_EXTRA_SAMPLES_PER_EDGE = 10;
 
     public static final class StitchingCandidate {
         public final String sourceType;
@@ -102,7 +87,7 @@ public class PolygonStitcher {
         public final List<Point> outerNFP;
         public final List<List<Point>> holes;
         public final List<StitchingCandidate> candidates;
-        // 经过重叠、接触和绝对填充率校验的候选，按质量从高到低排列。
+        // 经过重叠、接触、连通性和填充率提升校验后保留的唯一最优候选。
         public final List<StitchingCandidate> validCandidates;
         public final StitchingCandidate bestCandidate;
 
@@ -128,21 +113,17 @@ public class PolygonStitcher {
             this.bestCandidate = bestCandidate;
         }
 
-        /** 返回当前 NFP 搜索中最优的若干个不同放置位置，供 beam search 使用。 */
+        /**
+         * 兼容旧调用方的候选访问方法。
+         *
+         * 修改理由：当前外层集束搜索在“工件对”层面保留分支，而同一工件对只保留
+         * 最优角度下的最优位置，避免把多个几何位置重复送入外层搜索。
+         */
         public List<StitchingCandidate> topCandidates(int limit) {
-            int count = Math.max(1, limit);
-            List<StitchingCandidate> result = new ArrayList<>();
-            Set<String> signatures = new HashSet<>();
-            for (StitchingCandidate candidate : validCandidates) {
-                if (!signatures.add(candidateSignature(candidate))) {
-                    continue;
-                }
-                result.add(candidate);
-                if (result.size() >= count) {
-                    break;
-                }
+            if (bestCandidate == null) {
+                return Collections.emptyList();
             }
-            return result;
+            return Collections.singletonList(bestCandidate);
         }
     }
 
@@ -162,73 +143,110 @@ public class PolygonStitcher {
                                                  List<Point> polygonB,
                                                  double areaB,
                                                  List<Integer> movingRotationDegrees) {
-        if (polygonA.size() < 3 || polygonB.size() < 3) {
-            return rejected("Invalid polygon: less than 3 vertices", polygonA, polygonB,
+        List<List<Point>> fixedPolygons = new ArrayList<>(1);
+        fixedPolygons.add(polygonA);
+        return findBestStitchForFixedPolygons(
+                fixedPolygons, areaA, boxAArea, polygonB, areaB, movingRotationDegrees);
+    }
+
+    /**
+     * 为由多个已经放置的工件组成的 Block 求解 NFP 拼接。
+     *
+     * 固定块不能只用一个外轮廓表示：外轮廓会把块内部凹槽和孔洞填平，导致小工件
+     * 被错误地判定为无法插入。这里对 Block 中的每个实际工件分别计算外 NFP，
+     * 同时收集外边界和 NFP 孔洞边界，再用所有固定工件做统一重叠和连通性校验。
+     * 这样既保留了内部空洞候选，也不会把 Block 的内部空白误当成实体。
+     *
+     * @param fixedPolygons 已经放置在同一坐标系中的固定工件
+     * @param areaA         固定 Block 内全部工件的实际面积和
+     * @param boxAArea      固定 Block 的外接矩形面积
+     * @param polygonB      待插入工件的原始坐标
+     * @param areaB         待插入工件的实际面积
+     * @param movingRotationDegrees 待插入工件允许的相对旋转角
+     */
+    public static StitchingResult findBestStitchForFixedPolygons(
+            List<List<Point>> fixedPolygons,
+            double areaA,
+            double boxAArea,
+            List<Point> polygonB,
+            double areaB,
+            List<Integer> movingRotationDegrees) {
+        List<Point> firstFixedPolygon = fixedPolygons == null || fixedPolygons.isEmpty()
+                ? new ArrayList<>()
+                : fixedPolygons.get(0);
+        if (!hasValidPolygons(fixedPolygons) || polygonB == null || polygonB.size() < 3) {
+            return rejected("Invalid polygon: less than 3 vertices", firstFixedPolygon, polygonB,
                     new ArrayList<>(), new ArrayList<>(), new ArrayList<>(), new ArrayList<>(), null);
         }
 
         List<Integer> normalizedRotations = PolygonItem.normalizeRotations(movingRotationDegrees);
-        List<StitchingCandidate> candidates = new ArrayList<>();
-        List<StitchingCandidate> validCandidates = new ArrayList<>();
         String lastError = "No NFP contour to sample";
         StitchingCandidate bestCandidate = null;
         List<Point> bestOuterNfp = new ArrayList<>();
         List<List<Point>> bestHoles = new ArrayList<>();
 
-        // 对每一个允许的旋转角，单独计算外 NFP。
-        // NFP 拼接是两个工件的外部相切，候选还会经过多边形重叠校验，因此只计算外 NFP。
-        // 修改理由：原来同时计算内 NFP；内 NFP 表示被移动工件位于固定工件内部的可行域，
-        // 这类候选最终会被 intersectionArea 判为重叠，属于当前外部拼接场景中的重复计算。
+        // 仅保存最终的全局最优候选；中间的顶点/中点候选在本轮评分后立即释放，
+        // 避免 NFP 缓存把大量无效位置长期保存在内存中。
+        List<StitchingCandidate> retainedCandidates = new ArrayList<>(1);
+
         for (Integer movingRotationDegree : normalizedRotations) {
             List<Point> rotatedPolygonB = Geometry.rotatePolygon(polygonB, movingRotationDegree);
-            NFPResult nfpResult = NFPComputer.computeNFP(polygonA, rotatedPolygonB, true, false);
-            if (!nfpResult.success) {
-                lastError = nfpResult.errorMsg;
-                continue;
-            }
-
-            List<NfpContour> contours = collectNfpContours(nfpResult);
-            if (contours.isEmpty()) {
-                continue;
-            }
-
             List<StitchingCandidate> rotationCandidates = new ArrayList<>();
-            for (NfpContour contour : contours) {
-                rotationCandidates.addAll(buildCandidates(
-                        polygonA,
-                        areaA,
-                        boxAArea,
-                        rotatedPolygonB,
-                        areaB,
-                        movingRotationDegree,
-                        contour));
+            List<Point> rotationOuterNfp = new ArrayList<>();
+            List<List<Point>> rotationHoles = new ArrayList<>();
+
+            // 对复合块的每个成员分别建立 NFP。每个成员的 NFP 孔洞都是潜在的凹槽接触边界，
+            // 不能只保留固定块的最大外轮廓。
+            for (List<Point> fixedPolygon : fixedPolygons) {
+                // 外部拼接只需要外 NFP；内 NFP 表示 B 完全位于 A 内部，最终会被重叠校验排除。
+                NFPResult nfpResult = NFPComputer.computeNFP(fixedPolygon, rotatedPolygonB, true, false);
+                if (!nfpResult.success) {
+                    lastError = nfpResult.errorMsg;
+                    continue;
+                }
+
+                if (rotationOuterNfp.isEmpty() && !nfpResult.outerNFP.isEmpty()) {
+                    // StitchingResult 的 NFP 字段用于诊断，保存当前旋转的第一个有效 NFP。
+                    rotationOuterNfp = copyPolygon(nfpResult.outerNFP);
+                    rotationHoles = copyPolygonList(nfpResult.holes);
+                }
+
+                for (NfpContour contour : collectNfpContours(nfpResult)) {
+                    rotationCandidates.addAll(buildCandidates(
+                            fixedPolygons,
+                            areaA,
+                            boxAArea,
+                            rotatedPolygonB,
+                            areaB,
+                            movingRotationDegree,
+                            contour));
+                }
             }
-            candidates.addAll(rotationCandidates);
 
-            // 先执行统一合法性过滤，再将有效候选加入结果；这样调用方可以保留同一对工件的多个位置。
+            if (rotationCandidates.isEmpty()) {
+                continue;
+            }
+
+            // 每个旋转只返回一个通过精确连通性校验的最佳位置，随后再在角度之间比较全局最优。
             List<StitchingCandidate> validRotationCandidates = filterValidCandidates(
-                    rotationCandidates, polygonA);
-            validCandidates.addAll(validRotationCandidates);
-
+                    rotationCandidates, fixedPolygons);
             StitchingCandidate rotationBestCandidate = selectBestCandidate(validRotationCandidates);
             if (isBetterCandidate(rotationBestCandidate, bestCandidate)) {
                 bestCandidate = rotationBestCandidate;
-                // 直接复用当前旋转已经计算出的 NFP，避免找到最佳候选后再次计算同一个 NFP。
-                bestOuterNfp = copyPolygon(nfpResult.outerNFP);
-                bestHoles = copyPolygonList(nfpResult.holes);
+                bestOuterNfp = rotationOuterNfp;
+                bestHoles = rotationHoles;
+                retainedCandidates.clear();
+                retainedCandidates.add(rotationBestCandidate);
             }
         }
 
         if (bestCandidate == null) {
-            return rejected(lastError, polygonA, polygonB, new ArrayList<>(), new ArrayList<>(),
-                    candidates, validCandidates, null);
+            return rejected(lastError, firstFixedPolygon, polygonB, new ArrayList<>(), new ArrayList<>(),
+                    new ArrayList<>(), new ArrayList<>(), null);
         }
 
-        validCandidates.sort(PolygonStitcher::compareCandidates);
-
-        // 返回搜索过程中已经保存的最佳旋转对应 NFP，避免额外的重复几何计算。
-        return new StitchingResult(true, true, "Best stitching placement found", polygonA, polygonB,
-                bestOuterNfp, bestHoles, candidates, validCandidates, bestCandidate);
+        return new StitchingResult(true, true, "Best stitching placement found", firstFixedPolygon, polygonB,
+                bestOuterNfp, bestHoles, retainedCandidates, retainedCandidates, bestCandidate);
     }
 
     public static double boundingBoxArea(List<Point> polygon) {
@@ -364,7 +382,7 @@ public class PolygonStitcher {
         }
     }
 
-    private static List<StitchingCandidate> buildCandidates(List<Point> polygonA,
+    private static List<StitchingCandidate> buildCandidates(List<List<Point>> fixedPolygons,
                                                             double areaA,
                                                             double boxAArea,
                                                             List<Point> rotatedPolygonB,
@@ -372,13 +390,9 @@ public class PolygonStitcher {
                                                             int movingRotationDegrees,
                                                             NfpContour contour) {
         List<Point> contourPoints = contour.points;
-        // 计算密集采样阈值：取两个多边形中较小包围盒对角线长度的比例。
-        // 该阈值对外 NFP 的每条边生效，避免凹边只采样端点和中点。
-        double boxBArea = boundingBoxArea(rotatedPolygonB);
-        double diagA = Math.sqrt(boxAArea > 0 ? boxAArea : 1);
-        double diagB = Math.sqrt(boxBArea > 0 ? boxBArea : 1);
-        double denseSampleThreshold = Math.min(diagA, diagB) * DENSE_SAMPLE_DIAGONAL_RATIO;
-
+        // 只取每条 NFP 边的两个端点和一个中点。
+        // 修改理由：原来的长边密集采样会使候选数量随边长线性膨胀，且大量候选的几何质量
+        // 相近；顶点负责角点卡位，中点负责长边贴合，已经覆盖本次拼接所需的代表位置。
         List<StitchingCandidate> candidates = new ArrayList<>(contourPoints.size() * 2);
         int vertexCount = contourPoints.size();
         for (int i = 0; i < vertexCount; i++) {
@@ -387,26 +401,11 @@ public class PolygonStitcher {
 
             // 顶点候选：对应 NFP 轮廓上的临界接触位置，适合捕捉角点卡入凹槽的方案。
             candidates.add(scoreCandidate(contour.sourceType + "_VERTEX", i, i, movingRotationDegrees, current,
-                    polygonA, areaA, boxAArea, rotatedPolygonB, areaB));
+                    fixedPolygons, areaA, boxAArea, rotatedPolygonB, areaB));
 
             // 中点候选：补足仅采样顶点时容易漏掉的边贴合位置，尤其适合矩形小件贴合长凹边。
             candidates.add(scoreCandidate(contour.sourceType + "_MIDPOINT", i, (i + 1) % vertexCount, movingRotationDegrees,
-                    midpoint(current, next), polygonA, areaA, boxAArea, rotatedPolygonB, areaB));
-
-            // 密集采样：外 NFP 的长边可能对应完整凹槽边界，额外采样能提高凹多边形候选质量。
-            double edgeLength = current.distance(next);
-            if (edgeLength > denseSampleThreshold) {
-                int extraSamples = Math.min(
-                        (int) (edgeLength / denseSampleThreshold) - 1,
-                        MAX_EXTRA_SAMPLES_PER_EDGE);
-                for (int s = 1; s <= extraSamples; s++) {
-                    double t = s / (extraSamples + 1.0);
-                    Point samplePoint = current.lerp(next, t);
-                    candidates.add(scoreCandidate(contour.sourceType + "_DENSE", i, (i + 1) % vertexCount,
-                            movingRotationDegrees, samplePoint,
-                            polygonA, areaA, boxAArea, rotatedPolygonB, areaB));
-                }
-            }
+                    midpoint(current, next), fixedPolygons, areaA, boxAArea, rotatedPolygonB, areaB));
         }
         return candidates;
     }
@@ -416,7 +415,7 @@ public class PolygonStitcher {
                                                      int edgeEndIndex,
                                                      int movingRotationDegrees,
                                                      Point placementPoint,
-                                                     List<Point> polygonA,
+                                                     List<List<Point>> fixedPolygons,
                                                      double areaA,
                                                      double boxAArea,
                                                      List<Point> rotatedPolygonB,
@@ -424,16 +423,23 @@ public class PolygonStitcher {
         Point referencePointB = rotatedPolygonB.get(0);
         Point translation = placementPoint.sub(referencePointB);
         List<Point> translatedPolygonB = Geometry.translatePolygon(rotatedPolygonB, translation);
-        List<Point> combinedCoordinates = combinePolygons(polygonA, translatedPolygonB);
+        List<Point> combinedCoordinates = combineFixedPolygons(fixedPolygons, translatedPolygonB);
 
         double boxBArea = boundingBoxArea(rotatedPolygonB);
         double boxABArea = boundingBoxArea(combinedCoordinates);
         double baseFillRate = calculateFillRate(areaA, boxAArea);
         double combinedFillRate = calculateFillRate(areaA + areaB, boxABArea);
         double fillRateGain = combinedFillRate - baseFillRate;
-        double minBoundaryDistance = minimumBoundaryDistance(polygonA, translatedPolygonB);
-        double contactLength = maximumContactLength(
-                polygonA, translatedPolygonB, CONTACT_DISTANCE_TOLERANCE);
+        double minBoundaryDistance = Double.POSITIVE_INFINITY;
+        double contactLength = 0.0;
+        for (List<Point> fixedPolygon : fixedPolygons) {
+            minBoundaryDistance = Math.min(
+                    minBoundaryDistance,
+                    minimumBoundaryDistance(fixedPolygon, translatedPolygonB));
+            contactLength = Math.max(
+                    contactLength,
+                    maximumContactLength(fixedPolygon, translatedPolygonB, CONTACT_DISTANCE_TOLERANCE));
+        }
 
         // 保留旧 score2 供结果文件和可视化查看，但新的 NFP 选择改用填充率提升量。
         double score2 = boxAArea + boxBArea - boxABArea;
@@ -448,14 +454,15 @@ public class PolygonStitcher {
      * 过滤候选的几何质量和硬约束。
      *
      * 修改理由：单纯“不重叠且外接矩形变小”会接受远距离、只角点接触或彼此不连通的工件组合。
-     * 这里把绝对填充率、边界距离、接触长度和并集连通性都纳入拼接的底层合法性判断。
+     * 这里把填充率提升、边界距离、接触长度和并集连通性都纳入拼接的底层合法性判断。
+     * 不再设置固定的绝对填充率下限：例如大凹块先和小件形成 0.84 的中间块，
+     * 仍可能为下一件小工件打开有效凹槽；只要本次确实提高填充率，就不能提前过滤。
      */
     private static List<StitchingCandidate> filterValidCandidates(List<StitchingCandidate> candidates,
-                                                                    List<Point> polygonA) {
+                                                                    List<List<Point>> fixedPolygons) {
         List<StitchingCandidate> geometricCandidates = new ArrayList<>();
         for (StitchingCandidate candidate : candidates) {
-            if (candidate.fillRateGain <= SCORE_EPS
-                    || candidate.combinedFillRate < MIN_COMBINED_FILL_RATE - SCORE_EPS) {
+            if (candidate.fillRateGain <= SCORE_EPS) {
                 continue;
             }
 
@@ -465,8 +472,15 @@ public class PolygonStitcher {
             }
 
             // NFP 边界候选仍需经过精确重叠检测，避免数值误差产生正面积穿透。
-            if (mayHavePositiveBBoxOverlap(polygonA, candidate.translatedPolygonB)
-                    && intersectionArea(polygonA, candidate.translatedPolygonB) > SCORE_EPS) {
+            boolean overlaps = false;
+            for (List<Point> fixedPolygon : fixedPolygons) {
+                if (mayHavePositiveBBoxOverlap(fixedPolygon, candidate.translatedPolygonB)
+                        && intersectionArea(fixedPolygon, candidate.translatedPolygonB) > SCORE_EPS) {
+                    overlaps = true;
+                    break;
+                }
+            }
+            if (overlaps) {
                 continue;
             }
 
@@ -476,26 +490,22 @@ public class PolygonStitcher {
 
         geometricCandidates.sort(PolygonStitcher::compareCandidates);
 
-        List<StitchingCandidate> validCandidates = new ArrayList<>();
         for (StitchingCandidate candidate : geometricCandidates) {
-            // 修改理由：仅靠接触长度仍可能接受小间隙，导致不连通候选抢占 Top-K；
-            // 对排序靠前的候选执行精确并集，确保送入 beam search 的位置确实属于同一连通块。
-            if (!hasSingleOuterUnionComponent(polygonA, candidate.translatedPolygonB)) {
-                continue;
-            }
-            validCandidates.add(candidate);
-            // 每个旋转保留少量已确认连通的候选即可覆盖不同放置位置，避免对全部采样点执行 Area 并集。
-            if (validCandidates.size() >= MAX_CONNECTED_CANDIDATES_PER_ROTATION) {
-                break;
+            // 修改理由：仅靠接触长度仍可能接受小间隙；对排序后的候选执行精确并集，
+            // 确保送入 beam search 的位置确实属于同一连通块。
+            if (hasSingleOuterUnionComponent(fixedPolygons, candidate.translatedPolygonB)) {
+                // 每个旋转只保留第一个通过精确校验的候选；它已经是该旋转的最高填充率位置。
+                return Collections.singletonList(candidate);
             }
         }
-        return validCandidates;
+        return Collections.emptyList();
     }
 
-    /** 精确判断两个不重叠工件的并集是否只有一个外部连通分量。 */
-    private static boolean hasSingleOuterUnionComponent(List<Point> first, List<Point> second) {
-        List<List<Point>> polygons = new ArrayList<>(2);
-        polygons.add(first);
+    /** 精确判断固定 Block 加入新工件后是否仍只有一个外部连通分量。 */
+    private static boolean hasSingleOuterUnionComponent(List<List<Point>> fixedPolygons,
+                                                         List<Point> second) {
+        List<List<Point>> polygons = new ArrayList<>(fixedPolygons.size() + 1);
+        polygons.addAll(fixedPolygons);
         polygons.add(second);
         return countOuterUnionComponents(unionBoundaries(polygons)) == 1;
     }
@@ -746,16 +756,6 @@ public class PolygonStitcher {
                 && Geometry.onSegment(firstEnd, secondStart, secondEnd));
     }
 
-    private static String candidateSignature(StitchingCandidate candidate) {
-        return candidate.movingRotationDegrees
-                + ":" + roundedCoordinate(candidate.translation.x)
-                + ":" + roundedCoordinate(candidate.translation.y);
-    }
-
-    private static long roundedCoordinate(double coordinate) {
-        return Math.round(coordinate * 1_000.0);
-    }
-
     private static double calculateFillRate(double area, double boxArea) {
         if (boxArea <= SCORE_EPS) {
             return 0.0;
@@ -780,6 +780,34 @@ public class PolygonStitcher {
         combined.addAll(copyPolygon(polygonA));
         combined.addAll(copyPolygon(polygonB));
         return combined;
+    }
+
+    /** 合并复合 Block 的所有成员坐标和新工件坐标，用于计算整体外接矩形。 */
+    private static List<Point> combineFixedPolygons(List<List<Point>> fixedPolygons,
+                                                    List<Point> polygonB) {
+        int pointCount = polygonB.size();
+        for (List<Point> fixedPolygon : fixedPolygons) {
+            pointCount += fixedPolygon.size();
+        }
+
+        List<Point> combined = new ArrayList<>(pointCount);
+        for (List<Point> fixedPolygon : fixedPolygons) {
+            combined.addAll(copyPolygon(fixedPolygon));
+        }
+        combined.addAll(copyPolygon(polygonB));
+        return combined;
+    }
+
+    private static boolean hasValidPolygons(List<List<Point>> polygons) {
+        if (polygons == null || polygons.isEmpty()) {
+            return false;
+        }
+        for (List<Point> polygon : polygons) {
+            if (polygon == null || polygon.size() < 3) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static Point midpoint(Point a, Point b) {
@@ -810,7 +838,7 @@ public class PolygonStitcher {
      * NFP 候选来源轮廓。
      *
      * 用途：统一封装外 NFP 轮廓，使 buildCandidates 不必关心轮廓对象的来源，
-     * 只负责遍历顶点、中点和密集采样点。
+     * 只负责遍历顶点和中点。
      */
     private static final class NfpContour {
         private final String sourceType;

@@ -19,8 +19,9 @@ public class NFPResult {
 
     /**
      * 内 NFP 的全部闭环。
-     * 用途：凹多边形可能产生多个内部可行边界，只保留最大环会丢失候选点；
-     * PolygonStitcher 会遍历这些环的顶点和中点，再通过重叠校验过滤非法放置。
+     * 用途：为仍然需要内部放置语义的调用方保留全部可行域；
+     * 外部拼接使用 outerNFP 及其 holes，避免把“工件完全位于另一个工件内部”的区域
+     * 当成普通外部拼接位置。
      */
     public List<List<Point>> innerLoops = new ArrayList<>();
 

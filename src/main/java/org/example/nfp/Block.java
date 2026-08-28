@@ -117,6 +117,20 @@ public class Block {
         return placements.size();
     }
 
+    /**
+     * 返回 Block 中全部已放置工件的实际轮廓，所有轮廓处于 Block 的统一坐标系。
+     *
+     * 用途：复合 Block 继续做 NFP 拼接时，求解器必须看到每个成员，才能保留成员之间
+     * 形成的内部凹槽/空洞；仅使用 outline 会把这些可利用空间错误地填成实体。
+     */
+    public List<List<Point>> placedPolygons() {
+        List<List<Point>> polygons = new ArrayList<>(placements.size());
+        for (ItemPlacement placement : placements) {
+            polygons.add(placement.placedPoints);
+        }
+        return Collections.unmodifiableList(polygons);
+    }
+
     public static List<Integer> intersectRotations(List<Integer> first, List<Integer> second) {
         Set<Integer> secondSet = new LinkedHashSet<>(second);
         List<Integer> result = new ArrayList<>();
