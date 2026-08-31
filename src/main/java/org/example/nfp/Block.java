@@ -262,6 +262,8 @@ public class Block {
         public final double candidateContactLength;
         public final double candidateMinBoundaryDistance;
         public final double candidateCombinedFillRate;
+        // 记录该工件是否被放入主块外接框内部，用于全局分配阶段识别关键凹腔候选。
+        public final boolean candidateCavityInsertion;
 
         private ItemPlacement(PolygonItem item,
                               int selectedRelativeRotation,
@@ -271,7 +273,8 @@ public class Block {
                               double candidateScore2,
                               double candidateContactLength,
                               double candidateMinBoundaryDistance,
-                              double candidateCombinedFillRate) {
+                              double candidateCombinedFillRate,
+                              boolean candidateCavityInsertion) {
             this.item = item;
             this.selectedRelativeRotation = PolygonItem.normalizeRotation(selectedRelativeRotation);
             this.translation = new Point(translation.x, translation.y);
@@ -281,17 +284,19 @@ public class Block {
             this.candidateContactLength = candidateContactLength;
             this.candidateMinBoundaryDistance = candidateMinBoundaryDistance;
             this.candidateCombinedFillRate = candidateCombinedFillRate;
+            this.candidateCavityInsertion = candidateCavityInsertion;
         }
 
         private static ItemPlacement fromItem(PolygonItem item) {
             return new ItemPlacement(item, 0, new Point(0, 0), item.points,
-                    "SINGLE", 0, 0, 0, item.fillRate);
+                    "SINGLE", 0, 0, 0, item.fillRate, false);
         }
 
         private static ItemPlacement fromCandidate(PolygonItem item, PolygonStitcher.StitchingCandidate candidate) {
             return new ItemPlacement(item, candidate.movingRotationDegrees, candidate.translation, candidate.translatedPolygonB,
                     candidate.sourceType, candidate.score2, candidate.contactLength,
-                    candidate.minBoundaryDistance, candidate.combinedFillRate);
+                    candidate.minBoundaryDistance, candidate.combinedFillRate,
+                    candidate.cavityInsertion);
         }
 
         private ItemPlacement translated(Point offset) {
@@ -303,7 +308,8 @@ public class Block {
                     candidateScore2,
                     candidateContactLength,
                     candidateMinBoundaryDistance,
-                    candidateCombinedFillRate);
+                    candidateCombinedFillRate,
+                    candidateCavityInsertion);
         }
     }
 }

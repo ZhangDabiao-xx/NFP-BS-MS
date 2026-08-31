@@ -23,7 +23,7 @@ import java.util.Set;
 public class BatchBlockStitcher {
 
     private static final Path INPUT_DIRECTORY = Path.of("data", "inputData");
-    private static final Path OUTPUT_DIRECTORY = Path.of("data", "NFPresult9");
+    private static final Path OUTPUT_DIRECTORY = Path.of("data", "NFPresult10");
     private static final Gson GSON = new Gson();
 
     // 组合块外接矩形长边超过板材长度时无法进入第二阶段排样，因此这类候选不保留。
@@ -34,6 +34,14 @@ public class BatchBlockStitcher {
     // NFP 集束搜索默认保留的状态数量。命令行第三个参数仍然可以覆盖该值。
     // 修改理由：第三个参数原来控制每轮贪心合并数量，现在改为控制搜索宽度；保留参数位置可以兼容原有启动方式。
     private static final int DEFAULT_BEAM_WIDTH = 5;
+    // 每个根工件至少保留多个最终候选，避免唯一候选被资源冲突淘汰后无法重新尝试其他方案。
+    private static final int MIN_ROOT_CANDIDATE_COUNT = 5;
+    // 外层候选集合使用比根内 Beam 更宽的搜索，允许多个根工件的方案一起竞争。
+    private static final int GLOBAL_PLAN_BEAM_MULTIPLIER = 4;
+    // 非 smallItem 且初始填充率较低的非矩形工件被视为关键凹腔根工件。
+    private static final double CRITICAL_CAVITY_ROOT_FILL_RATE = 0.75;
+    // 机会成本只作为普通候选的调节项，不能抵消关键凹腔的直接填充收益。
+    private static final double OPPORTUNITY_COST_WEIGHT = 0.35;
 
     public static void main(String[] args) throws IOException {
         Path inputDirectory = args.length > 0 ? Path.of(args[0]) : INPUT_DIRECTORY;
@@ -153,17 +161,18 @@ public class BatchBlockStitcher {
     }
 
     /**
-     * 反复执行“所有根工件生成候选块—候选块冲突竞争—未使用工件回池”。
+     * 反复执行“所有根工件生成多候选—全局资源感知竞争—未使用工件回池”。
      *
      * 每一轮都会让当前所有非矩形工件分别作为根工件，独立执行
-     * searchBestBlockFromRoot(...)，因此即使某个工件已经出现在另一个候选块中，
-     * 仍然可以继续作为本轮其他根工件的拼接候选。生成完所有根候选后，再按块质量
-     * 选择互不冲突的 Block；未被选中 Block 消耗的工件不会丢失，而是在下一轮重新参与搜索。
+     * searchTopBlocksFromRoot(...)，每个根工件保留多个最终候选。因此即使某个工件
+     * 已经出现在另一个候选块中，仍然可以继续作为本轮其他根工件的拼接候选。
+     * 生成完所有根候选后，再使用全局 Beam Search 选择互不冲突的候选集合；未被选中
+     * 候选块消耗的工件不会丢失，而是在下一轮重新参与搜索。
      *
      * 修改理由：原实现处理一个根工件后立即从全局池删除其成员，导致后处理的根工件
-     * 无法再尝试已经被前一个 Block 占用的工件。新的外层策略把“根节点内 Beam 搜索”
-     * 与“不同根节点之间的资源冲突处理”分开，能够实现 ABC 与 BED 的全局竞争，
-     * 并在保留 BED 后让 ABC 中未被占用的工件重新回池。
+     * 无法再尝试已经被前一个 Block 占用的工件；即使允许回池，每个根只保留一个候选
+     * 也会让大凹腔方案在局部填充率竞争中被小件高填充组合压掉。新的外层策略同时
+     * 保留根级替代方案，并在全局状态中优先保护关键凹腔的填充收益。
      */
     private static List<Block> stitchByBeamSearch(List<Block> initialBlocks, int beamWidth) {
         List<PolygonItem> availableItems = collectItems(initialBlocks);
@@ -174,12 +183,17 @@ public class BatchBlockStitcher {
         Map<String, PolygonStitcher.StitchingResult> nfpCache = new HashMap<>();
 
         while (!availableItems.isEmpty()) {
-            // 本轮先让所有不规则工件作为根工件生成各自的最佳候选块，不能在生成阶段
+            // 本轮先让所有不规则工件作为根工件生成各自的多个候选块，不能在生成阶段
             // 因为候选工件已出现在其他候选块中就提前排除它。
-            List<Block> candidateBlocks = buildAllRootCandidates(availableItems, beamWidth, nfpCache);
-            List<Block> selectedBlocks = selectNonConflictingCandidates(candidateBlocks);
+            int rootCandidateCount = Math.max(MIN_ROOT_CANDIDATE_COUNT, beamWidth);
+            List<CandidateBlock> candidateBlocks = buildAllRootCandidates(
+                    availableItems, beamWidth, rootCandidateCount, nfpCache);
+            List<CandidateBlock> scoredCandidates = calculateOpportunityCosts(candidateBlocks);
+            int globalPlanWidth = Math.max(rootCandidateCount,
+                    beamWidth * GLOBAL_PLAN_BEAM_MULTIPLIER);
+            GlobalPlanState bestPlan = selectGlobalCandidatePlan(scoredCandidates, globalPlanWidth);
 
-            if (selectedBlocks.isEmpty()) {
+            if (bestPlan == null || bestPlan.selectedCandidates.isEmpty()) {
                 // 当前剩余工件已经无法形成新的有效拼接块，剩余工件保持单件输出，
                 // 避免为了继续循环而生成无效 Block。
                 appendSingleBlocks(result, availableItems);
@@ -187,9 +201,9 @@ public class BatchBlockStitcher {
             }
 
             Set<String> committedItemIds = new HashSet<>();
-            for (Block selectedBlock : selectedBlocks) {
-                result.add(selectedBlock);
-                committedItemIds.addAll(collectItemIds(selectedBlock));
+            for (CandidateBlock selectedCandidate : bestPlan.selectedCandidates) {
+                result.add(selectedCandidate.block);
+                committedItemIds.addAll(selectedCandidate.itemIds);
             }
 
             // 只从全局池移除本轮真正提交的 Block 成员；被冲突淘汰的候选块成员仍留在池中，
@@ -201,59 +215,181 @@ public class BatchBlockStitcher {
     }
 
     /**
-     * 为当前可用工件集合中的每个非矩形根工件生成一个最佳候选 Block。
+     * 为当前可用工件集合中的每个非矩形根工件生成多个最终候选 Block。
      *
-     * 功能说明：这是外层的“暴力遍历根工件”步骤；真正的多层 AB、AC、ACG 分支
-     * 仍由每个根内部的 Beam Search 完成。这里不提前占用工件，因此不同根之间
-     * 可以观察到同一件候选工件，交由后续冲突竞争统一处理。
+     * 功能说明：这是外层的“遍历全部根工件”步骤；真正的多层 AB、AC、ACG 分支
+     * 仍由每个根内部的 Beam Search 完成。这里不提前占用工件，因此不同根之间可以
+     * 观察到同一件候选工件，交由后续全局资源竞争统一处理。
+     *
+     * 修改理由：原方法每个根只返回一个最佳块。若该块消耗了本应填入大凹腔的小件，
+     * 全局冲突处理就没有该根的替代方案可选；现在保留 Top-K，后续全局 Beam 可以
+     * 同时比较“凹腔 + 多个小件”和“小件互补高填充块”。
      */
-    private static List<Block> buildAllRootCandidates(
+    private static List<CandidateBlock> buildAllRootCandidates(
             List<PolygonItem> availableItems,
             int beamWidth,
+            int candidateLimit,
             Map<String, PolygonStitcher.StitchingResult> nfpCache) {
-        List<Block> candidateBlocks = new ArrayList<>();
+        List<CandidateBlock> candidateBlocks = new ArrayList<>();
         for (PolygonItem rootItem : availableItems) {
             if (isSmallRectangleItem(rootItem)) {
                 // 规则小矩形继续只作为被插入工件，不单独发起第一阶段 NFP 搜索。
                 continue;
             }
 
-            Block bestBlock = searchBestBlockFromRoot(rootItem, availableItems, beamWidth, nfpCache);
-            if (bestBlock.memberCount() > 1) {
-                // 单件结果不是竞争候选；它会在没有可行拼接时由外层统一输出。
-                candidateBlocks.add(bestBlock);
+            List<Block> rootCandidates = searchTopBlocksFromRoot(
+                    rootItem, availableItems, beamWidth, candidateLimit, nfpCache);
+            for (Block rootCandidate : rootCandidates) {
+                if (rootCandidate.memberCount() > 1) {
+                    // 单件结果不是竞争候选；它会在没有可行拼接时由外层统一输出。
+                    candidateBlocks.add(CandidateBlock.from(rootItem, rootCandidate));
+                }
             }
         }
         return candidateBlocks;
     }
 
     /**
-     * 按全局质量从高到低选择互不冲突的候选块。
+     * 计算候选块对关键凹腔资源的机会成本。
      *
-     * 功能说明：如果候选块 ABC 和 BED 共享工件 B，则质量更高的候选先占用 B，
-     * 质量较低的候选被淘汰；淘汰块中的 A、C 或 D、E 等未被选中成员不会在此处删除，
-     * 它们会在下一轮回到可用工件池重新寻找组合。
+     * 功能说明：先统计每个小件被关键凹腔候选使用时的最大收益，再给普通候选块
+     * 计算资源占用代价。该代价不会直接否决普通块，只会在全局候选质量接近时，
+     * 让算法倾向于保留对大凹腔更有价值的小件。
+     *
+     * 修改理由：仅比较候选块自身的 fillRate 会让 1.0 的小件互补块无条件压过
+     * 大凹腔方案；增加机会成本后，局部高填充不再是唯一质量指标。
      */
-    private static List<Block> selectNonConflictingCandidates(List<Block> candidateBlocks) {
-        List<Block> orderedCandidates = new ArrayList<>(candidateBlocks);
-        orderedCandidates.sort(BatchBlockStitcher::compareCandidateBlocks);
-
-        List<Block> selectedBlocks = new ArrayList<>();
-        Set<String> committedItemIds = new HashSet<>();
-        for (Block candidateBlock : orderedCandidates) {
-            Set<String> candidateItemIds = collectItemIds(candidateBlock);
-            if (hasItemConflict(candidateItemIds, committedItemIds)) {
-                // 只淘汰当前候选块，不删除其未被其他块占用的工件。
+    private static List<CandidateBlock> calculateOpportunityCosts(List<CandidateBlock> candidates) {
+        Map<String, Double> criticalItemValues = new HashMap<>();
+        Map<String, Integer> criticalItemDemand = new HashMap<>();
+        for (CandidateBlock candidate : candidates) {
+            if (!candidate.criticalCavity) {
                 continue;
             }
-
-            selectedBlocks.add(candidateBlock);
-            committedItemIds.addAll(candidateItemIds);
+            for (String itemId : candidate.addedItemIds()) {
+                criticalItemValues.merge(itemId, candidate.criticalGain, Math::max);
+                criticalItemDemand.merge(itemId, 1, Integer::sum);
+            }
         }
-        return selectedBlocks;
+
+        List<CandidateBlock> result = new ArrayList<>(candidates.size());
+        for (CandidateBlock candidate : candidates) {
+            double opportunityCost = 0.0;
+            if (!candidate.criticalCavity) {
+                for (String itemId : candidate.addedItemIds()) {
+                    Double criticalValue = criticalItemValues.get(itemId);
+                    Integer demand = criticalItemDemand.get(itemId);
+                    if (criticalValue != null && demand != null) {
+                        // 同一小件存在多个关键凹腔替代方案时，按需求数量分摊代价，
+                        // 避免因为静态统计过度惩罚普通候选。
+                        opportunityCost += criticalValue / Math.max(1, demand);
+                    }
+                }
+            }
+            result.add(candidate.withOpportunityCost(opportunityCost));
+        }
+        return result;
     }
 
-    /** 判断候选块是否与本轮已经提交的 Block 共享工件。 */
+    /**
+     * 使用全局 Beam Search 选择本轮互不冲突的候选块集合。
+     *
+     * 功能说明：每个状态表示一组已经选择的候选块和已消耗的工件。候选块可以是
+     * fillRate 大于 0.98 的高填充组合，也可以是为了填充关键凹腔而使用多个小件的组合；
+     * 只有提交状态后才真正从 availableItems 删除工件。
+     *
+     * 修改理由：原来的贪心方法只按单个 Block 排序，无法比较不同候选集合的整体收益。
+     * 现在用有限宽度的集合搜索保留多种资源分配方案，避免小件互补块过早锁死凹腔方案。
+     */
+    private static GlobalPlanState selectGlobalCandidatePlan(
+            List<CandidateBlock> candidates,
+            int planBeamWidth) {
+        if (candidates.isEmpty()) {
+            return null;
+        }
+
+        List<CandidateBlock> orderedCandidates = new ArrayList<>(candidates);
+        orderedCandidates.sort(BatchBlockStitcher::compareCandidateGenerationOrder);
+
+        List<GlobalPlanState> beam = new ArrayList<>();
+        beam.add(GlobalPlanState.empty());
+        for (CandidateBlock candidate : orderedCandidates) {
+            List<GlobalPlanState> nextStates = new ArrayList<>(beam);
+            for (GlobalPlanState state : beam) {
+                if (!hasItemConflict(candidate.itemIds, state.usedItemIds)) {
+                    nextStates.add(state.withCandidate(candidate));
+                }
+            }
+            beam = selectBestGlobalPlans(nextStates, planBeamWidth);
+        }
+
+        GlobalPlanState bestPlan = GlobalPlanState.empty();
+        for (GlobalPlanState state : beam) {
+            if (compareGlobalPlans(state, bestPlan) < 0) {
+                bestPlan = state;
+            }
+        }
+        return bestPlan.selectedCandidates.isEmpty() ? null : bestPlan;
+    }
+
+    /** 优先将关键凹腔候选送入全局 Beam，但最终优劣仍由完整状态评分决定。 */
+    private static int compareCandidateGenerationOrder(CandidateBlock left, CandidateBlock right) {
+        if (left.criticalCavity != right.criticalCavity) {
+            return left.criticalCavity ? -1 : 1;
+        }
+        return compareCandidateBlocks(left.block, right.block);
+    }
+
+    /** 保留全局候选集合中质量最高且签名不同的状态。 */
+    private static List<GlobalPlanState> selectBestGlobalPlans(List<GlobalPlanState> states,
+                                                               int planBeamWidth) {
+        states.sort(BatchBlockStitcher::compareGlobalPlans);
+        List<GlobalPlanState> selectedStates = new ArrayList<>();
+        Set<String> signatures = new HashSet<>();
+        for (GlobalPlanState state : states) {
+            if (!signatures.add(state.signature())) {
+                continue;
+            }
+            selectedStates.add(state);
+            if (selectedStates.size() >= planBeamWidth) {
+                break;
+            }
+        }
+        return selectedStates;
+    }
+
+    /**
+     * 比较两组全局候选方案。
+     *
+     * 关键凹腔收益是第一优先级；随后比较被改善的关键凹腔数量、扣除资源机会成本
+     * 后的总体收益，最后才使用普通填充率和 score2 作为平局规则。
+     */
+    private static int compareGlobalPlans(GlobalPlanState left, GlobalPlanState right) {
+        if (Math.abs(left.criticalGain - right.criticalGain) > PolygonStitcher.SCORE_EPS) {
+            return Double.compare(right.criticalGain, left.criticalGain);
+        }
+        if (left.criticalRootCount != right.criticalRootCount) {
+            return Integer.compare(right.criticalRootCount, left.criticalRootCount);
+        }
+        if (Math.abs(left.effectiveGain - right.effectiveGain) > PolygonStitcher.SCORE_EPS) {
+            return Double.compare(right.effectiveGain, left.effectiveGain);
+        }
+        if (Math.abs(left.opportunityCost - right.opportunityCost) > PolygonStitcher.SCORE_EPS) {
+            return Double.compare(left.opportunityCost, right.opportunityCost);
+        }
+        if (Math.abs(left.totalFillRateGain - right.totalFillRateGain) > PolygonStitcher.SCORE_EPS) {
+            return Double.compare(right.totalFillRateGain, left.totalFillRateGain);
+        }
+        if (Math.abs(left.totalScore2 - right.totalScore2) > PolygonStitcher.SCORE_EPS) {
+            return Double.compare(right.totalScore2, left.totalScore2);
+        }
+        if (left.selectedCandidates.size() != right.selectedCandidates.size()) {
+            return Integer.compare(right.selectedCandidates.size(), left.selectedCandidates.size());
+        }
+        return left.signature().compareTo(right.signature());
+    }
+
+    /** 判断候选块是否与全局方案已经提交的工件共享 ID。 */
     private static boolean hasItemConflict(Set<String> candidateItemIds,
                                            Set<String> committedItemIds) {
         for (String itemId : candidateItemIds) {
@@ -294,7 +430,7 @@ public class BatchBlockStitcher {
     }
 
     /**
-     * 为根工件 A 生成最终组合块。
+     * 为根工件 A 生成多个最终组合块。
      *
      * Beam 的每个节点只表示一个“根 A 当前已经拼接出的 Block”，并记录该分支已经使用的
      * 工件 ID。每层从每个节点遍历所有尚未使用的工件生成后继：
@@ -302,23 +438,24 @@ public class BatchBlockStitcher {
      *     A -> AB、AC、AD -> ACG、ACD ...
      *
      * 没有后继的节点进入 completedStates，不能因为其他分支仍能扩展就被静默丢弃。
-     * 最终只从 completedStates 中选择质量最高的节点。
+     * 最终从 completedStates 中保留前 candidateLimit 个不同方案，而不是只返回一个。
      *
      * 修改理由：旧方法把不同根节点和无关 Block 的合并放进同一个状态，无法保证
      * ACG 与 AB 在同一个根节点下竞争。这里保留原有 tryAddItem 的 NFP、旋转、
-     * 重叠、连通性和尺寸检查，只改变 Beam 的状态范围。
+     * 重叠、连通性和尺寸检查，只扩大根级终止方案的保留数量。
      */
-    private static Block searchBestBlockFromRoot(
+    private static List<Block> searchTopBlocksFromRoot(
             PolygonItem rootItem,
             List<PolygonItem> remainingItems,
             int beamWidth,
+            int candidateLimit,
             Map<String, PolygonStitcher.StitchingResult> nfpCache) {
         Block rootBlock = Block.fromSingle(rootItem);
         RootBeamState initialState = RootBeamState.fromRoot(rootBlock);
 
         // 小矩形只作为被插入物品，不作为根节点继续扩展，保持原有业务规则。
         if (!canActAsBaseBlock(rootBlock)) {
-            return rootBlock;
+            return List.of(rootBlock);
         }
 
         List<RootBeamState> beam = new ArrayList<>();
@@ -349,8 +486,9 @@ public class BatchBlockStitcher {
                 break;
             }
 
-            // 在同一层的全部后继中统一排序，只保留前 beamWidth 个根 A 分支。
-            beam = selectBestRootStates(nextBeamCandidates, beamWidth);
+            // 在同一层的全部后继中统一排序，只保留足够产生 Top-K 终止方案的根 A 分支。
+            // 修改理由：若根内只保留一个分支，外层即使使用全局 Beam 也看不到该根的替代方案。
+            beam = selectBestRootStates(nextBeamCandidates, Math.max(beamWidth, candidateLimit));
         }
 
         // 正常情况下每条路径最终都会进入 completedStates；这里保留防御性回退，
@@ -359,9 +497,15 @@ public class BatchBlockStitcher {
             completedStates.addAll(beam);
         }
         if (completedStates.isEmpty()) {
-            return rootBlock;
+            return List.of(rootBlock);
         }
-        return selectBestRootState(completedStates).block;
+
+        List<RootBeamState> topStates = selectBestRootStates(completedStates, candidateLimit);
+        List<Block> result = new ArrayList<>(topStates.size());
+        for (RootBeamState state : topStates) {
+            result.add(state.block);
+        }
+        return result;
     }
 
     /**
@@ -450,12 +594,6 @@ public class BatchBlockStitcher {
         return left.block.id.compareTo(right.block.id);
     }
 
-    /** 从终止集合中取出当前根 A 的最优方案。 */
-    private static RootBeamState selectBestRootState(List<RootBeamState> states) {
-        states.sort(BatchBlockStitcher::compareRootStates);
-        return states.get(0);
-    }
-
     /** 使用根块几何和已使用工件生成当前 Beam 分支的唯一签名。 */
     private static String rootStateSignature(RootBeamState state) {
         StringBuilder signature = new StringBuilder(blockGeometrySignature(state.block));
@@ -528,6 +666,37 @@ public class BatchBlockStitcher {
     private static boolean isSmallRectangleItem(PolygonItem item) {
         // smallItem 只是业务标记，必须叠加几何矩形判定，避免四角梯形被误当作小矩形排除。
         return item.smallItem && item.rectangular;
+    }
+
+    /**
+     * 判断一个候选是否确实在改善关键凹腔，而不是普通外边界扩张。
+     *
+     * 低填充率、非 smallItem、非矩形根工件通常代表需要优先处理的主体凹腔；
+     * 同时要求候选中存在真实 cavityInsertion，避免仅凭低填充率误保护普通异形件。
+     */
+    private static boolean isCriticalCavityCandidate(PolygonItem rootItem, Block block) {
+        if (rootItem.smallItem
+                || rootItem.rectangular
+                || rootItem.fillRate >= CRITICAL_CAVITY_ROOT_FILL_RATE) {
+            return false;
+        }
+        for (int i = 1; i < block.placements.size(); i++) {
+            if (block.placements.get(i).candidateCavityInsertion) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 计算关键凹腔候选的优先收益。
+     *
+     * 凹腔初始填充率越低，后续可排样风险越大，因此在相同填充提升下给予更高权重。
+     * 该值只用于候选集合之间的排序，不改变 Block 自身的几何填充率。
+     */
+    private static double calculateCriticalCavityGain(PolygonItem rootItem, double fillRateGain) {
+        double cavityUrgency = Math.max(0.0, 1.0 - rootItem.fillRate);
+        return fillRateGain * (1.0 + cavityUrgency);
     }
 
     private static boolean fitsSecondStagePackingBounds(Block block) {
@@ -738,6 +907,9 @@ public class BatchBlockStitcher {
         writer.write(String.format(Locale.ROOT, "    candidateCombinedFillRate=%.6f",
                 placement.candidateCombinedFillRate));
         writer.newLine();
+        // 输出凹腔标记，便于诊断全局资源分配是否优先使用了真正的内部插入位置。
+        writer.write("    candidateCavityInsertion=" + placement.candidateCavityInsertion);
+        writer.newLine();
         writer.write("    centPt=" + pointToJson(item.centerPoint));
         writer.newLine();
         writer.write("    translation=" + pointToJson(placement.translation));
@@ -826,6 +998,136 @@ public class BatchBlockStitcher {
             return parsedValue > 0 ? parsedValue : fallback;
         } catch (NumberFormatException ignored) {
             return fallback;
+        }
+    }
+
+    /**
+     * 一个根工件生成的候选 Block 及其全局资源评价信息。
+     *
+     * 该对象只描述候选，不表示已经提交到最终结果；itemIds 中的工件只有在全局方案
+     * 确认后才会从 availableItems 删除。这样可以把“局部填充率”和“凹腔资源价值”
+     * 一起交给外层 Beam Search 比较。
+     */
+    private static final class CandidateBlock {
+        private final PolygonItem rootItem;
+        private final Block block;
+        private final Set<String> itemIds;
+        private final boolean criticalCavity;
+        private final double criticalGain;
+        private final double fillRateGain;
+        private final double opportunityCost;
+
+        private CandidateBlock(PolygonItem rootItem,
+                               Block block,
+                               Set<String> itemIds,
+                               boolean criticalCavity,
+                               double criticalGain,
+                               double fillRateGain,
+                               double opportunityCost) {
+            this.rootItem = rootItem;
+            this.block = block;
+            this.itemIds = Set.copyOf(itemIds);
+            this.criticalCavity = criticalCavity;
+            this.criticalGain = criticalGain;
+            this.fillRateGain = fillRateGain;
+            this.opportunityCost = opportunityCost;
+        }
+
+        /** 根据根工件和最终 Block 创建候选评价对象。 */
+        private static CandidateBlock from(PolygonItem rootItem, Block block) {
+            Set<String> itemIds = collectItemIds(block);
+            boolean criticalCavity = isCriticalCavityCandidate(rootItem, block);
+            double fillRateGain = Math.max(0.0, block.fillRate - rootItem.fillRate);
+            double criticalGain = criticalCavity
+                    ? calculateCriticalCavityGain(rootItem, fillRateGain)
+                    : 0.0;
+            return new CandidateBlock(rootItem, block, itemIds, criticalCavity,
+                    criticalGain, fillRateGain, 0.0);
+        }
+
+        /** 添加机会成本后创建不可变的新候选对象。 */
+        private CandidateBlock withOpportunityCost(double value) {
+            return new CandidateBlock(rootItem, block, itemIds, criticalCavity,
+                    criticalGain, fillRateGain, value);
+        }
+
+        /** 返回候选块除根工件之外实际新增的工件 ID。 */
+        private Set<String> addedItemIds() {
+            Set<String> addedItemIds = new HashSet<>(itemIds);
+            addedItemIds.remove(rootItem.id);
+            return addedItemIds;
+        }
+
+        /** 全局方案比较使用的普通收益，机会成本只调节普通候选，不否决关键凹腔。 */
+        private double effectiveGain() {
+            return fillRateGain - OPPORTUNITY_COST_WEIGHT * opportunityCost;
+        }
+    }
+
+    /**
+     * 外层全局候选集合 Beam 的状态。
+     *
+     * 状态中的 usedItemIds 保证同一件工件不会同时进入两个 Block；关键凹腔收益、
+     * 机会成本和普通填充收益分别保存，避免把不同含义的指标压成一个难以解释的分数。
+     */
+    private static final class GlobalPlanState {
+        private final List<CandidateBlock> selectedCandidates;
+        private final Set<String> usedItemIds;
+        private final double criticalGain;
+        private final int criticalRootCount;
+        private final double effectiveGain;
+        private final double opportunityCost;
+        private final double totalFillRateGain;
+        private final double totalScore2;
+
+        private GlobalPlanState(List<CandidateBlock> selectedCandidates,
+                                Set<String> usedItemIds,
+                                double criticalGain,
+                                int criticalRootCount,
+                                double effectiveGain,
+                                double opportunityCost,
+                                double totalFillRateGain,
+                                double totalScore2) {
+            this.selectedCandidates = List.copyOf(selectedCandidates);
+            this.usedItemIds = Set.copyOf(usedItemIds);
+            this.criticalGain = criticalGain;
+            this.criticalRootCount = criticalRootCount;
+            this.effectiveGain = effectiveGain;
+            this.opportunityCost = opportunityCost;
+            this.totalFillRateGain = totalFillRateGain;
+            this.totalScore2 = totalScore2;
+        }
+
+        private static GlobalPlanState empty() {
+            return new GlobalPlanState(new ArrayList<>(), new HashSet<>(),
+                    0.0, 0, 0.0, 0.0, 0.0, 0.0);
+        }
+
+        /** 将一个不冲突的候选块加入当前全局方案。 */
+        private GlobalPlanState withCandidate(CandidateBlock candidate) {
+            List<CandidateBlock> nextCandidates = new ArrayList<>(selectedCandidates);
+            nextCandidates.add(candidate);
+            Set<String> nextUsedItemIds = new HashSet<>(usedItemIds);
+            nextUsedItemIds.addAll(candidate.itemIds);
+            return new GlobalPlanState(
+                    nextCandidates,
+                    nextUsedItemIds,
+                    criticalGain + candidate.criticalGain,
+                    criticalRootCount + (candidate.criticalCavity ? 1 : 0),
+                    effectiveGain + candidate.effectiveGain(),
+                    opportunityCost + candidate.opportunityCost,
+                    totalFillRateGain + candidate.fillRateGain,
+                    totalScore2 + candidate.block.score2);
+        }
+
+        /** 由已选 Block ID 组成稳定签名，避免全局 Beam 保留完全相同的方案。 */
+        private String signature() {
+            List<String> blockIds = new ArrayList<>();
+            for (CandidateBlock candidate : selectedCandidates) {
+                blockIds.add(candidate.block.id);
+            }
+            blockIds.sort(String::compareTo);
+            return String.join("|", blockIds);
         }
     }
 
