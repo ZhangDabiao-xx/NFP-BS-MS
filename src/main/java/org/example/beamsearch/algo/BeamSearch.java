@@ -13,7 +13,7 @@ public class BeamSearch {
     final Instance inst;
 
     /**
-     * 连续完成多少轮“全部低利用率板材均未带来改进”后停止全局重排。
+     * 连续完成多少轮“全部低利用率板材均未减少板材数量”后停止全局重排。
      * 该值只作为无改进保护，真正的主停止条件仍然是 maxTime。
      */
     private static final int MAX_NO_IMPROVEMENT_SWEEPS = 3;
@@ -474,7 +474,7 @@ public class BeamSearch {
      * <p>修改原因：原实现一旦成功减少一张板材，就直接退出整个方法；
      * 同时一次候选遍历没有改进时也容易被误认为全局优化已经结束。
      * 现在只结束当前板材的局部尝试，成功减板后会基于最新结果继续寻找
-     * 下一张可删除的板材，直到达到时间上限或连续多轮完整扫描都没有改进。</p>
+     * 下一张可删除的板材，直到达到时间上限或连续多轮完整扫描都没有减板。</p>
      */
     public ExecutionResult ImproveByRepack(ExecutionResult executionResult, double maxTime, Random random) {
         System.out.println("Start improving solution by repacking.");
@@ -484,12 +484,18 @@ public class BeamSearch {
 
         int location;
         // 修改原因：flag 只记录了若干次“没有可选板材”，不能明确表示
-        // 是否已经完整扫描过所有低利用率板材。这里改为记录完整无改进轮数。
+        // 是否已经完整扫描过所有低利用率板材。这里改为记录完整无减板轮数。
         int noImprovementSweeps = 0;
 
         while (true) {
             // 时间上限仍然是全局优化的第一停止条件。
             if ((System.currentTimeMillis() - startTime) * 0.001 >= maxTime) {
+                break;
+            }
+
+            // 双重停止条件：连续完成多轮完整扫描且没有减少板材数量时，
+            // 即使尚未耗尽时间，也停止对当前结果继续进行无效重排。
+            if (noImprovementSweeps >= MAX_NO_IMPROVEMENT_SWEEPS) {
                 break;
             }
 
@@ -538,8 +544,8 @@ public class BeamSearch {
                 // 因为某一次局部尝试无效就直接停止整个优化。
                 locations.clear();
                 noImprovementSweeps++;
-                System.out.println("Completed repack sweep without new board candidate. "
-                        + "No-improvement sweeps: " + noImprovementSweeps
+                System.out.println("Completed repack sweep without reducing board count. "
+                        + "No-reduction sweeps: " + noImprovementSweeps
                         + "/" + MAX_NO_IMPROVEMENT_SWEEPS);
                 if (noImprovementSweeps >= MAX_NO_IMPROVEMENT_SWEEPS) {
                     // 这是无改进保护，不替代前面的时间限制。
@@ -692,11 +698,11 @@ public class BeamSearch {
                 executionResult.solutions = newSolutions;
                 executionResult.solutions.add(location, solutions.get(0));
 
-                // 当前板材未被删除，但其余板材已经发生严格改进；
-                // 接受该布局后重新开始扫描，避免沿用旧布局下的索引顺序。
+                // 当前板材未被删除，但其余板材已经发生严格改进。
+                // 修改原因：板材数量和索引没有变化，保留 locations 可以让
+                // 当前完整扫描继续处理其他板材；同数量重排也不能清零
+                // noImprovementSweeps，否则小规模案例可能反复重排到时间上限。
                 executionResult.setAvgUtilization();
-                locations.clear();
-                noImprovementSweeps = 0;
             }
         }
         return executionResult;
