@@ -23,7 +23,7 @@ import java.util.Set;
 public class BatchBlockStitcher {
 
     private static final Path INPUT_DIRECTORY = Path.of("data", "inputData");
-    private static final Path OUTPUT_DIRECTORY = Path.of("data", "NFPresult10");
+    private static final Path OUTPUT_DIRECTORY = Path.of("data", "NFPresult11");
     private static final Gson GSON = new Gson();
 
     // 组合块外接矩形长边超过板材长度时无法进入第二阶段排样，因此这类候选不保留。
@@ -38,8 +38,16 @@ public class BatchBlockStitcher {
     private static final int MIN_ROOT_CANDIDATE_COUNT = 5;
     // 外层候选集合使用比根内 Beam 更宽的搜索，允许多个根工件的方案一起竞争。
     private static final int GLOBAL_PLAN_BEAM_MULTIPLIER = 4;
-    // 非 smallItem 且初始填充率较低的非矩形工件被视为关键凹腔根工件。
-    private static final double CRITICAL_CAVITY_ROOT_FILL_RATE = 0.75;
+    // 非 smallItem 且初始填充率不高的非矩形工件被视为关键凹腔根工件。
+    // 修改理由：原阈值 0.75 会漏掉填充率约 0.83、但仍有明显大凹腔的根工件，
+    // 使它们无法和小件高填充组合进行全局竞争。提高到 0.90 只影响候选优先级，
+    // 不改变工件几何和最终排样约束。
+    private static final double CRITICAL_CAVITY_ROOT_FILL_RATE = 0.90;
+    // 两个非 smallItem 工件进行普通外边界扩张时，低于该填充率的组合不保留。
+    // 修改理由：Cabinet1 中多个填充率约 0.858 的大件组合虽然几何相接，
+    // 但会消耗大件并扩大包络框，既没有填凹腔，也会降低后续矩形排样的可用性。
+    // 达到该阈值的互补大件组合仍可保留；真实凹腔插入不受此限制。
+    private static final double MIN_LARGE_OUTER_COMBINED_FILL_RATE = 0.90;
     // 机会成本只作为普通候选的调节项，不能抵消关键凹腔的直接填充收益。
     private static final double OPPORTUNITY_COST_WEIGHT = 0.35;
 
@@ -371,6 +379,11 @@ public class BatchBlockStitcher {
         if (left.criticalRootCount != right.criticalRootCount) {
             return Integer.compare(right.criticalRootCount, left.criticalRootCount);
         }
+        if (left.totalCavityInsertionCount != right.totalCavityInsertionCount) {
+            // 修改理由：两个方案的关键收益接近时，优先保留真实进入凹腔的拼接次数，
+            // 使全局资源分配继续偏向“凹腔 + 小件”，而不是只追求外接框填充率。
+            return Integer.compare(right.totalCavityInsertionCount, left.totalCavityInsertionCount);
+        }
         if (Math.abs(left.effectiveGain - right.effectiveGain) > PolygonStitcher.SCORE_EPS) {
             return Double.compare(right.effectiveGain, left.effectiveGain);
         }
@@ -407,6 +420,13 @@ public class BatchBlockStitcher {
      * 最后用外接框面积和 ID 作为稳定平局规则，保证每轮结果可复现。
      */
     private static int compareCandidateBlocks(Block left, Block right) {
+        int leftCavityInsertionCount = countCavityInsertions(left);
+        int rightCavityInsertionCount = countCavityInsertions(right);
+        if (leftCavityInsertionCount != rightCavityInsertionCount) {
+            // 修改理由：候选生成顺序也要体现凹腔结构质量，避免相同关键等级下，
+            // 普通外扩块先进入全局 Beam 并挤占有限的状态名额。
+            return Integer.compare(rightCavityInsertionCount, leftCavityInsertionCount);
+        }
         if (Math.abs(left.fillRate - right.fillRate) > PolygonStitcher.SCORE_EPS) {
             return Double.compare(right.fillRate, left.fillRate);
         }
@@ -441,8 +461,8 @@ public class BatchBlockStitcher {
      * 最终从 completedStates 中保留前 candidateLimit 个不同方案，而不是只返回一个。
      *
      * 修改理由：旧方法把不同根节点和无关 Block 的合并放进同一个状态，无法保证
-     * ACG 与 AB 在同一个根节点下竞争。这里保留原有 tryAddItem 的 NFP、旋转、
-     * 重叠、连通性和尺寸检查，只扩大根级终止方案的保留数量。
+     * ACG 与 AB 在同一个根节点下竞争。这里保留原有 NFP、旋转、重叠、连通性和
+     * 尺寸检查，同时让同一工件对的多个位置也进入根级 Beam 竞争。
      */
     private static List<Block> searchTopBlocksFromRoot(
             PolygonItem rootItem,
@@ -472,7 +492,8 @@ public class BatchBlockStitcher {
                     continue;
                 }
 
-                List<RootBeamState> children = buildRootChildren(state, remainingItems, nfpCache);
+                List<RootBeamState> children = buildRootChildren(
+                        state, remainingItems, Math.max(beamWidth, candidateLimit), nfpCache);
                 if (children.isEmpty()) {
                     // 当前根块没有任何合法且能提升填充率的后继，保存它供最终比较。
                     completedStates.add(state);
@@ -517,6 +538,7 @@ public class BatchBlockStitcher {
     private static List<RootBeamState> buildRootChildren(
             RootBeamState state,
             List<PolygonItem> remainingItems,
+            int candidateLimit,
             Map<String, PolygonStitcher.StitchingResult> nfpCache) {
         List<RootBeamState> children = new ArrayList<>();
         for (PolygonItem item : remainingItems) {
@@ -524,12 +546,12 @@ public class BatchBlockStitcher {
                 continue;
             }
 
-            Block childBlock = tryAddItem(state.block, item, nfpCache);
-            if (childBlock == null) {
-                continue;
+            // 同一个待插入工件可能对应多个合法位置；全部作为独立后继交给本层 Beam，
+            // 避免 NFP 层的单一最优位置提前淘汰能够继续填凹腔的方案。
+            List<Block> childBlocks = tryAddItems(state.block, item, candidateLimit, nfpCache);
+            for (Block childBlock : childBlocks) {
+                children.add(state.withAddedItem(item, childBlock));
             }
-
-            children.add(state.withAddedItem(item, childBlock));
         }
         return children;
     }
@@ -582,6 +604,13 @@ public class BatchBlockStitcher {
      * 避免无关工件的状态影响 A 根分支的竞争结果。
      */
     private static int compareRootStates(RootBeamState left, RootBeamState right) {
+        int leftCavityInsertionCount = countCavityInsertions(left.block);
+        int rightCavityInsertionCount = countCavityInsertions(right.block);
+        if (leftCavityInsertionCount != rightCavityInsertionCount) {
+            // 修改理由：仅按当前填充率排序会让“两个大件外扩”压过“进入大凹腔的较小件”。
+            // 先比较真实凹腔插入次数，才能让有后续排样价值的分支留在 Beam 中。
+            return Integer.compare(rightCavityInsertionCount, leftCavityInsertionCount);
+        }
         if (Math.abs(left.block.fillRate - right.block.fillRate) > PolygonStitcher.SCORE_EPS) {
             return Double.compare(right.block.fillRate, left.block.fillRate);
         }
@@ -592,6 +621,17 @@ public class BatchBlockStitcher {
             return Double.compare(right.block.score2, left.block.score2);
         }
         return left.block.id.compareTo(right.block.id);
+    }
+
+    /** 统计 Block 中真实进入已有外接框的拼接次数，作为根 Beam 的结构质量指标。 */
+    private static int countCavityInsertions(Block block) {
+        int count = 0;
+        for (int i = 1; i < block.placements.size(); i++) {
+            if (block.placements.get(i).candidateCavityInsertion) {
+                count++;
+            }
+        }
+        return count;
     }
 
     /** 使用根块几何和已使用工件生成当前 Beam 分支的唯一签名。 */
@@ -735,40 +775,67 @@ public class BatchBlockStitcher {
     /**
      * NFP 拼接的唯一入口。
      *
-     * PolygonStitcher 会对所有允许角度和 NFP 外/孔洞轮廓进行评分，但只返回一个全局最优位置。
-     * smallItem 默认优先填补已有凹腔；只有达到目标填充率且具有有效边界接触的外边界互补闭合
-     * 才作为例外放行。非 smallItem 的普通外边界候选仍必须通过 score2 和明显收益检查。
-     * 这里再执行 Block 级别的旋转、重叠和板材尺寸校验，最终每个“主块 + 单件工件”只产生一个后继。
+     * PolygonStitcher 会对所有允许角度和 NFP 外/孔洞轮廓进行评分，并返回有限个
+     * 最优合法位置。这里把每个位置分别构造成根 Beam 的后继；smallItem 默认优先
+     * 填补已有凹腔，非 smallItem 的普通外边界候选仍必须通过 score2 和明显收益检查。
+     * Block 级别的旋转、重叠、低质量大件外扩和板材尺寸校验全部在创建 Block 前完成。
      */
-    private static Block tryAddItem(Block block,
-                                    PolygonItem item,
-                                    Map<String, PolygonStitcher.StitchingResult> nfpCache) {
+    private static List<Block> tryAddItems(Block block,
+                                           PolygonItem item,
+                                           int candidateLimit,
+                                           Map<String, PolygonStitcher.StitchingResult> nfpCache) {
+        List<Block> childBlocks = new ArrayList<>();
         if (!block.canStitchWith(item)) {
-            return null;
+            return childBlocks;
         }
 
         List<Integer> relativeRotations = block.relativeRotationsFor(item);
         List<List<Point>> fixedPolygons = block.placedPolygons();
         String cacheKey = stitchInputSignature(fixedPolygons, block.areaSum, block.boxArea,
-                item.points, item.area, relativeRotations, item.smallItem);
+                item.points, item.area, relativeRotations, item.smallItem, candidateLimit);
         PolygonStitcher.StitchingResult nfpResult = nfpCache.get(cacheKey);
         if (nfpResult == null) {
-            nfpResult = PolygonStitcher.findBestStitchForFixedPolygons(
+            nfpResult = PolygonStitcher.findTopStitchesForFixedPolygons(
                     fixedPolygons,
                     block.areaSum,
                     block.boxArea,
                     item.points,
                     item.area,
                     relativeRotations,
-                    item.smallItem);
+                    item.smallItem,
+                    candidateLimit);
             nfpCache.put(cacheKey, nfpResult);
         }
 
-        if (!nfpResult.stitched || nfpResult.bestCandidate == null) {
+        if (!nfpResult.stitched) {
+            return childBlocks;
+        }
+
+        // 每个候选位置都是独立的根 Beam 后继；某个位置因尺寸或旋转约束失败时，
+        // 不能连带丢弃同一工件对的其他合法位置。
+        for (PolygonStitcher.StitchingCandidate candidate : nfpResult.topCandidates(candidateLimit)) {
+            Block childBlock = tryBuildChildBlock(block, item, candidate);
+            if (childBlock != null) {
+                childBlocks.add(childBlock);
+            }
+        }
+        return childBlocks;
+    }
+
+    /**
+     * 对一个 NFP 候选执行 Block 级别的最终校验并创建子 Block。
+     *
+     * 功能说明：NFP 层负责候选轮廓、接触和并集连通性；本方法负责外层搜索特有的
+     * 工件旋转、板材尺寸和“低质量大件外扩”规则。将这些判断集中在这里，避免多个
+     * 调用路径使用不一致的过滤条件。
+     */
+    private static Block tryBuildChildBlock(Block block,
+                                             PolygonItem item,
+                                             PolygonStitcher.StitchingCandidate candidate) {
+        if (candidate == null) {
             return null;
         }
 
-        PolygonStitcher.StitchingCandidate candidate = nfpResult.bestCandidate;
         List<Integer> nextRotations = block.validRotationsAfter(item, candidate.movingRotationDegrees);
         if (nextRotations.isEmpty() || block.hasPositiveOverlapWith(candidate.translatedPolygonB)) {
             return null;
@@ -795,6 +862,12 @@ public class BatchBlockStitcher {
             return null;
         }
 
+        if (isLowQualityLargeOuterExpansion(block, item, candidate)) {
+            // 修改理由：两个大件沿外边界相接虽然可能有正的 score2，但如果组合填充率
+            // 仍然很低，就会消耗本可用于大凹腔的工件并降低后续排样可用性。
+            return null;
+        }
+
         List<Point> nextCoordinates = combinePolygons(block.combinedCoordinates, candidate.translatedPolygonB);
         // 在创建新 Block 前过滤尺寸不合格候选，避免为无效候选执行并集边界计算。
         if (!fitsSecondStagePackingBounds(nextCoordinates, nextRotations)) {
@@ -809,6 +882,31 @@ public class BatchBlockStitcher {
         return nextBlock;
     }
 
+    /**
+     * 判断是否为低质量的“大件对大件”普通外扩。
+     *
+     * 真实凹腔插入和已经达到较高填充率的互补闭合不受此规则影响；包含 smallItem
+     * 的块也保留原有策略，避免把该规则扩大到小件填充路径。
+     */
+    private static boolean isLowQualityLargeOuterExpansion(
+            Block block,
+            PolygonItem item,
+            PolygonStitcher.StitchingCandidate candidate) {
+        if (item.smallItem
+                || candidate.cavityInsertion
+                || candidate.combinedFillRate >= MIN_LARGE_OUTER_COMBINED_FILL_RATE
+                || block.placements.isEmpty()) {
+            return false;
+        }
+
+        for (Block.ItemPlacement placement : block.placements) {
+            if (placement.item.smallItem) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     /** 以全部固定工件的几何坐标构造 NFP 缓存键，确保不同内部孔洞的 Block 不会错误复用结果。 */
     private static String stitchInputSignature(List<List<Point>> basePolygons,
                                                double baseArea,
@@ -816,12 +914,16 @@ public class BatchBlockStitcher {
                                                List<Point> itemPolygon,
                                                double itemArea,
                                                List<Integer> rotations,
-                                               boolean requireCavityInsertion) {
+                                               boolean requireCavityInsertion,
+                                               int candidateLimit) {
         StringBuilder signature = new StringBuilder();
         signature.append(baseArea).append('|')
                 .append(baseBoxArea).append('|')
                 .append(itemArea).append('|')
-                .append(rotations).append('|');
+                .append(rotations).append('|')
+                // 修改理由：缓存结果现在包含多个候选位置；不同 Top-K 上限不能混用，
+                // 否则较小上限生成的结果会错误地限制后续更宽的 Beam。
+                .append(candidateLimit).append('|');
         // 同一几何可能同时出现在 smallItem 和普通工件中；两者的候选过滤策略不同，
         // 因此必须把该策略写入缓存键，避免复用错误的 NFP 结果。
         signature.append(requireCavityInsertion).append('|');
@@ -1015,6 +1117,7 @@ public class BatchBlockStitcher {
         private final boolean criticalCavity;
         private final double criticalGain;
         private final double fillRateGain;
+        private final int cavityInsertionCount;
         private final double opportunityCost;
 
         private CandidateBlock(PolygonItem rootItem,
@@ -1023,6 +1126,7 @@ public class BatchBlockStitcher {
                                boolean criticalCavity,
                                double criticalGain,
                                double fillRateGain,
+                               int cavityInsertionCount,
                                double opportunityCost) {
             this.rootItem = rootItem;
             this.block = block;
@@ -1030,6 +1134,7 @@ public class BatchBlockStitcher {
             this.criticalCavity = criticalCavity;
             this.criticalGain = criticalGain;
             this.fillRateGain = fillRateGain;
+            this.cavityInsertionCount = cavityInsertionCount;
             this.opportunityCost = opportunityCost;
         }
 
@@ -1041,14 +1146,15 @@ public class BatchBlockStitcher {
             double criticalGain = criticalCavity
                     ? calculateCriticalCavityGain(rootItem, fillRateGain)
                     : 0.0;
+            int cavityInsertionCount = countCavityInsertions(block);
             return new CandidateBlock(rootItem, block, itemIds, criticalCavity,
-                    criticalGain, fillRateGain, 0.0);
+                    criticalGain, fillRateGain, cavityInsertionCount, 0.0);
         }
 
         /** 添加机会成本后创建不可变的新候选对象。 */
         private CandidateBlock withOpportunityCost(double value) {
             return new CandidateBlock(rootItem, block, itemIds, criticalCavity,
-                    criticalGain, fillRateGain, value);
+                    criticalGain, fillRateGain, cavityInsertionCount, value);
         }
 
         /** 返回候选块除根工件之外实际新增的工件 ID。 */
@@ -1075,6 +1181,7 @@ public class BatchBlockStitcher {
         private final Set<String> usedItemIds;
         private final double criticalGain;
         private final int criticalRootCount;
+        private final int totalCavityInsertionCount;
         private final double effectiveGain;
         private final double opportunityCost;
         private final double totalFillRateGain;
@@ -1084,6 +1191,7 @@ public class BatchBlockStitcher {
                                 Set<String> usedItemIds,
                                 double criticalGain,
                                 int criticalRootCount,
+                                int totalCavityInsertionCount,
                                 double effectiveGain,
                                 double opportunityCost,
                                 double totalFillRateGain,
@@ -1092,6 +1200,7 @@ public class BatchBlockStitcher {
             this.usedItemIds = Set.copyOf(usedItemIds);
             this.criticalGain = criticalGain;
             this.criticalRootCount = criticalRootCount;
+            this.totalCavityInsertionCount = totalCavityInsertionCount;
             this.effectiveGain = effectiveGain;
             this.opportunityCost = opportunityCost;
             this.totalFillRateGain = totalFillRateGain;
@@ -1100,7 +1209,7 @@ public class BatchBlockStitcher {
 
         private static GlobalPlanState empty() {
             return new GlobalPlanState(new ArrayList<>(), new HashSet<>(),
-                    0.0, 0, 0.0, 0.0, 0.0, 0.0);
+                    0.0, 0, 0, 0.0, 0.0, 0.0, 0.0);
         }
 
         /** 将一个不冲突的候选块加入当前全局方案。 */
@@ -1114,6 +1223,7 @@ public class BatchBlockStitcher {
                     nextUsedItemIds,
                     criticalGain + candidate.criticalGain,
                     criticalRootCount + (candidate.criticalCavity ? 1 : 0),
+                    totalCavityInsertionCount + candidate.cavityInsertionCount,
                     effectiveGain + candidate.effectiveGain(),
                     opportunityCost + candidate.opportunityCost,
                     totalFillRateGain + candidate.fillRateGain,

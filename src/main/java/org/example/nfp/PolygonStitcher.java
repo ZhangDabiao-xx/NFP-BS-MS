@@ -2,6 +2,7 @@ package org.example.nfp;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 
 public class PolygonStitcher {
@@ -98,7 +99,7 @@ public class PolygonStitcher {
         public final List<Point> outerNFP;
         public final List<List<Point>> holes;
         public final List<StitchingCandidate> candidates;
-        // 经过重叠、接触、连通性和填充率提升校验后保留的唯一最优候选。
+        // 经过重叠、接触、连通性和填充率提升校验后保留的 Top-K 合法候选。
         public final List<StitchingCandidate> validCandidates;
         public final StitchingCandidate bestCandidate;
 
@@ -125,16 +126,19 @@ public class PolygonStitcher {
         }
 
         /**
-         * 兼容旧调用方的候选访问方法。
+         * 返回当前 NFP 结果中排名靠前的合法候选位置。
          *
-         * 修改理由：当前外层集束搜索在“工件对”层面保留分支，而同一工件对只保留
-         * 最优角度下的最优位置，避免把多个几何位置重复送入外层搜索。
+         * 修改理由：同一工件对可能存在多个合法位置；其中当前填充率最高的位置
+         * 不一定最利于后续凹腔填充。旧实现始终只返回一个位置，导致外层 Beam Search
+         * 在 NFP 层已经丢失可继续扩展的替代方案。
          */
         public List<StitchingCandidate> topCandidates(int limit) {
-            if (bestCandidate == null) {
+            if (validCandidates.isEmpty()) {
                 return Collections.emptyList();
             }
-            return Collections.singletonList(bestCandidate);
+            int candidateLimit = Math.max(1, limit);
+            int endIndex = Math.min(candidateLimit, validCandidates.size());
+            return Collections.unmodifiableList(new ArrayList<>(validCandidates.subList(0, endIndex)));
         }
     }
 
@@ -207,6 +211,37 @@ public class PolygonStitcher {
             double areaB,
             List<Integer> movingRotationDegrees,
             boolean requireCavityInsertion) {
+        // 旧接口继续只返回一个最优候选，避免影响已有调用方的行为。
+        return findTopStitchesForFixedPolygons(
+                fixedPolygons,
+                areaA,
+                boxAArea,
+                polygonB,
+                areaB,
+                movingRotationDegrees,
+                requireCavityInsertion,
+                1);
+    }
+
+    /**
+     * 为复合 Block 返回多个合法的 NFP 拼接位置。
+     *
+     * 功能说明：每个旋转角度先保留若干个通过几何校验的候选，所有角度的候选再
+     * 统一排序并截取前 maxCandidates 个。这样外层根节点 Beam 可以同时比较：
+     * 当前填充率较高的候选，以及虽然当前收益略低但能够保留后续凹腔空间的候选。
+     *
+     * @param maxCandidates 每个工件对最多返回的候选位置数量
+     */
+    public static StitchingResult findTopStitchesForFixedPolygons(
+            List<List<Point>> fixedPolygons,
+            double areaA,
+            double boxAArea,
+            List<Point> polygonB,
+            double areaB,
+            List<Integer> movingRotationDegrees,
+            boolean requireCavityInsertion,
+            int maxCandidates) {
+        int candidateLimit = Math.max(1, maxCandidates);
         List<Point> firstFixedPolygon = fixedPolygons == null || fixedPolygons.isEmpty()
                 ? new ArrayList<>()
                 : fixedPolygons.get(0);
@@ -221,9 +256,9 @@ public class PolygonStitcher {
         List<Point> bestOuterNfp = new ArrayList<>();
         List<List<Point>> bestHoles = new ArrayList<>();
 
-        // 仅保存最终的全局最优候选；中间的顶点/中点候选在本轮评分后立即释放，
-        // 避免 NFP 缓存把大量无效位置长期保存在内存中。
-        List<StitchingCandidate> retainedCandidates = new ArrayList<>(1);
+        // 保存各旋转角度通过精确几何校验的候选，最后统一截取 Top-K。
+        // 候选仍然只保留少量最优位置，避免把全部顶点/中点结果长期放入缓存。
+        List<StitchingCandidate> allValidCandidates = new ArrayList<>();
 
         for (Integer movingRotationDegree : normalizedRotations) {
             List<Point> rotatedPolygonB = Geometry.rotatePolygon(polygonB, movingRotationDegree);
@@ -263,16 +298,17 @@ public class PolygonStitcher {
                 continue;
             }
 
-            // 每个旋转只返回一个通过精确连通性校验的最佳位置，随后再在角度之间比较全局最优。
+            // 每个旋转保留少量通过精确连通性校验的候选；不能在这里过早压缩为一个位置。
             List<StitchingCandidate> validRotationCandidates = filterValidCandidates(
-                    rotationCandidates, fixedPolygons, requireCavityInsertion);
-            StitchingCandidate rotationBestCandidate = selectBestCandidate(validRotationCandidates);
-            if (isBetterCandidate(rotationBestCandidate, bestCandidate)) {
-                bestCandidate = rotationBestCandidate;
-                bestOuterNfp = rotationOuterNfp;
-                bestHoles = rotationHoles;
-                retainedCandidates.clear();
-                retainedCandidates.add(rotationBestCandidate);
+                    rotationCandidates, fixedPolygons, requireCavityInsertion, candidateLimit);
+            if (!validRotationCandidates.isEmpty()) {
+                allValidCandidates.addAll(validRotationCandidates);
+                StitchingCandidate rotationBestCandidate = validRotationCandidates.get(0);
+                if (isBetterCandidate(rotationBestCandidate, bestCandidate)) {
+                    bestCandidate = rotationBestCandidate;
+                    bestOuterNfp = rotationOuterNfp;
+                    bestHoles = rotationHoles;
+                }
             }
         }
 
@@ -281,8 +317,15 @@ public class PolygonStitcher {
                     new ArrayList<>(), new ArrayList<>(), null);
         }
 
+        allValidCandidates.sort(PolygonStitcher::compareCandidates);
+        List<StitchingCandidate> retainedCandidates = selectTopDistinctCandidates(
+                allValidCandidates, candidateLimit);
+        StitchingCandidate retainedBestCandidate = retainedCandidates.isEmpty()
+                ? bestCandidate
+                : retainedCandidates.get(0);
+
         return new StitchingResult(true, true, "Best stitching placement found", firstFixedPolygon, polygonB,
-                bestOuterNfp, bestHoles, retainedCandidates, retainedCandidates, bestCandidate);
+                bestOuterNfp, bestHoles, retainedCandidates, retainedCandidates, retainedBestCandidate);
     }
 
     public static double boundingBoxArea(List<Point> polygon) {
@@ -555,7 +598,8 @@ public class PolygonStitcher {
      */
     private static List<StitchingCandidate> filterValidCandidates(List<StitchingCandidate> candidates,
                                                                     List<List<Point>> fixedPolygons,
-                                                                    boolean requireCavityInsertion) {
+                                                                    boolean requireCavityInsertion,
+                                                                    int maxCandidates) {
         List<StitchingCandidate> geometricCandidates = new ArrayList<>();
         for (StitchingCandidate candidate : candidates) {
             if (candidate.fillRateGain <= SCORE_EPS) {
@@ -600,16 +644,22 @@ public class PolygonStitcher {
 
         geometricCandidates.sort(PolygonStitcher::compareCandidates);
 
+        List<StitchingCandidate> connectedCandidates = new ArrayList<>();
+        int candidateLimit = Math.max(1, maxCandidates);
         for (StitchingCandidate candidate : geometricCandidates) {
             // 修改理由：仅靠接触长度仍可能接受小间隙；对排序后的候选执行精确并集，
             // 确保送入 beam search 的位置确实属于同一连通块。
             if (hasSingleOuterUnionComponent(fixedPolygons, candidate.translatedPolygonB)) {
-                // 每个旋转只保留一个通过精确校验的候选；排序已优先选择凹腔候选，
-                // 外边界候选则优先选择更高 score2 和更小的外接框扩张。
-                return Collections.singletonList(candidate);
+                // 修改理由：同一旋转可能有多个合法接触位置；只返回第一个会在 NFP
+                // 层丢失后续可填充凹腔的几何分支。这里保留有限个 Top-K，兼顾搜索质量
+                // 和精确并集计算的时间成本。
+                connectedCandidates.add(candidate);
+                if (connectedCandidates.size() >= candidateLimit) {
+                    break;
+                }
             }
         }
-        return Collections.emptyList();
+        return connectedCandidates;
     }
 
     /** 精确判断固定 Block 加入新工件后是否仍只有一个外部连通分量。 */
@@ -621,12 +671,36 @@ public class PolygonStitcher {
         return countOuterUnionComponents(unionBoundaries(polygons)) == 1;
     }
 
-    // ==== 候选选择：按绝对填充率、接触质量和增益排序 ====
-    private static StitchingCandidate selectBestCandidate(List<StitchingCandidate> candidates) {
-        if (candidates.isEmpty()) {
-            return null;
+    /**
+     * 从排序后的候选中保留位置不同的前 maxCandidates 个结果。
+     *
+     * 功能说明：同一个放置位置可能来自不同固定工件的 NFP 轮廓，或者同时被顶点
+     * 和中点采样到。按平移量和旋转角度去重，可以把候选名额留给真正不同的几何方案。
+     */
+    private static List<StitchingCandidate> selectTopDistinctCandidates(
+            List<StitchingCandidate> sortedCandidates,
+            int maxCandidates) {
+        int candidateLimit = Math.max(1, maxCandidates);
+        List<StitchingCandidate> selectedCandidates = new ArrayList<>(candidateLimit);
+        HashSet<String> signatures = new HashSet<>();
+        for (StitchingCandidate candidate : sortedCandidates) {
+            String signature = candidatePlacementSignature(candidate);
+            if (!signatures.add(signature)) {
+                continue;
+            }
+            selectedCandidates.add(candidate);
+            if (selectedCandidates.size() >= candidateLimit) {
+                break;
+            }
         }
-        return candidates.get(0);
+        return selectedCandidates;
+    }
+
+    /** 用有限精度坐标构造候选位置签名，消除 NFP 多轮廓产生的重复位置。 */
+    private static String candidatePlacementSignature(StitchingCandidate candidate) {
+        return candidate.movingRotationDegrees
+                + "|" + Math.round(candidate.translation.x * 1_000.0)
+                + "|" + Math.round(candidate.translation.y * 1_000.0);
     }
 
     /**
