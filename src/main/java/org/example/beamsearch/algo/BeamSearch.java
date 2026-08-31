@@ -18,6 +18,12 @@ public class BeamSearch {
      */
     private static final int MAX_NO_IMPROVEMENT_SWEEPS = 3;
 
+    /**
+     * 优先件板材插入普通件时的集束宽度。
+     * 每个搜索层最多保留 4 个当前利用率较高的候选状态。
+     */
+    private static final int ORDINARY_INSERTION_BEAM_WIDTH = 4;
+
     private long finishTime = 0;
 
     public BeamSearch(SpaceManager spaceManager, Instance inst) {
@@ -176,9 +182,16 @@ public class BeamSearch {
 
         GeneralBlock[] availableBlocks = new BlockGenerator(inst)
                 .generateSingleBlock(true, allowedTypes);
+        // 修改原因：原候选顺序按 scoreVolume 排列，不等于普通件实际面积
+        // 降序。插入阶段先按实际矩形面积排序，减少逐个筛选候选的开销。
+        sortInsertionBlocksByArea(availableBlocks);
 
-        for (int boardIndex = 0; boardIndex < seedBoards.size(); boardIndex++) {
-            BoardStateSnapshot seedBoard = seedBoards.get(boardIndex);
+        // 修改原因：原实现按 seedBoards 的输入顺序处理 Sp，无法优先使用
+        // 剩余空间更大的板材。这里每次从未处理板材中选取最大空隙所在的板材。
+        List<BoardStateSnapshot> remainingSeedBoards = new ArrayList<>(seedBoards);
+        while (!remainingSeedBoards.isEmpty()) {
+            int selectedBoardIndex = findLargestResidualSpaceBoard(remainingSeedBoards);
+            BoardStateSnapshot seedBoard = remainingSeedBoards.remove(selectedBoardIndex);
 
             // 普通件已经全部放完时，后面的优先件板材仍然要保留在结果中。
             // 如果全局时间已经耗尽，也必须原样保留当前和后续优先件板材，
@@ -201,13 +214,14 @@ public class BeamSearch {
                     availableBlocks,
                     fixedPriorityBlocks);
 
-            int remainingBoards = seedBoards.size() - boardIndex;
+            int remainingBoards = remainingSeedBoards.size() + 1;
             long remainingTime = deadlineMillis - System.currentTimeMillis();
             int boardTime = (int) Math.max(1, remainingTime / Math.max(1, remainingBoards));
 
-            // volumeType=1 使用实际矩形面积作为评分，目标是尽可能多地
-            // 把普通件放入已有的优先件板材。
-            State endState = searchOneBoard(initialState, boardTime, 0, 1);
+            // 插入阶段使用固定宽度的集束搜索。每个搜索状态都优先选择
+            // 自己当前面积最大的剩余空间，并从面积最大的普通件中保留
+            // 4 个可行候选，避免单一路径的贪心选择陷入局部最优。
+            State endState = searchInsertionBoard(initialState, boardTime);
             Solution solution = endState.toSolution();
             result.solutions.add(solution);
             result.boardStates.add(createBoardStateSnapshot(solution));
@@ -297,6 +311,73 @@ public class BeamSearch {
         return bestNode.state == null ? initialState : bestNode.state;
     }
 
+    /**
+     * 使用固定宽度 4 的集束搜索向一张已有优先件板材中插入普通件。
+     *
+     * <p>该方法与普通新板求解分开，避免改变原有求解入口的搜索宽度。
+     * State 使用的 SpaceManager 采用面积降序比较器，因此每个分支都会
+     * 优先处理自己的最大剩余空隙；blockSearch 则从已按普通件实际面积
+     * 排序的候选中取前 4 个可行工件进行扩展。</p>
+     */
+    private State searchInsertionBoard(State initialState, int timeLimit) {
+        long startTime = System.currentTimeMillis();
+        finishTime = startTime + Math.max(1, timeLimit);
+
+        Queue<Node> nodes = new LinkedList<>();
+        Node root = new Node();
+        root.state = initialState;
+        // 固定优先件不计入分支差异，普通件已装载面积作为初始评分。
+        root.score = initialState.getPackedVolume();
+        nodes.add(root);
+
+        Node bestNode = root;
+        while (!nodes.isEmpty() && System.currentTimeMillis() < finishTime) {
+            int currentLevelSize = nodes.size();
+            TreeSet<Node> offspring = new TreeSet<>();
+
+            for (int i = 0; i < currentLevelSize; i++) {
+                if (System.currentTimeMillis() >= finishTime) {
+                    break;
+                }
+
+                Node currentNode = nodes.poll();
+                ArrayList<Node> children = new ArrayList<>();
+                blockSearch(
+                        currentNode.state,
+                        ORDINARY_INSERTION_BEAM_WIDTH,
+                        children,
+                        1);
+
+                if (children.isEmpty()) {
+                    // 当前状态已经没有可行普通件，使用实际已装载面积
+                    // 更新最终候选。
+                    if (currentNode.state.getPackedVolume()
+                            >= bestNode.state.getPackedVolume()) {
+                        bestNode = currentNode;
+                    }
+                } else {
+                    for (Node child : children) {
+                        // 修改原因：如果当前板材的时间片在搜索到叶节点前
+                        // 耗尽，不能因为 bestNode 尚未到叶节点就丢弃已找到
+                        // 的可行插入结果。这里保留实际已装载普通件面积最大
+                        // 的中间状态作为超时兜底结果。
+                        if (child.state.getPackedVolume()
+                                > bestNode.state.getPackedVolume()) {
+                            bestNode = child;
+                        }
+                        update(offspring, ORDINARY_INSERTION_BEAM_WIDTH, child);
+                    }
+                }
+            }
+
+            for (Node node : offspring) {
+                nodes.add(node);
+            }
+        }
+
+        return bestNode.state == null ? initialState : bestNode.state;
+    }
+
     private BoardStateSnapshot createBoardStateSnapshot(Solution solution) {
         ArrayList<Space> residualSpaces = SpaceManager.calculateResidualSpaces(
                 inst.length,
@@ -306,10 +387,64 @@ public class BeamSearch {
     }
 
     private SpaceManager createResidualSpaceManager(BoardStateSnapshot snapshot) {
-        Comparator<Space> comparator = SpaceComparator.getSpaceComparator(inst, 1);
+        // 修改原因：优先件插入阶段要求按剩余空隙面积降序选择空间，
+        // 不再使用原先“靠近板材边角优先、面积次优”的比较器。
+        Comparator<Space> comparator = new SpaceVolumeComparator();
         SpaceManager manager = new SpaceManager(comparator);
         manager.insert(new ArrayList<>(snapshot.getRemainingSpaces()));
         return manager;
+    }
+
+    /**
+     * 按普通件实际矩形面积降序排列插入候选。
+     *
+     * <p>插入阶段的 GeneralBlock 只表示一个普通件及其一个方向，
+     * boxVolume 就是该普通件的实际面积。尺寸面积只作为同面积时的
+     * 次级排序，保证排序稳定且优先尝试覆盖范围较大的方向。</p>
+     */
+    private void sortInsertionBlocksByArea(GeneralBlock[] blocks) {
+        Arrays.sort(blocks, new Comparator<GeneralBlock>() {
+            @Override
+            public int compare(GeneralBlock left, GeneralBlock right) {
+                int result = Double.compare(right.boxVolume, left.boxVolume);
+                if (result != 0) {
+                    return result;
+                }
+
+                long leftBoundingArea = (long) left.length * left.width;
+                long rightBoundingArea = (long) right.length * right.width;
+                return Long.compare(rightBoundingArea, leftBoundingArea);
+            }
+        });
+    }
+
+    /**
+     * 返回剩余空隙面积最大的 Sp 在候选列表中的位置。
+     * 面积相同的时候保留输入顺序，避免无意义地改变结果顺序。
+     */
+    private int findLargestResidualSpaceBoard(List<BoardStateSnapshot> boards) {
+        int selectedIndex = 0;
+        double largestSpaceArea = -1;
+
+        for (int i = 0; i < boards.size(); i++) {
+            double currentLargestArea = getLargestResidualSpaceArea(boards.get(i));
+            if (currentLargestArea > largestSpaceArea) {
+                largestSpaceArea = currentLargestArea;
+                selectedIndex = i;
+            }
+        }
+        return selectedIndex;
+    }
+
+    /** 计算一张 Sp 中最大的矩形剩余空隙面积。 */
+    private double getLargestResidualSpaceArea(BoardStateSnapshot board) {
+        double largestArea = 0;
+        for (Space space : board.getRemainingSpaces()) {
+            if (space.volume > largestArea) {
+                largestArea = space.volume;
+            }
+        }
+        return largestArea;
     }
 
     private PlacedBlock[] createPlacedBlocks(BoardStateSnapshot snapshot) {
