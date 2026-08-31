@@ -12,6 +12,12 @@ public class BeamSearch {
     private final SpaceManager spaceManager;
     final Instance inst;
 
+    /**
+     * 连续完成多少轮“全部低利用率板材均未带来改进”后停止全局重排。
+     * 该值只作为无改进保护，真正的主停止条件仍然是 maxTime。
+     */
+    private static final int MAX_NO_IMPROVEMENT_SWEEPS = 3;
+
     private long finishTime = 0;
 
     public BeamSearch(SpaceManager spaceManager, Instance inst) {
@@ -462,6 +468,14 @@ public class BeamSearch {
         return exeResult;
     }
 
+    /**
+     * 通过反复移出低利用率板材并尝试重排，优化跨板材的整体装载结果。
+     *
+     * <p>修改原因：原实现一旦成功减少一张板材，就直接退出整个方法；
+     * 同时一次候选遍历没有改进时也容易被误认为全局优化已经结束。
+     * 现在只结束当前板材的局部尝试，成功减板后会基于最新结果继续寻找
+     * 下一张可删除的板材，直到达到时间上限或连续多轮完整扫描都没有改进。</p>
+     */
     public ExecutionResult ImproveByRepack(ExecutionResult executionResult, double maxTime, Random random) {
         System.out.println("Start improving solution by repacking.");
         long startTime = System.currentTimeMillis();
@@ -469,13 +483,21 @@ public class BeamSearch {
         List<Integer> locations = new ArrayList<>();
 
         int location;
-        int flag = 0;
+        // 修改原因：flag 只记录了若干次“没有可选板材”，不能明确表示
+        // 是否已经完整扫描过所有低利用率板材。这里改为记录完整无改进轮数。
+        int noImprovementSweeps = 0;
 
         while (true) {
+            // 时间上限仍然是全局优化的第一停止条件。
             if ((System.currentTimeMillis() - startTime) * 0.001 >= maxTime) {
                 break;
             }
-            if (flag >= 3) {
+
+            // 修改原因：减板后 solutions 数量会变化，不能继续使用初始板材数。
+            // 每轮重新读取数量，保证后续索引和候选集合与当前结果一致。
+            containerNum = executionResult.solutions.size();
+            if (containerNum <= 1) {
+                // 只剩一张板材时没有继续减板的可能。
                 break;
             }
 
@@ -510,13 +532,25 @@ public class BeamSearch {
                     u = executionResult.solutions.get(location).getUtilization();
                 }
             }
-            locations.add(location);
+
             if (location == -1 || executionResult.solutions.get(location).getUtilization() > allAvgUtilization) {
+                // 修改原因：只有在所有候选板材都被尝试后才结束一轮，不能
+                // 因为某一次局部尝试无效就直接停止整个优化。
                 locations.clear();
-                System.out.println("All low-utilization boards have been repacked once. Restarting repacking process...");
-                flag++;
+                noImprovementSweeps++;
+                System.out.println("Completed repack sweep without new board candidate. "
+                        + "No-improvement sweeps: " + noImprovementSweeps
+                        + "/" + MAX_NO_IMPROVEMENT_SWEEPS);
+                if (noImprovementSweeps >= MAX_NO_IMPROVEMENT_SWEEPS) {
+                    // 这是无改进保护，不替代前面的时间限制。
+                    break;
+                }
                 continue;
             }
+
+            // 只有确认当前板材满足低利用率条件后才记录，避免把 -1
+            // 或不符合条件的索引混入本轮已尝试集合。
+            locations.add(location);
 
             for (int i = 0; i < executionResult.solutions.get(location).getPlacedCuboid().size(); i++) {
                 unplacedBox.add(executionResult.solutions.get(location).getPlacedCuboid().get(i).box.copy());
@@ -553,25 +587,29 @@ public class BeamSearch {
 
             }
 
-            // 理论上自合并候选已经保证 pairSet 非空，但保留这个保护，
-            // 避免特殊利用率数据导致后续 get(index) 抛出异常。
+            // 修改原因：当前板材已经计入 locations，候选为空时只应跳过
+            // 当前板材，继续扫描本轮其他低利用率板材。
             if (pairSet.isEmpty()) {
-                locations.clear();
-                flag++;
                 continue;
             }
 
             Collections.shuffle(pairSet, random);
-            int iter = 0;
+            int iteration = 0;
             int index = 0;
-            boolean improved = false;
-            int maxIter = 1000;
+            // 记录当前 pairSet 遍历是否产生过改进；它只控制是否重新
+            // 从第一个候选开始，不再承担全局优化的停止职责。
+            boolean improvedInCurrentPass = false;
+            boolean currentBoardImproved = false;
 
-            while (iter++ <= maxIter && unplacedBox.size() > 0) {
+            // 修改原因：删除原来的 maxIter=1000 硬截止。当前候选有限，
+            // 无改进时会在完整遍历后退出；有改进时重新遍历，最终由时间
+            // 上限或完整无改进遍历控制，避免在 1000 次时提前截断。
+            while (unplacedBox.size() > 0) {
                 if ((System.currentTimeMillis() - startTime) * 0.001 >= maxTime) {
                     break;
                 }
 
+                iteration++;
                 int a = pairSet.get(index) / containerNum;
                 int b = pairSet.get(index) % containerNum;
 
@@ -595,7 +633,7 @@ public class BeamSearch {
                 }
 
                 if (newSol.unplacedBoxesVol < unplacedBoxVol) {
-                    System.out.println("iter" + iter +
+                    System.out.println("iter" + iteration +
                             "\t\t Improve solution by repack " + unplacedBoxVol / inst.length / inst.width
                             + "->" + newSol.unplacedBoxesVol / inst.length / inst.width + " , unplacedBoxesSize:"
                             + newSol.unplacedBoxes.size());
@@ -608,34 +646,57 @@ public class BeamSearch {
                         newSolutions.set(a, newSol.solutions.get(0));
                         newSolutions.set(b, newSol.solutions.get(1));
                     }
-                    iter = 0;
-                    improved = true;
+                    // 记录当前板材的确发生过严格的重排改进。
+                    currentBoardImproved = true;
+                    improvedInCurrentPass = true;
                 }
 
                 if (index < pairSet.size() - 1) {
                     index++;
                 } else {
-                    if (improved) {
+                    if (improvedInCurrentPass) {
+                        // 当前轮有改进，重新完整扫描 pairSet，继续寻找
+                        // 是否还能把剩余工件放入现有板材。
                         index = 0;
-                        improved = false;
+                        improvedInCurrentPass = false;
                     } else {
+                        // 这里只结束当前被移出板材的候选遍历；外层仍会
+                        // 继续选择本轮其他低利用率板材。
                         break;
                     }
                 }
             }
 
-
-
             if (unplacedBox.size() == 0) {
-                System.out.println("Improved success.");
+                System.out.println("Improved success. Continue searching for another removable board.");
                 executionResult.solutions = newSolutions;
-                break;
-            } else {
-                ArrayList<Solution> solutions = getSolutions(unplacedBox);
-                if (solutions.size() == 1) {
-                    executionResult.solutions = newSolutions;
-                    executionResult.solutions.add(location, solutions.get(0));
-                }
+
+                // 修改原因：减板后平均利用率和板材数量都已变化，立即
+                // 更新状态并清空旧索引，下一轮必须基于新解重新选择板材。
+                executionResult.setAvgUtilization();
+                containerNum = executionResult.solutions.size();
+                locations.clear();
+                noImprovementSweeps = 0;
+                continue;
+            }
+
+            // 时间耗尽时不再调用 getSolutions() 进行额外的重建排样，
+            // 避免已经达到预算后又执行一轮不可中断的求解。
+            if (!currentBoardImproved
+                    || (System.currentTimeMillis() - startTime) * 0.001 >= maxTime) {
+                continue;
+            }
+
+            ArrayList<Solution> solutions = getSolutions(unplacedBox);
+            if (solutions.size() == 1) {
+                executionResult.solutions = newSolutions;
+                executionResult.solutions.add(location, solutions.get(0));
+
+                // 当前板材未被删除，但其余板材已经发生严格改进；
+                // 接受该布局后重新开始扫描，避免沿用旧布局下的索引顺序。
+                executionResult.setAvgUtilization();
+                locations.clear();
+                noImprovementSweeps = 0;
             }
         }
         return executionResult;

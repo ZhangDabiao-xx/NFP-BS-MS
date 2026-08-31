@@ -62,8 +62,8 @@ import java.util.Map;
 public final class PackingResultVisualizer {
 
     // ---------- 默认路径 ----------
-    private static final Path DEFAULT_RESULT_DIR    = Path.of("data", "packResult14");
-    private static final Path DEFAULT_VISUAL_DIR    = Path.of("data", "visualization14");
+    private static final Path DEFAULT_RESULT_DIR    = Path.of("data", "packResult15");
+    private static final Path DEFAULT_VISUAL_DIR    = Path.of("data", "visualization15");
 
     // ---------- 默认板材尺寸（mm），material.csv 不可用时回退 ----------
     private static final int DEFAULT_PLATE_LENGTH = 2440;
