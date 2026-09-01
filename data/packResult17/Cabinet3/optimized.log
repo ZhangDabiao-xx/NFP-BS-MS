@@ -1,0 +1,887 @@
+total number of nestable workpieces：924
+Start priority-first combined packing.
+Start nesting on the 1th large board, remaining blocks count: 209
+Utilization of the 1th large board: 94.32306275194841, Time taken for this board: 2.973s
+-------------------------------------------------------------------
+Start nesting on the 2th large board, remaining blocks count: 207
+Utilization of the 2th large board: 94.20212980381618, Time taken for this board: 5.431s
+-------------------------------------------------------------------
+Start nesting on the 3th large board, remaining blocks count: 205
+Utilization of the 3th large board: 92.6847621607095, Time taken for this board: 8.031s
+-------------------------------------------------------------------
+Start nesting on the 4th large board, remaining blocks count: 205
+Utilization of the 4th large board: 92.6847621607095, Time taken for this board: 10.618s
+-------------------------------------------------------------------
+Start nesting on the 5th large board, remaining blocks count: 204
+Utilization of the 5th large board: 96.73320343993551, Time taken for this board: 13.195s
+-------------------------------------------------------------------
+Start nesting on the 6th large board, remaining blocks count: 204
+Utilization of the 6th large board: 96.36495565708142, Time taken for this board: 15.541s
+-------------------------------------------------------------------
+Start nesting on the 7th large board, remaining blocks count: 200
+Utilization of the 7th large board: 93.07256113947864, Time taken for this board: 17.771s
+-------------------------------------------------------------------
+Start nesting on the 8th large board, remaining blocks count: 198
+Utilization of the 8th large board: 94.31577532921257, Time taken for this board: 19.595s
+-------------------------------------------------------------------
+Start nesting on the 9th large board, remaining blocks count: 198
+Utilization of the 9th large board: 94.31577532921257, Time taken for this board: 21.506s
+-------------------------------------------------------------------
+Start nesting on the 10th large board, remaining blocks count: 198
+Utilization of the 10th large board: 94.31577532921257, Time taken for this board: 23.523s
+-------------------------------------------------------------------
+Start nesting on the 11th large board, remaining blocks count: 196
+Utilization of the 11th large board: 92.13779897876914, Time taken for this board: 25.272000000000002s
+-------------------------------------------------------------------
+Start nesting on the 12th large board, remaining blocks count: 196
+Utilization of the 12th large board: 92.13779897876914, Time taken for this board: 27.009s
+-------------------------------------------------------------------
+Start nesting on the 13th large board, remaining blocks count: 196
+Utilization of the 13th large board: 92.13779897876914, Time taken for this board: 28.712s
+-------------------------------------------------------------------
+Start nesting on the 14th large board, remaining blocks count: 196
+Utilization of the 14th large board: 92.13779897876914, Time taken for this board: 30.326s
+-------------------------------------------------------------------
+Start nesting on the 15th large board, remaining blocks count: 195
+Utilization of the 15th large board: 92.95691682343455, Time taken for this board: 31.825s
+-------------------------------------------------------------------
+Start nesting on the 16th large board, remaining blocks count: 193
+Utilization of the 16th large board: 89.02492609513573, Time taken for this board: 32.903s
+-------------------------------------------------------------------
+Start nesting on the 17th large board, remaining blocks count: 193
+Utilization of the 17th large board: 89.02492609513573, Time taken for this board: 33.979s
+-------------------------------------------------------------------
+Start nesting on the 18th large board, remaining blocks count: 192
+Utilization of the 18th large board: 90.28970706799247, Time taken for this board: 35.057s
+-------------------------------------------------------------------
+Start nesting on the 19th large board, remaining blocks count: 192
+Utilization of the 19th large board: 90.28970706799247, Time taken for this board: 36.13s
+-------------------------------------------------------------------
+Start nesting on the 20th large board, remaining blocks count: 189
+Utilization of the 20th large board: 90.64957336737436, Time taken for this board: 37.291000000000004s
+-------------------------------------------------------------------
+Start nesting on the 21th large board, remaining blocks count: 189
+Utilization of the 21th large board: 90.64957336737436, Time taken for this board: 38.468s
+-------------------------------------------------------------------
+Start nesting on the 22th large board, remaining blocks count: 187
+Utilization of the 22th large board: 90.34021432410643, Time taken for this board: 39.604s
+-------------------------------------------------------------------
+Start nesting on the 23th large board, remaining blocks count: 183
+Utilization of the 23th large board: 97.25127653856491, Time taken for this board: 40.847s
+-------------------------------------------------------------------
+Start nesting on the 24th large board, remaining blocks count: 179
+Utilization of the 24th large board: 97.1991400161247, Time taken for this board: 42.041000000000004s
+-------------------------------------------------------------------
+Start nesting on the 25th large board, remaining blocks count: 175
+Utilization of the 25th large board: 96.72897070679925, Time taken for this board: 43.232s
+-------------------------------------------------------------------
+Start nesting on the 26th large board, remaining blocks count: 173
+Utilization of the 26th large board: 96.59147406611126, Time taken for this board: 44.392s
+-------------------------------------------------------------------
+Start nesting on the 27th large board, remaining blocks count: 173
+Utilization of the 27th large board: 96.59147406611126, Time taken for this board: 45.604s
+-------------------------------------------------------------------
+Start nesting on the 28th large board, remaining blocks count: 170
+Utilization of the 28th large board: 96.91584923407687, Time taken for this board: 47.175000000000004s
+-------------------------------------------------------------------
+Start nesting on the 29th large board, remaining blocks count: 168
+Utilization of the 29th large board: 96.28490325181403, Time taken for this board: 48.706s
+-------------------------------------------------------------------
+Start nesting on the 30th large board, remaining blocks count: 164
+Utilization of the 30th large board: 96.01666218758399, Time taken for this board: 50.13s
+-------------------------------------------------------------------
+Start nesting on the 31th large board, remaining blocks count: 162
+Utilization of the 31th large board: 95.75661784466541, Time taken for this board: 51.54s
+-------------------------------------------------------------------
+Start nesting on the 32th large board, remaining blocks count: 162
+Utilization of the 32th large board: 95.75661784466541, Time taken for this board: 52.937s
+-------------------------------------------------------------------
+Start nesting on the 33th large board, remaining blocks count: 160
+Utilization of the 33th large board: 95.69457135178716, Time taken for this board: 54.333s
+-------------------------------------------------------------------
+Start nesting on the 34th large board, remaining blocks count: 160
+Utilization of the 34th large board: 95.69457135178716, Time taken for this board: 55.764s
+-------------------------------------------------------------------
+Start nesting on the 35th large board, remaining blocks count: 156
+Utilization of the 35th large board: 95.65123622682076, Time taken for this board: 57.135s
+-------------------------------------------------------------------
+Start nesting on the 36th large board, remaining blocks count: 154
+Utilization of the 36th large board: 95.5236159634507, Time taken for this board: 58.413000000000004s
+-------------------------------------------------------------------
+Start nesting on the 37th large board, remaining blocks count: 152
+Utilization of the 37th large board: 95.20723595807578, Time taken for this board: 59.667s
+-------------------------------------------------------------------
+Start nesting on the 38th large board, remaining blocks count: 150
+Utilization of the 38th large board: 95.18758398280032, Time taken for this board: 60.866s
+-------------------------------------------------------------------
+Start nesting on the 39th large board, remaining blocks count: 148
+Utilization of the 39th large board: 94.96254367105617, Time taken for this board: 62.052s
+-------------------------------------------------------------------
+Start nesting on the 40th large board, remaining blocks count: 145
+Utilization of the 40th large board: 88.64391292663262, Time taken for this board: 62.573s
+-------------------------------------------------------------------
+Start nesting on the 41th large board, remaining blocks count: 145
+Utilization of the 41th large board: 88.64391292663262, Time taken for this board: 63.093s
+-------------------------------------------------------------------
+Start nesting on the 42th large board, remaining blocks count: 142
+Utilization of the 42th large board: 99.05331228164471, Time taken for this board: 64.08200000000001s
+-------------------------------------------------------------------
+Start nesting on the 43th large board, remaining blocks count: 136
+Utilization of the 43th large board: 98.85514646600376, Time taken for this board: 65.007s
+-------------------------------------------------------------------
+Start nesting on the 44th large board, remaining blocks count: 132
+Utilization of the 44th large board: 98.67508734211233, Time taken for this board: 65.912s
+-------------------------------------------------------------------
+Start nesting on the 45th large board, remaining blocks count: 130
+Utilization of the 45th large board: 99.00483740929857, Time taken for this board: 66.797s
+-------------------------------------------------------------------
+Start nesting on the 46th large board, remaining blocks count: 126
+Utilization of the 46th large board: 99.25396398817523, Time taken for this board: 67.274s
+-------------------------------------------------------------------
+Start nesting on the 47th large board, remaining blocks count: 120
+Utilization of the 47th large board: 99.17599435635582, Time taken for this board: 67.72200000000001s
+-------------------------------------------------------------------
+Start nesting on the 48th large board, remaining blocks count: 116
+Utilization of the 48th large board: 99.07521499596884, Time taken for this board: 68.14s
+-------------------------------------------------------------------
+Start nesting on the 49th large board, remaining blocks count: 110
+Utilization of the 49th large board: 98.0559661381349, Time taken for this board: 68.509s
+-------------------------------------------------------------------
+Start nesting on the 50th large board, remaining blocks count: 108
+Utilization of the 50th large board: 98.05284197796291, Time taken for this board: 68.896s
+-------------------------------------------------------------------
+Start nesting on the 51th large board, remaining blocks count: 104
+Utilization of the 51th large board: 97.80012093523246, Time taken for this board: 69.235s
+-------------------------------------------------------------------
+Start nesting on the 52th large board, remaining blocks count: 102
+Utilization of the 52th large board: 97.93839021768342, Time taken for this board: 69.572s
+-------------------------------------------------------------------
+Start nesting on the 53th large board, remaining blocks count: 100
+Utilization of the 53th large board: 98.11448535339962, Time taken for this board: 69.891s
+-------------------------------------------------------------------
+Start nesting on the 54th large board, remaining blocks count: 100
+Utilization of the 54th large board: 98.11448535339962, Time taken for this board: 70.205s
+-------------------------------------------------------------------
+Start nesting on the 55th large board, remaining blocks count: 96
+Utilization of the 55th large board: 97.89962375705454, Time taken for this board: 70.523s
+-------------------------------------------------------------------
+Start nesting on the 56th large board, remaining blocks count: 96
+Utilization of the 56th large board: 98.20438054286481, Time taken for this board: 70.84100000000001s
+-------------------------------------------------------------------
+Start nesting on the 57th large board, remaining blocks count: 90
+Utilization of the 57th large board: 97.63964660037624, Time taken for this board: 71.11s
+-------------------------------------------------------------------
+Start nesting on the 58th large board, remaining blocks count: 84
+Utilization of the 58th large board: 97.08761085729644, Time taken for this board: 71.357s
+-------------------------------------------------------------------
+Start nesting on the 59th large board, remaining blocks count: 80
+Utilization of the 59th large board: 97.57279629131955, Time taken for this board: 71.57600000000001s
+-------------------------------------------------------------------
+Start nesting on the 60th large board, remaining blocks count: 78
+Utilization of the 60th large board: 97.28604541789842, Time taken for this board: 71.774s
+-------------------------------------------------------------------
+Start nesting on the 61th large board, remaining blocks count: 74
+Utilization of the 61th large board: 96.96694436979307, Time taken for this board: 71.965s
+-------------------------------------------------------------------
+Start nesting on the 62th large board, remaining blocks count: 74
+Utilization of the 62th large board: 96.96694436979307, Time taken for this board: 72.154s
+-------------------------------------------------------------------
+Start nesting on the 63th large board, remaining blocks count: 72
+Utilization of the 63th large board: 96.70253292125771, Time taken for this board: 72.343s
+-------------------------------------------------------------------
+Start nesting on the 64th large board, remaining blocks count: 66
+Utilization of the 64th large board: 95.56134103735556, Time taken for this board: 72.518s
+-------------------------------------------------------------------
+Start nesting on the 65th large board, remaining blocks count: 64
+Utilization of the 65th large board: 95.29635850577802, Time taken for this board: 72.59700000000001s
+-------------------------------------------------------------------
+Start nesting on the 66th large board, remaining blocks count: 62
+Utilization of the 66th large board: 95.22423407686105, Time taken for this board: 72.67s
+-------------------------------------------------------------------
+Start nesting on the 67th large board, remaining blocks count: 60
+Utilization of the 67th large board: 95.20169309325449, Time taken for this board: 72.74s
+-------------------------------------------------------------------
+Start nesting on the 68th large board, remaining blocks count: 60
+Utilization of the 68th large board: 95.20169309325449, Time taken for this board: 72.811s
+-------------------------------------------------------------------
+Start nesting on the 69th large board, remaining blocks count: 56
+Utilization of the 69th large board: 95.1649758129535, Time taken for this board: 72.871s
+-------------------------------------------------------------------
+Start nesting on the 70th large board, remaining blocks count: 54
+Utilization of the 70th large board: 94.55616769685568, Time taken for this board: 72.927s
+-------------------------------------------------------------------
+Start nesting on the 71th large board, remaining blocks count: 50
+Utilization of the 71th large board: 96.05079279763504, Time taken for this board: 72.976s
+-------------------------------------------------------------------
+Start nesting on the 72th large board, remaining blocks count: 46
+Utilization of the 72th large board: 96.06275194840097, Time taken for this board: 73.02s
+-------------------------------------------------------------------
+Start nesting on the 73th large board, remaining blocks count: 42
+Utilization of the 73th large board: 95.53211502284333, Time taken for this board: 73.057s
+-------------------------------------------------------------------
+Start nesting on the 74th large board, remaining blocks count: 38
+Utilization of the 74th large board: 93.40815640956733, Time taken for this board: 73.084s
+-------------------------------------------------------------------
+Start nesting on the 75th large board, remaining blocks count: 34
+Utilization of the 75th large board: 92.45169309325449, Time taken for this board: 73.113s
+-------------------------------------------------------------------
+Start nesting on the 76th large board, remaining blocks count: 30
+Utilization of the 76th large board: 96.42139209889814, Time taken for this board: 73.126s
+-------------------------------------------------------------------
+Start nesting on the 77th large board, remaining blocks count: 26
+Utilization of the 77th large board: 90.96785138403655, Time taken for this board: 73.136s
+-------------------------------------------------------------------
+Start nesting on the 78th large board, remaining blocks count: 22
+Utilization of the 78th large board: 92.1194571351787, Time taken for this board: 73.145s
+-------------------------------------------------------------------
+Start nesting on the 79th large board, remaining blocks count: 20
+Utilization of the 79th large board: 91.85864015049717, Time taken for this board: 73.152s
+-------------------------------------------------------------------
+Start nesting on the 80th large board, remaining blocks count: 14
+Utilization of the 80th large board: 91.3512496640688, Time taken for this board: 73.155s
+-------------------------------------------------------------------
+Start nesting on the 81th large board, remaining blocks count: 12
+Utilization of the 81th large board: 84.07350174684224, Time taken for this board: 73.156s
+-------------------------------------------------------------------
+Start nesting on the 82th large board, remaining blocks count: 4
+Utilization of the 82th large board: 39.885245901639344, Time taken for this board: 73.156s
+-------------------------------------------------------------------
+Start global repack optimization for 82 boards, time=288.36s.
+Start improving solution by repacking.
+Selecting boards with low utilization for repacking...
+iter54		 Improve solution by repack 0.39885245901639343->0.3968496371943026 , unplacedBoxesSize:3
+currentRepackCostTime:0.101s , currentRepackMaxTime:288.36s
+iter58		 Improve solution by repack 0.3968496371943026->0.38292394517602796 , unplacedBoxesSize:2
+currentRepackCostTime:0.107s , currentRepackMaxTime:288.36s
+iter110		 Improve solution by repack 0.38292394517602796->0.3811461972588014 , unplacedBoxesSize:2
+currentRepackCostTime:0.201s , currentRepackMaxTime:288.36s
+iter126		 Improve solution by repack 0.3811461972588014->0.3283606557377049 , unplacedBoxesSize:2
+currentRepackCostTime:0.23s , currentRepackMaxTime:288.36s
+iter169		 Improve solution by repack 0.3283606557377049->0.3243664337543671 , unplacedBoxesSize:2
+currentRepackCostTime:0.314s , currentRepackMaxTime:288.36s
+iter215		 Improve solution by repack 0.3243664337543671->0.31403050255307713 , unplacedBoxesSize:3
+currentRepackCostTime:0.397s , currentRepackMaxTime:288.36s
+iter225		 Improve solution by repack 0.31403050255307713->0.29720370868046225 , unplacedBoxesSize:2
+currentRepackCostTime:0.42s , currentRepackMaxTime:288.36s
+iter228		 Improve solution by repack 0.29720370868046225->0.29323300188121476 , unplacedBoxesSize:2
+currentRepackCostTime:0.431s , currentRepackMaxTime:288.36s
+iter309		 Improve solution by repack 0.29323300188121476->0.27964189733942485 , unplacedBoxesSize:2
+currentRepackCostTime:0.609s , currentRepackMaxTime:288.36s
+iter337		 Improve solution by repack 0.27964189733942485->0.2699153453372749 , unplacedBoxesSize:2
+currentRepackCostTime:0.672s , currentRepackMaxTime:288.36s
+iter343		 Improve solution by repack 0.2699153453372749->0.2655771298038162 , unplacedBoxesSize:2
+currentRepackCostTime:0.68s , currentRepackMaxTime:288.36s
+iter773		 Improve solution by repack 0.2655771298038162->0.25349231792528887 , unplacedBoxesSize:4
+currentRepackCostTime:1.593s , currentRepackMaxTime:288.36s
+iter776		 Improve solution by repack 0.25349231792528887->0.2520451491534534 , unplacedBoxesSize:2
+currentRepackCostTime:1.605s , currentRepackMaxTime:288.36s
+iter791		 Improve solution by repack 0.2520451491534534->0.239798441279226 , unplacedBoxesSize:2
+currentRepackCostTime:1.635s , currentRepackMaxTime:288.36s
+iter792		 Improve solution by repack 0.239798441279226->0.23380610051061543 , unplacedBoxesSize:2
+currentRepackCostTime:1.639s , currentRepackMaxTime:288.36s
+iter830		 Improve solution by repack 0.23380610051061543->0.22085259338887395 , unplacedBoxesSize:2
+currentRepackCostTime:1.728s , currentRepackMaxTime:288.36s
+iter852		 Improve solution by repack 0.22085259338887395->0.17285810266057514 , unplacedBoxesSize:1
+currentRepackCostTime:1.7870000000000001s , currentRepackMaxTime:288.36s
+iter1397		 Improve solution by repack 0.17285810266057514->0.15298810803547433 , unplacedBoxesSize:1
+currentRepackCostTime:2.802s , currentRepackMaxTime:288.36s
+iter1438		 Improve solution by repack 0.15298810803547433->0.12434560601988713 , unplacedBoxesSize:1
+currentRepackCostTime:2.869s , currentRepackMaxTime:288.36s
+Selecting boards with low utilization for repacking...
+iter7		 Improve solution by repack 0.8864391292663263->0.8522897070679926 , unplacedBoxesSize:3
+currentRepackCostTime:13.234s , currentRepackMaxTime:288.36s
+iter43		 Improve solution by repack 0.8522897070679926->0.2025503896801935 , unplacedBoxesSize:1
+currentRepackCostTime:13.285s , currentRepackMaxTime:288.36s
+iter156		 Improve solution by repack 0.2025503896801935->0.18091373286750875 , unplacedBoxesSize:1
+currentRepackCostTime:13.477s , currentRepackMaxTime:288.36s
+iter1559		 Improve solution by repack 0.18091373286750875->0.14505173340499866 , unplacedBoxesSize:2
+currentRepackCostTime:16.085s , currentRepackMaxTime:288.36s
+iter1628		 Improve solution by repack 0.14505173340499866->0.14439364418167158 , unplacedBoxesSize:1
+currentRepackCostTime:16.277s , currentRepackMaxTime:288.36s
+iter2207		 Improve solution by repack 0.14439364418167158->0.12458142972319268 , unplacedBoxesSize:2
+currentRepackCostTime:17.429000000000002s , currentRepackMaxTime:288.36s
+iter2211		 Improve solution by repack 0.12458142972319268->0.12156006449879066 , unplacedBoxesSize:1
+currentRepackCostTime:17.436s , currentRepackMaxTime:288.36s
+iter2220		 Improve solution by repack 0.12156006449879066->0.11360655737704918 , unplacedBoxesSize:1
+currentRepackCostTime:17.455000000000002s , currentRepackMaxTime:288.36s
+iter2253		 Improve solution by repack 0.11360655737704918->0.11065573770491803 , unplacedBoxesSize:1
+currentRepackCostTime:17.525000000000002s , currentRepackMaxTime:288.36s
+iter2363		 Improve solution by repack 0.11065573770491803->0.10797097554420855 , unplacedBoxesSize:1
+currentRepackCostTime:17.742s , currentRepackMaxTime:288.36s
+iter2426		 Improve solution by repack 0.10797097554420855->0.10778352593388874 , unplacedBoxesSize:1
+currentRepackCostTime:17.864s , currentRepackMaxTime:288.36s
+iter2826		 Improve solution by repack 0.10778352593388874->0.1070337274926095 , unplacedBoxesSize:1
+currentRepackCostTime:18.665s , currentRepackMaxTime:288.36s
+iter3313		 Improve solution by repack 0.1070337274926095->0.09671324912657887 , unplacedBoxesSize:1
+currentRepackCostTime:19.651s , currentRepackMaxTime:288.36s
+iter3456		 Improve solution by repack 0.09671324912657887->0.09271902714324107 , unplacedBoxesSize:1
+currentRepackCostTime:19.914s , currentRepackMaxTime:288.36s
+Selecting boards with low utilization for repacking...
+iter38		 Improve solution by repack 0.8864391292663263->0.09271902714324107 , unplacedBoxesSize:1
+currentRepackCostTime:33.271s , currentRepackMaxTime:288.36s
+Selecting boards with low utilization for repacking...
+iter31		 Improve solution by repack 0.8902492609513571->0.8837033055630208 , unplacedBoxesSize:3
+currentRepackCostTime:46.816s , currentRepackMaxTime:288.36s
+iter53		 Improve solution by repack 0.8837033055630208->0.09271902714324107 , unplacedBoxesSize:1
+currentRepackCostTime:46.85s , currentRepackMaxTime:288.36s
+Selecting boards with low utilization for repacking...
+iter3		 Improve solution by repack 0.8902492609513571->0.887381752217146 , unplacedBoxesSize:4
+currentRepackCostTime:60.394s , currentRepackMaxTime:288.36s
+iter9		 Improve solution by repack 0.887381752217146->0.8837033055630208 , unplacedBoxesSize:3
+currentRepackCostTime:60.408s , currentRepackMaxTime:288.36s
+iter36		 Improve solution by repack 0.8837033055630208->0.8664982531577532 , unplacedBoxesSize:3
+currentRepackCostTime:60.45s , currentRepackMaxTime:288.36s
+iter77		 Improve solution by repack 0.8664982531577532->0.09271902714324107 , unplacedBoxesSize:1
+currentRepackCostTime:60.515s , currentRepackMaxTime:288.36s
+Selecting boards with low utilization for repacking...
+iter65		 Improve solution by repack 0.8664982531577532->0.09271902714324107 , unplacedBoxesSize:1
+currentRepackCostTime:74.33s , currentRepackMaxTime:288.36s
+Selecting boards with low utilization for repacking...
+iter40		 Improve solution by repack 0.8664982531577532->0.09271902714324107 , unplacedBoxesSize:1
+currentRepackCostTime:88.35300000000001s , currentRepackMaxTime:288.36s
+Selecting boards with low utilization for repacking...
+iter8		 Improve solution by repack 0.9028970706799248->0.8664982531577532 , unplacedBoxesSize:3
+currentRepackCostTime:101.861s , currentRepackMaxTime:288.36s
+iter49		 Improve solution by repack 0.8664982531577532->0.09271902714324107 , unplacedBoxesSize:1
+currentRepackCostTime:101.925s , currentRepackMaxTime:288.36s
+Selecting boards with low utilization for repacking...
+iter1		 Improve solution by repack 0.9143234345606019->0.887381752217146 , unplacedBoxesSize:4
+currentRepackCostTime:115.452s , currentRepackMaxTime:288.36s
+iter3		 Improve solution by repack 0.887381752217146->0.8864391292663263 , unplacedBoxesSize:4
+currentRepackCostTime:115.456s , currentRepackMaxTime:288.36s
+iter16		 Improve solution by repack 0.8864391292663263->0.09271902714324107 , unplacedBoxesSize:1
+currentRepackCostTime:115.48100000000001s , currentRepackMaxTime:288.36s
+Selecting boards with low utilization for repacking...
+iter7		 Improve solution by repack 0.9013074442354205->0.8664982531577532 , unplacedBoxesSize:3
+currentRepackCostTime:129.019s , currentRepackMaxTime:288.36s
+iter45		 Improve solution by repack 0.8664982531577532->0.09271902714324107 , unplacedBoxesSize:1
+currentRepackCostTime:129.076s , currentRepackMaxTime:288.36s
+Selecting boards with low utilization for repacking...
+iter1		 Improve solution by repack 0.914692958882021->0.8976289975812953 , unplacedBoxesSize:4
+currentRepackCostTime:142.568s , currentRepackMaxTime:288.36s
+iter2		 Improve solution by repack 0.8976289975812953->0.8962160709486697 , unplacedBoxesSize:4
+currentRepackCostTime:142.572s , currentRepackMaxTime:288.36s
+iter10		 Improve solution by repack 0.8962160709486697->0.13555495834453105 , unplacedBoxesSize:1
+currentRepackCostTime:142.587s , currentRepackMaxTime:288.36s
+iter26		 Improve solution by repack 0.13555495834453105->0.09271902714324107 , unplacedBoxesSize:1
+currentRepackCostTime:142.618s , currentRepackMaxTime:288.36s
+Selecting boards with low utilization for repacking...
+iter16		 Improve solution by repack 0.9167999193765117->0.09271902714324107 , unplacedBoxesSize:1
+currentRepackCostTime:156.228s , currentRepackMaxTime:288.36s
+Selecting boards with low utilization for repacking...
+iter4		 Improve solution by repack 0.9212389142703574->0.9191245632894383 , unplacedBoxesSize:3
+currentRepackCostTime:169.745s , currentRepackMaxTime:288.36s
+iter17		 Improve solution by repack 0.9191245632894383->0.8881349099704381 , unplacedBoxesSize:3
+currentRepackCostTime:169.766s , currentRepackMaxTime:288.36s
+iter86		 Improve solution by repack 0.8881349099704381->0.20629736629938192 , unplacedBoxesSize:2
+currentRepackCostTime:169.875s , currentRepackMaxTime:288.36s
+iter101		 Improve solution by repack 0.20629736629938192->0.2057047836603064 , unplacedBoxesSize:2
+currentRepackCostTime:169.913s , currentRepackMaxTime:288.36s
+iter106		 Improve solution by repack 0.2057047836603064->0.20337476484815908 , unplacedBoxesSize:2
+currentRepackCostTime:169.923s , currentRepackMaxTime:288.36s
+iter115		 Improve solution by repack 0.20337476484815908->0.20195176027949477 , unplacedBoxesSize:2
+currentRepackCostTime:169.941s , currentRepackMaxTime:288.36s
+iter141		 Improve solution by repack 0.20195176027949477->0.2006900026874496 , unplacedBoxesSize:2
+currentRepackCostTime:169.998s , currentRepackMaxTime:288.36s
+iter186		 Improve solution by repack 0.2006900026874496->0.20050255307712977 , unplacedBoxesSize:2
+currentRepackCostTime:170.105s , currentRepackMaxTime:288.36s
+iter275		 Improve solution by repack 0.20050255307712977->0.1997527546358506 , unplacedBoxesSize:2
+currentRepackCostTime:170.324s , currentRepackMaxTime:288.36s
+iter407		 Improve solution by repack 0.1997527546358506->0.18943227626981995 , unplacedBoxesSize:2
+currentRepackCostTime:170.62800000000001s , currentRepackMaxTime:288.36s
+iter501		 Improve solution by repack 0.18943227626981995->0.1407135178715399 , unplacedBoxesSize:2
+currentRepackCostTime:170.827s , currentRepackMaxTime:288.36s
+iter535		 Improve solution by repack 0.1407135178715399->0.11417092179521635 , unplacedBoxesSize:1
+currentRepackCostTime:170.915s , currentRepackMaxTime:288.36s
+iter537		 Improve solution by repack 0.11417092179521635->0.10797097554420855 , unplacedBoxesSize:1
+currentRepackCostTime:170.922s , currentRepackMaxTime:288.36s
+iter546		 Improve solution by repack 0.10797097554420855->0.1070337274926095 , unplacedBoxesSize:1
+currentRepackCostTime:170.937s , currentRepackMaxTime:288.36s
+iter1127		 Improve solution by repack 0.1070337274926095->0.09705724267669981 , unplacedBoxesSize:1
+currentRepackCostTime:172.16s , currentRepackMaxTime:288.36s
+iter1139		 Improve solution by repack 0.09705724267669981->0.09671324912657887 , unplacedBoxesSize:1
+currentRepackCostTime:172.186s , currentRepackMaxTime:288.36s
+iter1661		 Improve solution by repack 0.09671324912657887->0.09271902714324107 , unplacedBoxesSize:1
+currentRepackCostTime:173.252s , currentRepackMaxTime:288.36s
+Selecting boards with low utilization for repacking...
+iter3		 Improve solution by repack 0.8943825584520291->0.8881349099704381 , unplacedBoxesSize:3
+currentRepackCostTime:183.38s , currentRepackMaxTime:288.36s
+iter104		 Improve solution by repack 0.8881349099704381->0.11834990593926363 , unplacedBoxesSize:1
+currentRepackCostTime:183.549s , currentRepackMaxTime:288.36s
+iter208		 Improve solution by repack 0.11834990593926363->0.09271902714324107 , unplacedBoxesSize:1
+currentRepackCostTime:183.74s , currentRepackMaxTime:288.36s
+Selecting boards with low utilization for repacking...
+iter4		 Improve solution by repack 0.8902492609513571->0.8837033055630208 , unplacedBoxesSize:3
+currentRepackCostTime:196.989s , currentRepackMaxTime:288.36s
+iter48		 Improve solution by repack 0.8837033055630208->0.8664982531577532 , unplacedBoxesSize:3
+currentRepackCostTime:197.062s , currentRepackMaxTime:288.36s
+iter102		 Improve solution by repack 0.8664982531577532->0.09271902714324107 , unplacedBoxesSize:1
+currentRepackCostTime:197.14600000000002s , currentRepackMaxTime:288.36s
+Selecting boards with low utilization for repacking...
+iter1		 Improve solution by repack 0.9213779897876916->0.9013074442354205 , unplacedBoxesSize:5
+currentRepackCostTime:210.614s , currentRepackMaxTime:288.36s
+iter3		 Improve solution by repack 0.9013074442354205->0.8850067186240258 , unplacedBoxesSize:4
+currentRepackCostTime:210.623s , currentRepackMaxTime:288.36s
+iter16		 Improve solution by repack 0.8850067186240258->0.09271902714324107 , unplacedBoxesSize:1
+currentRepackCostTime:210.653s , currentRepackMaxTime:288.36s
+Selecting boards with low utilization for repacking...
+iter13		 Improve solution by repack 0.8850067186240258->0.8683841709217952 , unplacedBoxesSize:4
+currentRepackCostTime:224.389s , currentRepackMaxTime:288.36s
+iter33		 Improve solution by repack 0.8683841709217952->0.8592313894114485 , unplacedBoxesSize:3
+currentRepackCostTime:224.43800000000002s , currentRepackMaxTime:288.36s
+iter41		 Improve solution by repack 0.8592313894114485->0.8420263370061812 , unplacedBoxesSize:3
+currentRepackCostTime:224.451s , currentRepackMaxTime:288.36s
+iter55		 Improve solution by repack 0.8420263370061812->0.15644181671593657 , unplacedBoxesSize:1
+currentRepackCostTime:224.476s , currentRepackMaxTime:288.36s
+iter601		 Improve solution by repack 0.15644181671593657->0.15565170653050253 , unplacedBoxesSize:1
+currentRepackCostTime:225.524s , currentRepackMaxTime:288.36s
+iter688		 Improve solution by repack 0.15565170653050253->0.09271902714324107 , unplacedBoxesSize:1
+currentRepackCostTime:225.691s , currentRepackMaxTime:288.36s
+Selecting boards with low utilization for repacking...
+iter4		 Improve solution by repack 0.9167999193765117->0.9143812147272239 , unplacedBoxesSize:3
+currentRepackCostTime:237.947s , currentRepackMaxTime:288.36s
+iter11		 Improve solution by repack 0.9143812147272239->0.9105072561139478 , unplacedBoxesSize:6
+currentRepackCostTime:237.957s , currentRepackMaxTime:288.36s
+iter12		 Improve solution by repack 0.9105072561139478->0.15644181671593657 , unplacedBoxesSize:1
+currentRepackCostTime:237.959s , currentRepackMaxTime:288.36s
+iter18		 Improve solution by repack 0.15644181671593657->0.09271902714324107 , unplacedBoxesSize:1
+currentRepackCostTime:237.972s , currentRepackMaxTime:288.36s
+Selecting boards with low utilization for repacking...
+iter1		 Improve solution by repack 0.9105072561139478->0.887381752217146 , unplacedBoxesSize:4
+currentRepackCostTime:251.589s , currentRepackMaxTime:288.36s
+iter25		 Improve solution by repack 0.887381752217146->0.8729578742273583 , unplacedBoxesSize:3
+currentRepackCostTime:251.642s , currentRepackMaxTime:288.36s
+iter58		 Improve solution by repack 0.8729578742273583->0.8664982531577532 , unplacedBoxesSize:3
+currentRepackCostTime:251.695s , currentRepackMaxTime:288.36s
+iter74		 Improve solution by repack 0.8664982531577532->0.8625040311744155 , unplacedBoxesSize:3
+currentRepackCostTime:251.721s , currentRepackMaxTime:288.36s
+iter129		 Improve solution by repack 0.8625040311744155->0.17382424079548509 , unplacedBoxesSize:1
+currentRepackCostTime:251.803s , currentRepackMaxTime:288.36s
+iter141		 Improve solution by repack 0.17382424079548509->0.15644181671593657 , unplacedBoxesSize:1
+currentRepackCostTime:251.82500000000002s , currentRepackMaxTime:288.36s
+iter150		 Improve solution by repack 0.15644181671593657->0.12465399086267132 , unplacedBoxesSize:1
+currentRepackCostTime:251.84s , currentRepackMaxTime:288.36s
+iter174		 Improve solution by repack 0.12465399086267132->0.1129857565170653 , unplacedBoxesSize:1
+currentRepackCostTime:251.894s , currentRepackMaxTime:288.36s
+iter182		 Improve solution by repack 0.1129857565170653->0.10923273313625369 , unplacedBoxesSize:1
+currentRepackCostTime:251.911s , currentRepackMaxTime:288.36s
+iter213		 Improve solution by repack 0.10923273313625369->0.1078688524590164 , unplacedBoxesSize:1
+currentRepackCostTime:251.975s , currentRepackMaxTime:288.36s
+iter289		 Improve solution by repack 0.1078688524590164->0.09271902714324107 , unplacedBoxesSize:1
+currentRepackCostTime:252.121s , currentRepackMaxTime:288.36s
+Selecting boards with low utilization for repacking...
+iter7		 Improve solution by repack 0.8625040311744155->0.17612805697393175 , unplacedBoxesSize:2
+currentRepackCostTime:265.254s , currentRepackMaxTime:288.36s
+iter77		 Improve solution by repack 0.17612805697393175->0.16001343724805162 , unplacedBoxesSize:1
+currentRepackCostTime:265.408s , currentRepackMaxTime:288.36s
+iter78		 Improve solution by repack 0.16001343724805162->0.15644181671593657 , unplacedBoxesSize:1
+currentRepackCostTime:265.41s , currentRepackMaxTime:288.36s
+iter98		 Improve solution by repack 0.15644181671593657->0.1260225745767267 , unplacedBoxesSize:1
+currentRepackCostTime:265.46s , currentRepackMaxTime:288.36s
+iter109		 Improve solution by repack 0.1260225745767267->0.11417092179521635 , unplacedBoxesSize:1
+currentRepackCostTime:265.47700000000003s , currentRepackMaxTime:288.36s
+iter112		 Improve solution by repack 0.11417092179521635->0.11377586670249933 , unplacedBoxesSize:1
+currentRepackCostTime:265.484s , currentRepackMaxTime:288.36s
+iter122		 Improve solution by repack 0.11377586670249933->0.11357833915614082 , unplacedBoxesSize:1
+currentRepackCostTime:265.505s , currentRepackMaxTime:288.36s
+iter127		 Improve solution by repack 0.11357833915614082->0.1129857565170653 , unplacedBoxesSize:1
+currentRepackCostTime:265.514s , currentRepackMaxTime:288.36s
+iter132		 Improve solution by repack 0.1129857565170653->0.1078688524590164 , unplacedBoxesSize:1
+currentRepackCostTime:265.522s , currentRepackMaxTime:288.36s
+iter150		 Improve solution by repack 0.1078688524590164->0.06960225745767266 , unplacedBoxesSize:1
+currentRepackCostTime:265.561s , currentRepackMaxTime:288.36s
+Selecting boards with low utilization for repacking...
+iter7		 Improve solution by repack 0.9183714055361463->0.8757293066380004 , unplacedBoxesSize:3
+currentRepackCostTime:279.868s , currentRepackMaxTime:288.36s
+iter12		 Improve solution by repack 0.8757293066380004->0.8664982531577532 , unplacedBoxesSize:3
+currentRepackCostTime:279.87600000000003s , currentRepackMaxTime:288.36s
+iter39		 Improve solution by repack 0.8664982531577532->0.8587872883633432 , unplacedBoxesSize:4
+currentRepackCostTime:279.919s , currentRepackMaxTime:288.36s
+iter56		 Improve solution by repack 0.8587872883633432->0.8540926498253159 , unplacedBoxesSize:3
+currentRepackCostTime:279.966s , currentRepackMaxTime:288.36s
+iter72		 Improve solution by repack 0.8540926498253159->0.839387261488847 , unplacedBoxesSize:3
+currentRepackCostTime:279.993s , currentRepackMaxTime:288.36s
+iter214		 Improve solution by repack 0.839387261488847->0.06960225745767266 , unplacedBoxesSize:1
+currentRepackCostTime:280.258s , currentRepackMaxTime:288.36s
+iter2384		 Improve solution by repack 0.06960225745767266->0.04799449072829884 , unplacedBoxesSize:1
+currentRepackCostTime:285.027s , currentRepackMaxTime:288.36s
+Global repack result: 82 -> 82 boards.
+Start nesting on the 1th large board, remaining blocks count: 249
+Utilization of the 1th large board: 98.82914539102393, Time taken for this board: 4.273s
+-------------------------------------------------------------------
+Start nesting on the 2th large board, remaining blocks count: 248
+Utilization of the 2th large board: 98.91766326256382, Time taken for this board: 9.625s
+-------------------------------------------------------------------
+Start nesting on the 3th large board, remaining blocks count: 243
+Utilization of the 3th large board: 99.82625638269283, Time taken for this board: 17.39s
+-------------------------------------------------------------------
+Start nesting on the 4th large board, remaining blocks count: 234
+Utilization of the 4th large board: 98.57988443966676, Time taken for this board: 26.423000000000002s
+-------------------------------------------------------------------
+Start nesting on the 5th large board, remaining blocks count: 231
+Utilization of the 5th large board: 99.61099166890621, Time taken for this board: 35.947s
+-------------------------------------------------------------------
+Start nesting on the 6th large board, remaining blocks count: 221
+Utilization of the 6th large board: 99.41904058048912, Time taken for this board: 44.283s
+-------------------------------------------------------------------
+Start nesting on the 7th large board, remaining blocks count: 219
+Utilization of the 7th large board: 99.58761085729644, Time taken for this board: 54.417s
+-------------------------------------------------------------------
+Start nesting on the 8th large board, remaining blocks count: 206
+Utilization of the 8th large board: 99.14484668099972, Time taken for this board: 62.086s
+-------------------------------------------------------------------
+Start nesting on the 9th large board, remaining blocks count: 193
+Utilization of the 9th large board: 99.51625907014244, Time taken for this board: 67.115s
+-------------------------------------------------------------------
+Start nesting on the 10th large board, remaining blocks count: 188
+Utilization of the 10th large board: 99.52764713786617, Time taken for this board: 72.02s
+-------------------------------------------------------------------
+Start nesting on the 11th large board, remaining blocks count: 181
+Utilization of the 11th large board: 99.10655737704919, Time taken for this board: 77.517s
+-------------------------------------------------------------------
+Start nesting on the 12th large board, remaining blocks count: 174
+Utilization of the 12th large board: 99.42058586401504, Time taken for this board: 82.382s
+-------------------------------------------------------------------
+Start nesting on the 13th large board, remaining blocks count: 166
+Utilization of the 13th large board: 99.59130610051061, Time taken for this board: 87.688s
+-------------------------------------------------------------------
+Start nesting on the 14th large board, remaining blocks count: 156
+Utilization of the 14th large board: 99.44302606826122, Time taken for this board: 91.645s
+-------------------------------------------------------------------
+Start nesting on the 15th large board, remaining blocks count: 154
+Utilization of the 15th large board: 99.3688524590164, Time taken for this board: 95.67s
+-------------------------------------------------------------------
+Start nesting on the 16th large board, remaining blocks count: 150
+Utilization of the 16th large board: 99.29158828271969, Time taken for this board: 99.249s
+-------------------------------------------------------------------
+Start nesting on the 17th large board, remaining blocks count: 144
+Utilization of the 17th large board: 98.97406611126043, Time taken for this board: 103.717s
+-------------------------------------------------------------------
+Start nesting on the 18th large board, remaining blocks count: 134
+Utilization of the 18th large board: 98.99260951357162, Time taken for this board: 107.361s
+-------------------------------------------------------------------
+Start nesting on the 19th large board, remaining blocks count: 128
+Utilization of the 19th large board: 98.67156006449879, Time taken for this board: 108.809s
+-------------------------------------------------------------------
+Start nesting on the 20th large board, remaining blocks count: 118
+Utilization of the 20th large board: 99.01064901908089, Time taken for this board: 110.11800000000001s
+-------------------------------------------------------------------
+Start nesting on the 21th large board, remaining blocks count: 112
+Utilization of the 21th large board: 98.61320881483472, Time taken for this board: 111.235s
+-------------------------------------------------------------------
+Start nesting on the 22th large board, remaining blocks count: 106
+Utilization of the 22th large board: 98.48229642569201, Time taken for this board: 112.241s
+-------------------------------------------------------------------
+Start nesting on the 23th large board, remaining blocks count: 106
+Utilization of the 23th large board: 98.51078339156142, Time taken for this board: 113.244s
+-------------------------------------------------------------------
+Start nesting on the 24th large board, remaining blocks count: 98
+Utilization of the 24th large board: 98.82246036011824, Time taken for this board: 114.258s
+-------------------------------------------------------------------
+Start nesting on the 25th large board, remaining blocks count: 88
+Utilization of the 25th large board: 98.0718220908358, Time taken for this board: 114.941s
+-------------------------------------------------------------------
+Start nesting on the 26th large board, remaining blocks count: 80
+Utilization of the 26th large board: 98.45941951088416, Time taken for this board: 115.397s
+-------------------------------------------------------------------
+Start nesting on the 27th large board, remaining blocks count: 74
+Utilization of the 27th large board: 98.76921526471378, Time taken for this board: 115.811s
+-------------------------------------------------------------------
+Start nesting on the 28th large board, remaining blocks count: 68
+Utilization of the 28th large board: 97.87036414942219, Time taken for this board: 116.22500000000001s
+-------------------------------------------------------------------
+Start nesting on the 29th large board, remaining blocks count: 58
+Utilization of the 29th large board: 96.06043402311207, Time taken for this board: 116.345s
+-------------------------------------------------------------------
+Start nesting on the 30th large board, remaining blocks count: 54
+Utilization of the 30th large board: 95.29699677506048, Time taken for this board: 116.413s
+-------------------------------------------------------------------
+Start nesting on the 31th large board, remaining blocks count: 46
+Utilization of the 31th large board: 91.43365358774524, Time taken for this board: 116.461s
+-------------------------------------------------------------------
+Start nesting on the 32th large board, remaining blocks count: 44
+Utilization of the 32th large board: 91.39737301800591, Time taken for this board: 116.506s
+-------------------------------------------------------------------
+Start nesting on the 33th large board, remaining blocks count: 40
+Utilization of the 33th large board: 88.40886186509003, Time taken for this board: 116.546s
+-------------------------------------------------------------------
+Start nesting on the 34th large board, remaining blocks count: 36
+Utilization of the 34th large board: 89.12805697393175, Time taken for this board: 116.59700000000001s
+-------------------------------------------------------------------
+Start nesting on the 35th large board, remaining blocks count: 34
+Utilization of the 35th large board: 92.3554152109648, Time taken for this board: 116.63s
+-------------------------------------------------------------------
+Start nesting on the 36th large board, remaining blocks count: 34
+Utilization of the 36th large board: 90.81832840634239, Time taken for this board: 116.669s
+-------------------------------------------------------------------
+Start nesting on the 37th large board, remaining blocks count: 28
+Utilization of the 37th large board: 88.73421123353936, Time taken for this board: 116.687s
+-------------------------------------------------------------------
+Start nesting on the 38th large board, remaining blocks count: 26
+Utilization of the 38th large board: 80.99203843052943, Time taken for this board: 116.7s
+-------------------------------------------------------------------
+Start nesting on the 39th large board, remaining blocks count: 20
+Utilization of the 39th large board: 87.79239451760279, Time taken for this board: 116.72500000000001s
+-------------------------------------------------------------------
+Start nesting on the 40th large board, remaining blocks count: 16
+Utilization of the 40th large board: 86.20807578607901, Time taken for this board: 116.732s
+-------------------------------------------------------------------
+Start nesting on the 41th large board, remaining blocks count: 14
+Utilization of the 41th large board: 86.02062617575919, Time taken for this board: 116.74000000000001s
+-------------------------------------------------------------------
+Start nesting on the 42th large board, remaining blocks count: 12
+Utilization of the 42th large board: 85.49213920988981, Time taken for this board: 116.74600000000001s
+-------------------------------------------------------------------
+Start nesting on the 43th large board, remaining blocks count: 6
+Utilization of the 43th large board: 40.588282719699, Time taken for this board: 116.74600000000001s
+-------------------------------------------------------------------
+Start global repack optimization for 43 boards, time=118.93s.
+Start improving solution by repacking.
+Selecting boards with low utilization for repacking...
+iter2		 Improve solution by repack 0.40588282719699004->0.4042864821284601 , unplacedBoxesSize:4
+currentRepackCostTime:0.009000000000000001s , currentRepackMaxTime:118.93s
+iter9		 Improve solution by repack 0.4042864821284601->0.383210158559527 , unplacedBoxesSize:4
+currentRepackCostTime:0.066s , currentRepackMaxTime:118.93s
+iter14		 Improve solution by repack 0.383210158559527->0.3523851115291588 , unplacedBoxesSize:3
+currentRepackCostTime:0.126s , currentRepackMaxTime:118.93s
+iter25		 Improve solution by repack 0.3523851115291588->0.34052506046761627 , unplacedBoxesSize:3
+currentRepackCostTime:0.221s , currentRepackMaxTime:118.93s
+iter26		 Improve solution by repack 0.34052506046761627->0.31012227895726957 , unplacedBoxesSize:3
+currentRepackCostTime:0.229s , currentRepackMaxTime:118.93s
+iter35		 Improve solution by repack 0.31012227895726957->0.24144316044074174 , unplacedBoxesSize:5
+currentRepackCostTime:0.328s , currentRepackMaxTime:118.93s
+iter40		 Improve solution by repack 0.24144316044074174->0.19592582639075518 , unplacedBoxesSize:4
+currentRepackCostTime:0.392s , currentRepackMaxTime:118.93s
+iter41		 Improve solution by repack 0.19592582639075518->0.1474334856221446 , unplacedBoxesSize:2
+currentRepackCostTime:0.402s , currentRepackMaxTime:118.93s
+iter43		 Improve solution by repack 0.1474334856221446->0.127512765385649 , unplacedBoxesSize:2
+currentRepackCostTime:0.41000000000000003s , currentRepackMaxTime:118.93s
+iter52		 Improve solution by repack 0.127512765385649->0.12549852190271432 , unplacedBoxesSize:2
+currentRepackCostTime:0.499s , currentRepackMaxTime:118.93s
+iter57		 Improve solution by repack 0.12549852190271432->0.12108100376242946 , unplacedBoxesSize:3
+currentRepackCostTime:0.5740000000000001s , currentRepackMaxTime:118.93s
+iter60		 Improve solution by repack 0.12108100376242946->0.10662456328943833 , unplacedBoxesSize:1
+currentRepackCostTime:0.606s , currentRepackMaxTime:118.93s
+iter67		 Improve solution by repack 0.10662456328943833->0.1054555227089492 , unplacedBoxesSize:1
+currentRepackCostTime:0.685s , currentRepackMaxTime:118.93s
+iter72		 Improve solution by repack 0.1054555227089492->0.09732968288094598 , unplacedBoxesSize:2
+currentRepackCostTime:0.72s , currentRepackMaxTime:118.93s
+iter78		 Improve solution by repack 0.09732968288094598->0.0 , unplacedBoxesSize:0
+currentRepackCostTime:0.778s , currentRepackMaxTime:118.93s
+Improved success. Continue searching for another removable board.
+Selecting boards with low utilization for repacking...
+iter5		 Improve solution by repack 0.877923945176028->0.8727606826122011 , unplacedBoxesSize:9
+currentRepackCostTime:0.847s , currentRepackMaxTime:118.93s
+iter20		 Improve solution by repack 0.8727606826122011->0.8581375974200484 , unplacedBoxesSize:9
+currentRepackCostTime:1.046s , currentRepackMaxTime:118.93s
+iter21		 Improve solution by repack 0.8581375974200484->0.8536146197258802 , unplacedBoxesSize:8
+currentRepackCostTime:1.067s , currentRepackMaxTime:118.93s
+iter48		 Improve solution by repack 0.8536146197258802->0.8456900026874496 , unplacedBoxesSize:8
+currentRepackCostTime:1.389s , currentRepackMaxTime:118.93s
+iter51		 Improve solution by repack 0.8456900026874496->0.8442992475141091 , unplacedBoxesSize:8
+currentRepackCostTime:1.418s , currentRepackMaxTime:118.93s
+iter61		 Improve solution by repack 0.8442992475141091->0.843189330825047 , unplacedBoxesSize:9
+currentRepackCostTime:1.5330000000000001s , currentRepackMaxTime:118.93s
+iter70		 Improve solution by repack 0.843189330825047->0.8421351787153991 , unplacedBoxesSize:7
+currentRepackCostTime:1.655s , currentRepackMaxTime:118.93s
+iter71		 Improve solution by repack 0.8421351787153991->0.8023589088954581 , unplacedBoxesSize:6
+currentRepackCostTime:1.6620000000000001s , currentRepackMaxTime:118.93s
+iter75		 Improve solution by repack 0.8023589088954581->0.7971022574576726 , unplacedBoxesSize:8
+currentRepackCostTime:1.699s , currentRepackMaxTime:118.93s
+iter110		 Improve solution by repack 0.7971022574576726->0.7796660843859178 , unplacedBoxesSize:8
+currentRepackCostTime:2.145s , currentRepackMaxTime:118.93s
+iter124		 Improve solution by repack 0.7796660843859178->0.7480065842515453 , unplacedBoxesSize:7
+currentRepackCostTime:2.3000000000000003s , currentRepackMaxTime:118.93s
+iter126		 Improve solution by repack 0.7480065842515453->0.7465069873689869 , unplacedBoxesSize:7
+currentRepackCostTime:2.331s , currentRepackMaxTime:118.93s
+iter164		 Improve solution by repack 0.7465069873689869->0.7355986294006988 , unplacedBoxesSize:7
+currentRepackCostTime:2.778s , currentRepackMaxTime:118.93s
+iter179		 Improve solution by repack 0.7355986294006988->0.7203466809997312 , unplacedBoxesSize:8
+currentRepackCostTime:2.949s , currentRepackMaxTime:118.93s
+iter192		 Improve solution by repack 0.7203466809997312->0.7172856758935771 , unplacedBoxesSize:10
+currentRepackCostTime:3.1270000000000002s , currentRepackMaxTime:118.93s
+iter194		 Improve solution by repack 0.7172856758935771->0.695284869658694 , unplacedBoxesSize:7
+currentRepackCostTime:3.1590000000000003s , currentRepackMaxTime:118.93s
+iter200		 Improve solution by repack 0.695284869658694->0.6788175221714593 , unplacedBoxesSize:7
+currentRepackCostTime:3.2880000000000003s , currentRepackMaxTime:118.93s
+iter269		 Improve solution by repack 0.6788175221714593->0.6774630475678581 , unplacedBoxesSize:7
+currentRepackCostTime:4.019s , currentRepackMaxTime:118.93s
+iter323		 Improve solution by repack 0.6774630475678581->0.67344531040043 , unplacedBoxesSize:9
+currentRepackCostTime:4.689s , currentRepackMaxTime:118.93s
+iter331		 Improve solution by repack 0.67344531040043->0.6442958882020962 , unplacedBoxesSize:8
+currentRepackCostTime:4.797s , currentRepackMaxTime:118.93s
+iter375		 Improve solution by repack 0.6442958882020962->0.6257350174684225 , unplacedBoxesSize:8
+currentRepackCostTime:5.351s , currentRepackMaxTime:118.93s
+iter387		 Improve solution by repack 0.6257350174684225->0.6212362268207471 , unplacedBoxesSize:8
+currentRepackCostTime:5.5280000000000005s , currentRepackMaxTime:118.93s
+iter395		 Improve solution by repack 0.6212362268207471->0.6187409298575651 , unplacedBoxesSize:9
+currentRepackCostTime:5.646s , currentRepackMaxTime:118.93s
+iter397		 Improve solution by repack 0.6187409298575651->0.6019046842246707 , unplacedBoxesSize:9
+currentRepackCostTime:5.673s , currentRepackMaxTime:118.93s
+iter407		 Improve solution by repack 0.6019046842246707->0.6013887395861328 , unplacedBoxesSize:9
+currentRepackCostTime:5.84s , currentRepackMaxTime:118.93s
+iter416		 Improve solution by repack 0.6013887395861328->0.597021633969363 , unplacedBoxesSize:8
+currentRepackCostTime:5.9990000000000006s , currentRepackMaxTime:118.93s
+iter423		 Improve solution by repack 0.597021633969363->0.5860306369255576 , unplacedBoxesSize:6
+currentRepackCostTime:6.11s , currentRepackMaxTime:118.93s
+iter450		 Improve solution by repack 0.5860306369255576->0.5833347890352055 , unplacedBoxesSize:5
+currentRepackCostTime:6.461s , currentRepackMaxTime:118.93s
+iter473		 Improve solution by repack 0.5833347890352055->0.5823337140553614 , unplacedBoxesSize:8
+currentRepackCostTime:6.705s , currentRepackMaxTime:118.93s
+iter477		 Improve solution by repack 0.5823337140553614->0.5666057511421662 , unplacedBoxesSize:7
+currentRepackCostTime:6.746s , currentRepackMaxTime:118.93s
+iter506		 Improve solution by repack 0.5666057511421662->0.5664183015318462 , unplacedBoxesSize:7
+currentRepackCostTime:7.128s , currentRepackMaxTime:118.93s
+iter581		 Improve solution by repack 0.5664183015318462->0.565668503090567 , unplacedBoxesSize:7
+currentRepackCostTime:8.08s , currentRepackMaxTime:118.93s
+iter584		 Improve solution by repack 0.565668503090567->0.5398313625369524 , unplacedBoxesSize:7
+currentRepackCostTime:8.125s , currentRepackMaxTime:118.93s
+iter632		 Improve solution by repack 0.5398313625369524->0.5352714324106423 , unplacedBoxesSize:6
+currentRepackCostTime:8.799s , currentRepackMaxTime:118.93s
+iter637		 Improve solution by repack 0.5352714324106423->0.5317727089492073 , unplacedBoxesSize:5
+currentRepackCostTime:8.865s , currentRepackMaxTime:118.93s
+iter644		 Improve solution by repack 0.5317727089492073->0.513440607363612 , unplacedBoxesSize:6
+currentRepackCostTime:8.944s , currentRepackMaxTime:118.93s
+iter658		 Improve solution by repack 0.513440607363612->0.507373689868315 , unplacedBoxesSize:5
+currentRepackCostTime:9.118s , currentRepackMaxTime:118.93s
+iter719		 Improve solution by repack 0.507373689868315->0.5039969094329481 , unplacedBoxesSize:6
+currentRepackCostTime:9.821s , currentRepackMaxTime:118.93s
+iter729		 Improve solution by repack 0.5039969094329481->0.5032000806234883 , unplacedBoxesSize:4
+currentRepackCostTime:9.939s , currentRepackMaxTime:118.93s
+iter781		 Improve solution by repack 0.5032000806234883->0.49036784466541256 , unplacedBoxesSize:8
+currentRepackCostTime:10.453s , currentRepackMaxTime:118.93s
+iter809		 Improve solution by repack 0.49036784466541256->0.488977089492072 , unplacedBoxesSize:8
+currentRepackCostTime:10.865s , currentRepackMaxTime:118.93s
+iter812		 Improve solution by repack 0.488977089492072->0.4839811206664875 , unplacedBoxesSize:8
+currentRepackCostTime:10.907s , currentRepackMaxTime:118.93s
+iter815		 Improve solution by repack 0.4839811206664875->0.4822144584789035 , unplacedBoxesSize:6
+currentRepackCostTime:10.967s , currentRepackMaxTime:118.93s
+iter829		 Improve solution by repack 0.4822144584789035->0.4816591642031712 , unplacedBoxesSize:6
+currentRepackCostTime:11.174s , currentRepackMaxTime:118.93s
+iter1058		 Improve solution by repack 0.4816591642031712->0.4788726148884708 , unplacedBoxesSize:5
+currentRepackCostTime:14.349s , currentRepackMaxTime:118.93s
+iter1077		 Improve solution by repack 0.4788726148884708->0.4760911045417898 , unplacedBoxesSize:5
+currentRepackCostTime:14.584s , currentRepackMaxTime:118.93s
+iter1872		 Improve solution by repack 0.4760911045417898->0.4723636119322763 , unplacedBoxesSize:5
+currentRepackCostTime:24.084s , currentRepackMaxTime:118.93s
+iter2072		 Improve solution by repack 0.4723636119322763->0.4721580220370868 , unplacedBoxesSize:4
+currentRepackCostTime:26.467000000000002s , currentRepackMaxTime:118.93s
+iter2277		 Improve solution by repack 0.4721580220370868->0.4624129938188659 , unplacedBoxesSize:5
+currentRepackCostTime:28.605s , currentRepackMaxTime:118.93s
+iter2294		 Improve solution by repack 0.4624129938188659->0.4602079414135985 , unplacedBoxesSize:7
+currentRepackCostTime:28.837s , currentRepackMaxTime:118.93s
+iter2461		 Improve solution by repack 0.4602079414135985->0.44551027949475946 , unplacedBoxesSize:6
+currentRepackCostTime:31.353s , currentRepackMaxTime:118.93s
+iter2464		 Improve solution by repack 0.44551027949475946->0.4423417764041924 , unplacedBoxesSize:6
+currentRepackCostTime:31.387s , currentRepackMaxTime:118.93s
+iter2581		 Improve solution by repack 0.4423417764041924->0.4419144719161516 , unplacedBoxesSize:6
+currentRepackCostTime:32.961s , currentRepackMaxTime:118.93s
+iter2724		 Improve solution by repack 0.4419144719161516->0.42524153453372754 , unplacedBoxesSize:5
+currentRepackCostTime:34.922000000000004s , currentRepackMaxTime:118.93s
+iter2837		 Improve solution by repack 0.42524153453372754->0.4194934157484547 , unplacedBoxesSize:6
+currentRepackCostTime:36.288000000000004s , currentRepackMaxTime:118.93s
+iter3084		 Improve solution by repack 0.4194934157484547->0.4187825853265251 , unplacedBoxesSize:6
+currentRepackCostTime:39.743s , currentRepackMaxTime:118.93s
+iter3134		 Improve solution by repack 0.4187825853265251->0.4157618919645257 , unplacedBoxesSize:5
+currentRepackCostTime:40.416000000000004s , currentRepackMaxTime:118.93s
+Selecting boards with low utilization for repacking...
+iter5		 Improve solution by repack 0.9614502149959687->0.4648683149690943 , unplacedBoxesSize:5
+currentRepackCostTime:54.607s , currentRepackMaxTime:118.93s
+iter21		 Improve solution by repack 0.4648683149690943->0.46369927438860525 , unplacedBoxesSize:5
+currentRepackCostTime:54.771s , currentRepackMaxTime:118.93s
+iter56		 Improve solution by repack 0.46369927438860525->0.4631369255576458 , unplacedBoxesSize:5
+currentRepackCostTime:55.193s , currentRepackMaxTime:118.93s
+iter61		 Improve solution by repack 0.4631369255576458->0.45514848159097016 , unplacedBoxesSize:6
+currentRepackCostTime:55.236000000000004s , currentRepackMaxTime:118.93s
+iter123		 Improve solution by repack 0.45514848159097016->0.45496103198065035 , unplacedBoxesSize:6
+currentRepackCostTime:56.015s , currentRepackMaxTime:118.93s
+iter136		 Improve solution by repack 0.45496103198065035->0.45493147003493684 , unplacedBoxesSize:6
+currentRepackCostTime:56.201s , currentRepackMaxTime:118.93s
+iter157		 Improve solution by repack 0.45493147003493684->0.4498777210427305 , unplacedBoxesSize:6
+currentRepackCostTime:56.469s , currentRepackMaxTime:118.93s
+iter178		 Improve solution by repack 0.4498777210427305->0.44372480515990326 , unplacedBoxesSize:5
+currentRepackCostTime:56.774s , currentRepackMaxTime:118.93s
+iter201		 Improve solution by repack 0.44372480515990326->0.44357833915614087 , unplacedBoxesSize:4
+currentRepackCostTime:57.06s , currentRepackMaxTime:118.93s
+iter209		 Improve solution by repack 0.44357833915614087->0.44242542327331363 , unplacedBoxesSize:4
+currentRepackCostTime:57.126s , currentRepackMaxTime:118.93s
+iter242		 Improve solution by repack 0.44242542327331363->0.4404037893039506 , unplacedBoxesSize:4
+currentRepackCostTime:57.445s , currentRepackMaxTime:118.93s
+iter248		 Improve solution by repack 0.4404037893039506->0.43946654125235146 , unplacedBoxesSize:4
+currentRepackCostTime:57.519s , currentRepackMaxTime:118.93s
+iter295		 Improve solution by repack 0.43946654125235146->0.4344047299113142 , unplacedBoxesSize:4
+currentRepackCostTime:57.982s , currentRepackMaxTime:118.93s
+iter329		 Improve solution by repack 0.4344047299113142->0.4290358774522978 , unplacedBoxesSize:4
+currentRepackCostTime:58.370000000000005s , currentRepackMaxTime:118.93s
+iter352		 Improve solution by repack 0.4290358774522978->0.42810870733673745 , unplacedBoxesSize:4
+currentRepackCostTime:58.589s , currentRepackMaxTime:118.93s
+iter394		 Improve solution by repack 0.42810870733673745->0.42776034668099977 , unplacedBoxesSize:4
+currentRepackCostTime:58.982s , currentRepackMaxTime:118.93s
+iter464		 Improve solution by repack 0.42776034668099977->0.4257807041117979 , unplacedBoxesSize:4
+currentRepackCostTime:59.758s , currentRepackMaxTime:118.93s
+iter574		 Improve solution by repack 0.4257807041117979->0.42521835528083846 , unplacedBoxesSize:4
+currentRepackCostTime:60.936s , currentRepackMaxTime:118.93s
+iter713		 Improve solution by repack 0.42521835528083846->0.4250309056705187 , unplacedBoxesSize:4
+currentRepackCostTime:62.371s , currentRepackMaxTime:118.93s
+iter802		 Improve solution by repack 0.4250309056705187->0.4240204246170385 , unplacedBoxesSize:5
+currentRepackCostTime:63.346000000000004s , currentRepackMaxTime:118.93s
+iter843		 Improve solution by repack 0.4240204246170385->0.41872682074711104 , unplacedBoxesSize:3
+currentRepackCostTime:63.81s , currentRepackMaxTime:118.93s
+iter881		 Improve solution by repack 0.41872682074711104->0.4175739048642838 , unplacedBoxesSize:3
+currentRepackCostTime:64.145s , currentRepackMaxTime:118.93s
+iter898		 Improve solution by repack 0.4175739048642838->0.4050110857296426 , unplacedBoxesSize:4
+currentRepackCostTime:64.299s , currentRepackMaxTime:118.93s
+iter984		 Improve solution by repack 0.4050110857296426->0.39597252082773443 , unplacedBoxesSize:6
+currentRepackCostTime:65.256s , currentRepackMaxTime:118.93s
+iter996		 Improve solution by repack 0.39597252082773443->0.38810501209352327 , unplacedBoxesSize:6
+currentRepackCostTime:65.462s , currentRepackMaxTime:118.93s
+iter1004		 Improve solution by repack 0.38810501209352327->0.38144383230314427 , unplacedBoxesSize:6
+currentRepackCostTime:65.563s , currentRepackMaxTime:118.93s
+iter1047		 Improve solution by repack 0.38144383230314427->0.3800006718624026 , unplacedBoxesSize:6
+currentRepackCostTime:66.25s , currentRepackMaxTime:118.93s
+iter1123		 Improve solution by repack 0.3800006718624026->0.3775497178177909 , unplacedBoxesSize:6
+currentRepackCostTime:67.441s , currentRepackMaxTime:118.93s
+iter1199		 Improve solution by repack 0.3775497178177909->0.37623757054555224 , unplacedBoxesSize:6
+currentRepackCostTime:68.578s , currentRepackMaxTime:118.93s
+iter1211		 Improve solution by repack 0.37623757054555224->0.3724388605213652 , unplacedBoxesSize:5
+currentRepackCostTime:68.761s , currentRepackMaxTime:118.93s
+iter1213		 Improve solution by repack 0.3724388605213652->0.371226820747111 , unplacedBoxesSize:4
+currentRepackCostTime:68.798s , currentRepackMaxTime:118.93s
+iter1587		 Improve solution by repack 0.371226820747111->0.37103937113679114 , unplacedBoxesSize:4
+currentRepackCostTime:72.961s , currentRepackMaxTime:118.93s
+Selecting boards with low utilization for repacking...
+iter6		 Improve solution by repack 0.9661797903789304->0.4572121069604945 , unplacedBoxesSize:6
+currentRepackCostTime:84.181s , currentRepackMaxTime:118.93s
+iter7		 Improve solution by repack 0.4572121069604945->0.4469185030905671 , unplacedBoxesSize:6
+currentRepackCostTime:84.191s , currentRepackMaxTime:118.93s
+iter18		 Improve solution by repack 0.4469185030905671->0.4436613141628595 , unplacedBoxesSize:6
+currentRepackCostTime:84.334s , currentRepackMaxTime:118.93s
+iter28		 Improve solution by repack 0.4436613141628595->0.4283223595807578 , unplacedBoxesSize:4
+currentRepackCostTime:84.477s , currentRepackMaxTime:118.93s
+iter29		 Improve solution by repack 0.4283223595807578->0.428134909970438 , unplacedBoxesSize:4
+currentRepackCostTime:84.494s , currentRepackMaxTime:118.93s
+iter278		 Improve solution by repack 0.428134909970438->0.42757256113947867 , unplacedBoxesSize:4
+currentRepackCostTime:87.19200000000001s , currentRepackMaxTime:118.93s
+iter290		 Improve solution by repack 0.42757256113947867->0.4273851115291588 , unplacedBoxesSize:4
+currentRepackCostTime:87.321s , currentRepackMaxTime:118.93s
+iter406		 Improve solution by repack 0.4273851115291588->0.42599435635581834 , unplacedBoxesSize:4
+currentRepackCostTime:88.547s , currentRepackMaxTime:118.93s
+iter709		 Improve solution by repack 0.42599435635581834->0.4246036011824778 , unplacedBoxesSize:4
+currentRepackCostTime:91.664s , currentRepackMaxTime:118.93s
+iter1510		 Improve solution by repack 0.4246036011824778->0.419953641494222 , unplacedBoxesSize:4
+currentRepackCostTime:100.178s , currentRepackMaxTime:118.93s
+iter1639		 Improve solution by repack 0.419953641494222->0.4158667024993281 , unplacedBoxesSize:6
+currentRepackCostTime:101.599s , currentRepackMaxTime:118.93s
+iter1649		 Improve solution by repack 0.4158667024993281->0.4118435904326794 , unplacedBoxesSize:6
+currentRepackCostTime:101.706s , currentRepackMaxTime:118.93s
+iter1720		 Improve solution by repack 0.4118435904326794->0.40535339962375705 , unplacedBoxesSize:5
+currentRepackCostTime:102.664s , currentRepackMaxTime:118.93s
+iter1872		 Improve solution by repack 0.40535339962375705->0.4011878527277613 , unplacedBoxesSize:5
+currentRepackCostTime:104.624s , currentRepackMaxTime:118.93s
+iter1957		 Improve solution by repack 0.4011878527277613->0.397949475947326 , unplacedBoxesSize:5
+currentRepackCostTime:105.705s , currentRepackMaxTime:118.93s
+iter2250		 Improve solution by repack 0.397949475947326->0.3915049717817791 , unplacedBoxesSize:5
+currentRepackCostTime:109.269s , currentRepackMaxTime:118.93s
+iter2923		 Improve solution by repack 0.3915049717817791->0.38916957807041114 , unplacedBoxesSize:5
+currentRepackCostTime:117.741s , currentRepackMaxTime:118.93s
+Global repack result: 43 -> 42 boards.

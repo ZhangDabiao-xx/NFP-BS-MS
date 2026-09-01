@@ -41,8 +41,8 @@ public class NFPToBeamSearchBridge {
 
     private static final Path DEFAULT_OUTPUT_DIR = Path.of("data", "NFPresult11");
     private static final Path DEFAULT_INPUT_DIR  = Path.of("data", "inputData");
-    private static final Path DEFAULT_BRIDGE_DIR = Path.of("data", "materialData10");
-    private static final Path DEFAULT_RESULT_DIR = Path.of("data", "packResult16");
+    private static final Path DEFAULT_BRIDGE_DIR = Path.of("data", "materialData11");
+    private static final Path DEFAULT_RESULT_DIR = Path.of("data", "packResult17");
 
     // ---------- 数据模型 ----------
 

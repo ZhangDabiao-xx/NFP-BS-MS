@@ -23,7 +23,7 @@ import java.util.Set;
 public class BatchBlockStitcher {
 
     private static final Path INPUT_DIRECTORY = Path.of("data", "inputData");
-    private static final Path OUTPUT_DIRECTORY = Path.of("data", "NFPresult11");
+    private static final Path OUTPUT_DIRECTORY = Path.of("data", "NFPresult12");
     private static final Gson GSON = new Gson();
 
     // 组合块外接矩形长边超过板材长度时无法进入第二阶段排样，因此这类候选不保留。
@@ -43,10 +43,12 @@ public class BatchBlockStitcher {
     // 使它们无法和小件高填充组合进行全局竞争。提高到 0.90 只影响候选优先级，
     // 不改变工件几何和最终排样约束。
     private static final double CRITICAL_CAVITY_ROOT_FILL_RATE = 0.90;
-    // 两个非 smallItem 工件进行普通外边界扩张时，低于该填充率的组合不保留。
+    // 两个非 smallItem 工件进行普通外边界扩张时，最终终止组合低于该填充率不保留。
     // 修改理由：Cabinet1 中多个填充率约 0.858 的大件组合虽然几何相接，
     // 但会消耗大件并扩大包络框，既没有填凹腔，也会降低后续矩形排样的可用性。
-    // 达到该阈值的互补大件组合仍可保留；真实凹腔插入不受此限制。
+    // 新规则只在分支无法继续扩展时执行；中间的 A+B 即使只有 0.80，
+    // 也必须先保留给下一层尝试 A+B+C。最终达到 0.96 的互补组合可以保留。
+    // 真实凹腔插入不受此限制。
     private static final double MIN_LARGE_OUTER_COMBINED_FILL_RATE = 0.90;
     // 机会成本只作为普通候选的调节项，不能抵消关键凹腔的直接填充收益。
     private static final double OPPORTUNITY_COST_WEIGHT = 0.35;
@@ -521,7 +523,21 @@ public class BatchBlockStitcher {
             return List.of(rootBlock);
         }
 
-        List<RootBeamState> topStates = selectBestRootStates(completedStates, candidateLimit);
+        // 修改原因：大件外扩质量必须在“无法继续扩展”的终止节点上判断，
+        // 不能在 tryBuildChildBlock() 创建 A+B 时提前过滤；否则 A+B 无法继续
+        // 生成后续的 A+B+C，即使最终可以达到 0.96 也会被错误丢失。
+        List<RootBeamState> validCompletedStates = new ArrayList<>();
+        for (RootBeamState state : completedStates) {
+            if (!isLowQualityLargeOuterBlock(state.block)) {
+                validCompletedStates.add(state);
+            }
+        }
+        if (validCompletedStates.isEmpty()) {
+            // 所有终止组合都是低质量大件外扩时，不输出无效组合，保留根工件单独处理。
+            return List.of(rootBlock);
+        }
+
+        List<RootBeamState> topStates = selectBestRootStates(validCompletedStates, candidateLimit);
         List<Block> result = new ArrayList<>(topStates.size());
         for (RootBeamState state : topStates) {
             result.add(state.block);
@@ -826,8 +842,8 @@ public class BatchBlockStitcher {
      * 对一个 NFP 候选执行 Block 级别的最终校验并创建子 Block。
      *
      * 功能说明：NFP 层负责候选轮廓、接触和并集连通性；本方法负责外层搜索特有的
-     * 工件旋转、板材尺寸和“低质量大件外扩”规则。将这些判断集中在这里，避免多个
-     * 调用路径使用不一致的过滤条件。
+     * 工件旋转、板材尺寸和单步几何收益校验。低质量大件外扩属于“最终组合”规则，
+     * 统一在 searchTopBlocksFromRoot() 的终止节点阶段判断，避免中间分支被提前截断。
      */
     private static Block tryBuildChildBlock(Block block,
                                              PolygonItem item,
@@ -862,12 +878,6 @@ public class BatchBlockStitcher {
             return null;
         }
 
-        if (isLowQualityLargeOuterExpansion(block, item, candidate)) {
-            // 修改理由：两个大件沿外边界相接虽然可能有正的 score2，但如果组合填充率
-            // 仍然很低，就会消耗本可用于大凹腔的工件并降低后续排样可用性。
-            return null;
-        }
-
         List<Point> nextCoordinates = combinePolygons(block.combinedCoordinates, candidate.translatedPolygonB);
         // 在创建新 Block 前过滤尺寸不合格候选，避免为无效候选执行并集边界计算。
         if (!fitsSecondStagePackingBounds(nextCoordinates, nextRotations)) {
@@ -883,24 +893,22 @@ public class BatchBlockStitcher {
     }
 
     /**
-     * 判断是否为低质量的“大件对大件”普通外扩。
+     * 判断最终终止块是否为低质量的大件外边界组合。
      *
-     * 真实凹腔插入和已经达到较高填充率的互补闭合不受此规则影响；包含 smallItem
-     * 的块也保留原有策略，避免把该规则扩大到小件填充路径。
+     * 功能说明：该方法只在根 Beam 的终止节点上调用。这样中间的 A+B 即使填充率较低，
+     * 仍可继续尝试 A+B+C；只有整条分支确实无法继续扩展且最终填充率仍低于阈值时，
+     * 才将其作为无效大件外扩过滤掉。
      */
-    private static boolean isLowQualityLargeOuterExpansion(
-            Block block,
-            PolygonItem item,
-            PolygonStitcher.StitchingCandidate candidate) {
-        if (item.smallItem
-                || candidate.cavityInsertion
-                || candidate.combinedFillRate >= MIN_LARGE_OUTER_COMBINED_FILL_RATE
-                || block.placements.isEmpty()) {
+    private static boolean isLowQualityLargeOuterBlock(Block block) {
+        if (block == null
+                || block.memberCount() < 2
+                || block.fillRate >= MIN_LARGE_OUTER_COMBINED_FILL_RATE) {
             return false;
         }
 
         for (Block.ItemPlacement placement : block.placements) {
-            if (placement.item.smallItem) {
+            if (placement.item.smallItem || placement.candidateCavityInsertion) {
+                // 含小件或真实凹腔插入的块不属于“大件普通外扩”规则的处理范围。
                 return false;
             }
         }

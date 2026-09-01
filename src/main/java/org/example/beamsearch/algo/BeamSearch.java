@@ -19,10 +19,10 @@ public class BeamSearch {
     private static final int MAX_NO_IMPROVEMENT_SWEEPS = 3;
 
     /**
-     * 优先件板材插入普通件时的集束宽度。
-     * 每个搜索层最多保留 4 个当前利用率较高的候选状态。
+     * 优先件板材插入普通件时的初始集束宽度。
+     * 后续搜索阶段会在此基础上按 2 倍逐步扩大，而不是固定使用该值。
      */
-    private static final int ORDINARY_INSERTION_BEAM_WIDTH = 4;
+    private static final int ORDINARY_INSERTION_INITIAL_BEAM_WIDTH = 4;
 
     private long finishTime = 0;
 
@@ -182,9 +182,10 @@ public class BeamSearch {
 
         GeneralBlock[] availableBlocks = new BlockGenerator(inst)
                 .generateSingleBlock(true, allowedTypes);
-        // 修改原因：原候选顺序按 scoreVolume 排列，不等于普通件实际面积
-        // 降序。插入阶段先按实际矩形面积排序，减少逐个筛选候选的开销。
-        sortInsertionBlocksByArea(availableBlocks);
+        // 修改原因：原候选顺序按 scoreVolume 排列，且此前仅按实际面积排序，
+        // 都不能体现“大件优先且兼顾其相对板材尺寸”的选择要求。插入阶段
+        // 改用公式 S_i=(w_i*h_i)*(1+w_i^2/W^2+h_i^2/H^2) 降序排列。
+        sortInsertionBlocksByPriorityScore(availableBlocks);
 
         // 修改原因：原实现按 seedBoards 的输入顺序处理 Sp，无法优先使用
         // 剩余空间更大的板材。这里每次从未处理板材中选取最大空隙所在的板材。
@@ -218,10 +219,13 @@ public class BeamSearch {
             long remainingTime = deadlineMillis - System.currentTimeMillis();
             int boardTime = (int) Math.max(1, remainingTime / Math.max(1, remainingBoards));
 
-            // 插入阶段使用固定宽度的集束搜索。每个搜索状态都优先选择
-            // 自己当前面积最大的剩余空间，并从面积最大的普通件中保留
-            // 4 个可行候选，避免单一路径的贪心选择陷入局部最优。
-            State endState = searchInsertionBoard(initialState, boardTime);
+            // 插入阶段使用动态宽度的集束搜索。初始宽度为 4，根节点
+            // 生成 4*4 个候选，之后每层保留 4 个状态；完成当前宽度
+            // 搜索后再扩大为 8、16……，以兼顾搜索质量和求解时间。
+            State endState = searchInsertionBoard(
+                    initialState,
+                    boardTime,
+                    ORDINARY_INSERTION_INITIAL_BEAM_WIDTH);
             Solution solution = endState.toSolution();
             result.solutions.add(solution);
             result.boardStates.add(createBoardStateSnapshot(solution));
@@ -312,66 +316,112 @@ public class BeamSearch {
     }
 
     /**
-     * 使用固定宽度 4 的集束搜索向一张已有优先件板材中插入普通件。
+     * 使用动态宽度的集束搜索向一张已有优先件板材中插入普通件。
      *
      * <p>该方法与普通新板求解分开，避免改变原有求解入口的搜索宽度。
-     * State 使用的 SpaceManager 采用面积降序比较器，因此每个分支都会
-     * 优先处理自己的最大剩余空隙；blockSearch 则从已按普通件实际面积
-     * 排序的候选中取前 4 个可行工件进行扩展。</p>
+     * 对每个 beamWidth 阶段，根节点最多生成 beamWidth*beamWidth 个
+     * 候选，每层最终保留 beamWidth 个状态；阶段完成后将宽度扩大为
+     * 原来的两倍。候选状态使用普通件实际装载面积作为最终比较依据。</p>
+     *
+     * @param initialBeamWidth 动态搜索的初始宽度
      */
-    private State searchInsertionBoard(State initialState, int timeLimit) {
+    private State searchInsertionBoard(State initialState,
+                                       int timeLimit,
+                                       int initialBeamWidth) {
         long startTime = System.currentTimeMillis();
         finishTime = startTime + Math.max(1, timeLimit);
 
-        Queue<Node> nodes = new LinkedList<>();
-        Node root = new Node();
-        root.state = initialState;
+        if (initialBeamWidth <= 0) {
+            // 防止错误参数造成无效的宽度循环，保持初始状态可用。
+            return initialState;
+        }
+
+        // availableBlocks 表示当前普通件候选（含不同方向）的数量，
+        // 是本搜索树实际可分支的数量，比普通件总件数更适合作为宽度上限。
+        int availableBlockCount = initialState.availableBlocks.length;
+        if (availableBlockCount == 0) {
+            return initialState;
+        }
+
+        Node bestNode = new Node();
+        bestNode.state = initialState;
         // 固定优先件不计入分支差异，普通件已装载面积作为初始评分。
-        root.score = initialState.getPackedVolume();
-        nodes.add(root);
+        bestNode.score = initialState.getPackedVolume();
 
-        Node bestNode = root;
-        while (!nodes.isEmpty() && System.currentTimeMillis() < finishTime) {
-            int currentLevelSize = nodes.size();
-            TreeSet<Node> offspring = new TreeSet<>();
+        // 参考 solve() 的动态宽度策略：每个宽度阶段独立从根节点开始，
+        // 阶段内部保留 beamWidth 个状态，完成后再扩大宽度。
+        for (int beamWidth = initialBeamWidth;
+             beamWidth > 0 && System.currentTimeMillis() < finishTime;
+             beamWidth <<= 1) {
 
-            for (int i = 0; i < currentLevelSize; i++) {
-                if (System.currentTimeMillis() >= finishTime) {
-                    break;
+            // 当保留宽度已经超过候选数量的约三分之一时，继续扩大宽度
+            // 会显著增加计算量，而候选差异有限，因此结束宽度扩展。
+            // 初始宽度无论如何都执行一次，保证小规模案例仍有基本搜索。
+            if (beamWidth > availableBlockCount / 3
+                    && beamWidth != initialBeamWidth) {
+                break;
+            }
+
+            Queue<Node> nodes = new LinkedList<>();
+            Node root = new Node();
+            root.state = initialState;
+            root.score = initialState.getPackedVolume();
+            nodes.add(root);
+
+            while (!nodes.isEmpty() && System.currentTimeMillis() < finishTime) {
+                int currentLevelSize = nodes.size();
+                TreeSet<Node> offspring = new TreeSet<>();
+
+                for (int i = 0; i < currentLevelSize; i++) {
+                    if (System.currentTimeMillis() >= finishTime) {
+                        break;
+                    }
+
+                    Node currentNode = nodes.poll();
+                    ArrayList<Node> children = new ArrayList<>();
+                    // 插入 Sp 时初始 State 已经包含固定的优先件，不能再用
+                    // countPlacedBlock()==0 判断根节点；按当前阶段创建的 root
+                    // 对象识别根节点，保证根节点始终生成 w*w 个候选。
+                    int childCount = currentNode == root
+                            ? beamWidth * beamWidth
+                            : beamWidth;
+                    blockSearch(currentNode.state, childCount, children, 1);
+
+                    if (children.isEmpty()) {
+                        // 当前状态没有可行普通件，使用实际装载面积更新
+                        // 当前宽度阶段和全局搜索的最佳结果。
+                        if (currentNode.state.getPackedVolume()
+                                >= bestNode.state.getPackedVolume()) {
+                            bestNode = currentNode;
+                        }
+                    } else {
+                        for (Node child : children) {
+                            // 修改原因：如果当前板材的时间片在搜索树到达
+                            // 叶节点前耗尽，不能丢弃已经找到的可行插入结果。
+                            // 这里保存实际已装载普通件面积最大的中间状态，
+                            // 作为时间耗尽时的安全返回结果。
+                            if (child.state.getPackedVolume()
+                                    > bestNode.state.getPackedVolume()) {
+                                bestNode = child;
+                            }
+                            // 每层全局只保留 beamWidth 个候选状态。
+                            update(offspring, beamWidth, child);
+                        }
+                    }
                 }
 
-                Node currentNode = nodes.poll();
-                ArrayList<Node> children = new ArrayList<>();
-                blockSearch(
-                        currentNode.state,
-                        ORDINARY_INSERTION_BEAM_WIDTH,
-                        children,
-                        1);
-
-                if (children.isEmpty()) {
-                    // 当前状态已经没有可行普通件，使用实际已装载面积
-                    // 更新最终候选。
-                    if (currentNode.state.getPackedVolume()
-                            >= bestNode.state.getPackedVolume()) {
-                        bestNode = currentNode;
-                    }
-                } else {
-                    for (Node child : children) {
-                        // 修改原因：如果当前板材的时间片在搜索到叶节点前
-                        // 耗尽，不能因为 bestNode 尚未到叶节点就丢弃已找到
-                        // 的可行插入结果。这里保留实际已装载普通件面积最大
-                        // 的中间状态作为超时兜底结果。
-                        if (child.state.getPackedVolume()
-                                > bestNode.state.getPackedVolume()) {
-                            bestNode = child;
-                        }
-                        update(offspring, ORDINARY_INSERTION_BEAM_WIDTH, child);
-                    }
+                for (Node node : offspring) {
+                    nodes.add(node);
                 }
             }
 
-            for (Node node : offspring) {
-                nodes.add(node);
+            // 当前宽度已经覆盖了全部候选时，没有必要继续扩大。
+            if (beamWidth >= availableBlockCount) {
+                break;
+            }
+            // 防止极大候选数量导致左移溢出后重新进入负数循环。
+            if (beamWidth > Integer.MAX_VALUE / 2) {
+                break;
             }
         }
 
@@ -396,17 +446,24 @@ public class BeamSearch {
     }
 
     /**
-     * 按普通件实际矩形面积降序排列插入候选。
+     * 按论文公式的优先级分数降序排列插入候选。
      *
-     * <p>插入阶段的 GeneralBlock 只表示一个普通件及其一个方向，
-     * boxVolume 就是该普通件的实际面积。尺寸面积只作为同面积时的
-     * 次级排序，保证排序稳定且优先尝试覆盖范围较大的方向。</p>
+     * <p>对于一个普通件方向：</p>
+     * <pre>
+     * S_i = (w_i * h_i) * phi_i
+     * phi_i = 1 + w_i^2 / W^2 + h_i^2 / H^2
+     * </pre>
+     * 这里使用 GeneralBlock 的方向外接矩形面积和当前板材尺寸计算公式。
+     * blockVolume 就是 w_i*h_i；boxVolume 仍保留给最终装载面积统计，避免
+     * 将排序指标和排样结果统计混用。</p>
      */
-    private void sortInsertionBlocksByArea(GeneralBlock[] blocks) {
+    private void sortInsertionBlocksByPriorityScore(GeneralBlock[] blocks) {
         Arrays.sort(blocks, new Comparator<GeneralBlock>() {
             @Override
             public int compare(GeneralBlock left, GeneralBlock right) {
-                int result = Double.compare(right.boxVolume, left.boxVolume);
+                int result = Double.compare(
+                        insertionPriorityScore(right),
+                        insertionPriorityScore(left));
                 if (result != 0) {
                     return result;
                 }
@@ -416,6 +473,18 @@ public class BeamSearch {
                 return Long.compare(rightBoundingArea, leftBoundingArea);
             }
         });
+    }
+
+    /** 计算一个普通件方向的优先级分数，分数越大越优先尝试。 */
+    private double insertionPriorityScore(GeneralBlock block) {
+        double normalizedLength = (double) block.length / inst.length;
+        double normalizedWidth = (double) block.width / inst.width;
+        double shapeCoefficient = 1
+                + normalizedLength * normalizedLength
+                + normalizedWidth * normalizedWidth;
+        // 修改原因：公式的基准项明确是当前方向的 w_i*h_i，使用
+        // blockVolume 可避免把实际装载面积字段误作为尺寸面积。
+        return block.blockVolume * shapeCoefficient;
     }
 
     /**

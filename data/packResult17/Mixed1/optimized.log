@@ -1,0 +1,2043 @@
+total number of nestable workpieces：278
+Start priority-first combined packing.
+Start nesting on the 1th large board, remaining blocks count: 121
+Utilization of the 1th large board: 98.59647944101049, Time taken for this board: 0.889s
+-------------------------------------------------------------------
+Start nesting on the 2th large board, remaining blocks count: 119
+Utilization of the 2th large board: 97.58546089760819, Time taken for this board: 1.6520000000000001s
+-------------------------------------------------------------------
+Start nesting on the 3th large board, remaining blocks count: 113
+Utilization of the 3th large board: 98.3319000268745, Time taken for this board: 2.345s
+-------------------------------------------------------------------
+Start nesting on the 4th large board, remaining blocks count: 104
+Utilization of the 4th large board: 96.70558989518946, Time taken for this board: 2.918s
+-------------------------------------------------------------------
+Start nesting on the 5th large board, remaining blocks count: 99
+Utilization of the 5th large board: 96.05300994356355, Time taken for this board: 3.483s
+-------------------------------------------------------------------
+Start nesting on the 6th large board, remaining blocks count: 93
+Utilization of the 6th large board: 95.45498521902715, Time taken for this board: 3.871s
+-------------------------------------------------------------------
+Start nesting on the 7th large board, remaining blocks count: 89
+Utilization of the 7th large board: 95.10399892502016, Time taken for this board: 4.233s
+-------------------------------------------------------------------
+Start nesting on the 8th large board, remaining blocks count: 85
+Utilization of the 8th large board: 95.11818059661381, Time taken for this board: 4.62s
+-------------------------------------------------------------------
+Start nesting on the 9th large board, remaining blocks count: 78
+Utilization of the 9th large board: 92.20465466272508, Time taken for this board: 4.873s
+-------------------------------------------------------------------
+Start nesting on the 10th large board, remaining blocks count: 74
+Utilization of the 10th large board: 99.13685837140552, Time taken for this board: 5.151s
+-------------------------------------------------------------------
+Start nesting on the 11th large board, remaining blocks count: 68
+Utilization of the 11th large board: 99.07393845740393, Time taken for this board: 5.39s
+-------------------------------------------------------------------
+Start nesting on the 12th large board, remaining blocks count: 60
+Utilization of the 12th large board: 97.80751142166083, Time taken for this board: 5.48s
+-------------------------------------------------------------------
+Start nesting on the 13th large board, remaining blocks count: 52
+Utilization of the 13th large board: 96.59312012899758, Time taken for this board: 5.554s
+-------------------------------------------------------------------
+Start nesting on the 14th large board, remaining blocks count: 45
+Utilization of the 14th large board: 94.75819672131148, Time taken for this board: 5.612s
+-------------------------------------------------------------------
+Start nesting on the 15th large board, remaining blocks count: 41
+Utilization of the 15th large board: 92.75120935232465, Time taken for this board: 5.662s
+-------------------------------------------------------------------
+Start nesting on the 16th large board, remaining blocks count: 37
+Utilization of the 16th large board: 92.5679924751411, Time taken for this board: 5.7090000000000005s
+-------------------------------------------------------------------
+Start nesting on the 17th large board, remaining blocks count: 33
+Utilization of the 17th large board: 91.87033055630206, Time taken for this board: 5.747s
+-------------------------------------------------------------------
+Start nesting on the 18th large board, remaining blocks count: 27
+Utilization of the 18th large board: 91.76740123622682, Time taken for this board: 5.7620000000000005s
+-------------------------------------------------------------------
+Start nesting on the 19th large board, remaining blocks count: 25
+Utilization of the 19th large board: 91.61791185165278, Time taken for this board: 5.776s
+-------------------------------------------------------------------
+Start nesting on the 20th large board, remaining blocks count: 23
+Utilization of the 20th large board: 90.35366836871809, Time taken for this board: 5.788s
+-------------------------------------------------------------------
+Start nesting on the 21th large board, remaining blocks count: 17
+Utilization of the 21th large board: 89.7109647944101, Time taken for this board: 5.796s
+-------------------------------------------------------------------
+Start nesting on the 22th large board, remaining blocks count: 15
+Utilization of the 22th large board: 86.59681537221176, Time taken for this board: 5.798s
+-------------------------------------------------------------------
+Start nesting on the 23th large board, remaining blocks count: 11
+Utilization of the 23th large board: 87.32712980381618, Time taken for this board: 5.801s
+-------------------------------------------------------------------
+Start nesting on the 24th large board, remaining blocks count: 7
+Utilization of the 24th large board: 85.62321956463316, Time taken for this board: 5.801s
+-------------------------------------------------------------------
+Start nesting on the 25th large board, remaining blocks count: 7
+Utilization of the 25th large board: 81.91910776672937, Time taken for this board: 5.8020000000000005s
+-------------------------------------------------------------------
+Start nesting on the 26th large board, remaining blocks count: 3
+Utilization of the 26th large board: 42.56839559258264, Time taken for this board: 5.8020000000000005s
+-------------------------------------------------------------------
+Start global repack optimization for 26 boards, time=430.829s.
+Start improving solution by repacking.
+Selecting boards with low utilization for repacking...
+iter2		 Improve solution by repack 0.42568395592582636->0.41388873958613276 , unplacedBoxesSize:1
+currentRepackCostTime:0.015s , currentRepackMaxTime:430.829s
+iter28		 Improve solution by repack 0.41388873958613276->0.40839895189465203 , unplacedBoxesSize:3
+currentRepackCostTime:0.109s , currentRepackMaxTime:430.829s
+iter96		 Improve solution by repack 0.40839895189465203->0.39326122010212305 , unplacedBoxesSize:1
+currentRepackCostTime:0.445s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter5		 Improve solution by repack 0.8562321956463316->0.848529965063155 , unplacedBoxesSize:3
+currentRepackCostTime:2.696s , currentRepackMaxTime:430.829s
+iter6		 Improve solution by repack 0.848529965063155->0.8222876914807847 , unplacedBoxesSize:4
+currentRepackCostTime:2.7s , currentRepackMaxTime:430.829s
+iter9		 Improve solution by repack 0.8222876914807847->0.39326122010212305 , unplacedBoxesSize:1
+currentRepackCostTime:2.715s , currentRepackMaxTime:430.829s
+iter32		 Improve solution by repack 0.39326122010212305->0.3900859983875303 , unplacedBoxesSize:3
+currentRepackCostTime:2.828s , currentRepackMaxTime:430.829s
+iter33		 Improve solution by repack 0.3900859983875303->0.38628325718892775 , unplacedBoxesSize:4
+currentRepackCostTime:2.839s , currentRepackMaxTime:430.829s
+iter37		 Improve solution by repack 0.38628325718892775->0.3829142031711905 , unplacedBoxesSize:4
+currentRepackCostTime:2.859s , currentRepackMaxTime:430.829s
+iter39		 Improve solution by repack 0.3829142031711905->0.37121808653587746 , unplacedBoxesSize:3
+currentRepackCostTime:2.867s , currentRepackMaxTime:430.829s
+iter40		 Improve solution by repack 0.37121808653587746->0.3559822628325719 , unplacedBoxesSize:3
+currentRepackCostTime:2.872s , currentRepackMaxTime:430.829s
+iter50		 Improve solution by repack 0.3559822628325719->0.355235151840903 , unplacedBoxesSize:3
+currentRepackCostTime:2.935s , currentRepackMaxTime:430.829s
+iter52		 Improve solution by repack 0.355235151840903->0.3505213652244021 , unplacedBoxesSize:3
+currentRepackCostTime:2.949s , currentRepackMaxTime:430.829s
+iter66		 Improve solution by repack 0.3505213652244021->0.31865493147003493 , unplacedBoxesSize:3
+currentRepackCostTime:3.0180000000000002s , currentRepackMaxTime:430.829s
+iter88		 Improve solution by repack 0.31865493147003493->0.31147944101048103 , unplacedBoxesSize:3
+currentRepackCostTime:3.1390000000000002s , currentRepackMaxTime:430.829s
+iter95		 Improve solution by repack 0.31147944101048103->0.30904729911314166 , unplacedBoxesSize:3
+currentRepackCostTime:3.19s , currentRepackMaxTime:430.829s
+iter97		 Improve solution by repack 0.30904729911314166->0.2999435635581833 , unplacedBoxesSize:3
+currentRepackCostTime:3.203s , currentRepackMaxTime:430.829s
+iter121		 Improve solution by repack 0.2999435635581833->0.29550389680193495 , unplacedBoxesSize:3
+currentRepackCostTime:3.342s , currentRepackMaxTime:430.829s
+iter134		 Improve solution by repack 0.29550389680193495->0.24844665412523514 , unplacedBoxesSize:2
+currentRepackCostTime:3.4050000000000002s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter2		 Improve solution by repack 0.8402069336199945->0.8277774791722655 , unplacedBoxesSize:2
+currentRepackCostTime:6.053s , currentRepackMaxTime:430.829s
+iter47		 Improve solution by repack 0.8277774791722655->0.24844665412523514 , unplacedBoxesSize:2
+currentRepackCostTime:6.204s , currentRepackMaxTime:430.829s
+iter253		 Improve solution by repack 0.24844665412523514->0.217176834184359 , unplacedBoxesSize:2
+currentRepackCostTime:7.332s , currentRepackMaxTime:430.829s
+iter254		 Improve solution by repack 0.217176834184359->0.1884748723461435 , unplacedBoxesSize:2
+currentRepackCostTime:7.335s , currentRepackMaxTime:430.829s
+iter257		 Improve solution by repack 0.1884748723461435->0.1867824509540446 , unplacedBoxesSize:2
+currentRepackCostTime:7.356s , currentRepackMaxTime:430.829s
+iter268		 Improve solution by repack 0.1867824509540446->0.17700920451491536 , unplacedBoxesSize:2
+currentRepackCostTime:7.407s , currentRepackMaxTime:430.829s
+iter290		 Improve solution by repack 0.17700920451491536->0.17667125772641765 , unplacedBoxesSize:2
+currentRepackCostTime:7.524s , currentRepackMaxTime:430.829s
+iter331		 Improve solution by repack 0.17667125772641765->0.17605280838484277 , unplacedBoxesSize:2
+currentRepackCostTime:7.752s , currentRepackMaxTime:430.829s
+iter343		 Improve solution by repack 0.17605280838484277->0.17143912926632623 , unplacedBoxesSize:4
+currentRepackCostTime:7.827s , currentRepackMaxTime:430.829s
+iter344		 Improve solution by repack 0.17143912926632623->0.16676766998118783 , unplacedBoxesSize:1
+currentRepackCostTime:7.835s , currentRepackMaxTime:430.829s
+iter591		 Improve solution by repack 0.16676766998118783->0.16456866433754366 , unplacedBoxesSize:1
+currentRepackCostTime:9.033s , currentRepackMaxTime:430.829s
+iter627		 Improve solution by repack 0.16456866433754366->0.16363343187315238 , unplacedBoxesSize:3
+currentRepackCostTime:9.207s , currentRepackMaxTime:430.829s
+iter630		 Improve solution by repack 0.16363343187315238->0.13646331631281913 , unplacedBoxesSize:1
+currentRepackCostTime:9.232s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter1		 Improve solution by repack 0.9119840096748186->0.9113511152915882 , unplacedBoxesSize:8
+currentRepackCostTime:10.932s , currentRepackMaxTime:430.829s
+iter2		 Improve solution by repack 0.9113511152915882->0.8837489922063961 , unplacedBoxesSize:5
+currentRepackCostTime:10.94s , currentRepackMaxTime:430.829s
+iter11		 Improve solution by repack 0.8837489922063961->0.19826256382692825 , unplacedBoxesSize:2
+currentRepackCostTime:10.98s , currentRepackMaxTime:430.829s
+iter13		 Improve solution by repack 0.19826256382692825->0.17603164471916152 , unplacedBoxesSize:2
+currentRepackCostTime:10.988s , currentRepackMaxTime:430.829s
+iter16		 Improve solution by repack 0.17603164471916152->0.13646331631281913 , unplacedBoxesSize:1
+currentRepackCostTime:11.003s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter1		 Improve solution by repack 0.9100641628594464->0.9009957000806235 , unplacedBoxesSize:6
+currentRepackCostTime:14.195s , currentRepackMaxTime:430.829s
+iter2		 Improve solution by repack 0.9009957000806235->0.8696089760816984 , unplacedBoxesSize:5
+currentRepackCostTime:14.201s , currentRepackMaxTime:430.829s
+iter4		 Improve solution by repack 0.8696089760816984->0.8639807847352862 , unplacedBoxesSize:5
+currentRepackCostTime:14.211s , currentRepackMaxTime:430.829s
+iter17		 Improve solution by repack 0.8639807847352862->0.1796069604944907 , unplacedBoxesSize:2
+currentRepackCostTime:14.269s , currentRepackMaxTime:430.829s
+iter19		 Improve solution by repack 0.1796069604944907->0.17626108572964258 , unplacedBoxesSize:1
+currentRepackCostTime:14.278s , currentRepackMaxTime:430.829s
+iter22		 Improve solution by repack 0.17626108572964258->0.16345606019887127 , unplacedBoxesSize:1
+currentRepackCostTime:14.291s , currentRepackMaxTime:430.829s
+iter23		 Improve solution by repack 0.16345606019887127->0.15721580220370868 , unplacedBoxesSize:2
+currentRepackCostTime:14.294s , currentRepackMaxTime:430.829s
+iter24		 Improve solution by repack 0.15721580220370868->0.13646331631281913 , unplacedBoxesSize:1
+currentRepackCostTime:14.299s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter1		 Improve solution by repack 0.8714391292663263->0.13646331631281913 , unplacedBoxesSize:1
+currentRepackCostTime:17.47s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter7		 Improve solution by repack 0.9176740123622682->0.8955925826390755 , unplacedBoxesSize:5
+currentRepackCostTime:20.797s , currentRepackMaxTime:430.829s
+iter11		 Improve solution by repack 0.8955925826390755->0.1796069604944907 , unplacedBoxesSize:2
+currentRepackCostTime:20.812s , currentRepackMaxTime:430.829s
+iter22		 Improve solution by repack 0.1796069604944907->0.1705032249395324 , unplacedBoxesSize:2
+currentRepackCostTime:20.86s , currentRepackMaxTime:430.829s
+iter32		 Improve solution by repack 0.1705032249395324->0.16676766998118783 , unplacedBoxesSize:1
+currentRepackCostTime:20.922s , currentRepackMaxTime:430.829s
+iter41		 Improve solution by repack 0.16676766998118783->0.15039774254232732 , unplacedBoxesSize:1
+currentRepackCostTime:20.961000000000002s , currentRepackMaxTime:430.829s
+iter52		 Improve solution by repack 0.15039774254232732->0.14839760816984682 , unplacedBoxesSize:3
+currentRepackCostTime:21.024s , currentRepackMaxTime:430.829s
+iter61		 Improve solution by repack 0.14839760816984682->0.13607699543133567 , unplacedBoxesSize:2
+currentRepackCostTime:21.086000000000002s , currentRepackMaxTime:430.829s
+iter104		 Improve solution by repack 0.13607699543133567->0.13177506046761622 , unplacedBoxesSize:2
+currentRepackCostTime:21.35s , currentRepackMaxTime:430.829s
+iter117		 Improve solution by repack 0.13177506046761622->0.12684493415748455 , unplacedBoxesSize:3
+currentRepackCostTime:21.423000000000002s , currentRepackMaxTime:430.829s
+iter121		 Improve solution by repack 0.12684493415748455->0.11524254232733136 , unplacedBoxesSize:2
+currentRepackCostTime:21.45s , currentRepackMaxTime:430.829s
+iter216		 Improve solution by repack 0.11524254232733136->0.10702902445579145 , unplacedBoxesSize:1
+currentRepackCostTime:21.988s , currentRepackMaxTime:430.829s
+iter262		 Improve solution by repack 0.10702902445579145->0.10459688255845202 , unplacedBoxesSize:1
+currentRepackCostTime:22.253s , currentRepackMaxTime:430.829s
+iter350		 Improve solution by repack 0.10459688255845202->0.09742139209889815 , unplacedBoxesSize:1
+currentRepackCostTime:22.712s , currentRepackMaxTime:430.829s
+iter399		 Improve solution by repack 0.09742139209889815->0.08387798978769148 , unplacedBoxesSize:1
+currentRepackCostTime:22.974s , currentRepackMaxTime:430.829s
+iter427		 Improve solution by repack 0.08387798978769148->0.08218556839559259 , unplacedBoxesSize:1
+currentRepackCostTime:23.134s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter3		 Improve solution by repack 0.9119195108841709->0.8959849502821823 , unplacedBoxesSize:7
+currentRepackCostTime:26.084s , currentRepackMaxTime:430.829s
+iter20		 Improve solution by repack 0.8959849502821823->0.16456866433754366 , unplacedBoxesSize:1
+currentRepackCostTime:26.194s , currentRepackMaxTime:430.829s
+iter61		 Improve solution by repack 0.16456866433754366->0.16345606019887127 , unplacedBoxesSize:1
+currentRepackCostTime:26.465s , currentRepackMaxTime:430.829s
+iter151		 Improve solution by repack 0.16345606019887127->0.10459688255845202 , unplacedBoxesSize:1
+currentRepackCostTime:26.946s , currentRepackMaxTime:430.829s
+iter208		 Improve solution by repack 0.10459688255845202->0.10302002149959688 , unplacedBoxesSize:1
+currentRepackCostTime:27.243000000000002s , currentRepackMaxTime:430.829s
+iter211		 Improve solution by repack 0.10302002149959688->0.08218556839559259 , unplacedBoxesSize:1
+currentRepackCostTime:27.258s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter2		 Improve solution by repack 0.9183149690943294->0.8966447191615157 , unplacedBoxesSize:8
+currentRepackCostTime:29.703s , currentRepackMaxTime:430.829s
+iter12		 Improve solution by repack 0.8966447191615157->0.08218556839559259 , unplacedBoxesSize:1
+currentRepackCostTime:29.771s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter2		 Improve solution by repack 0.9187033055630207->0.14991400161246976 , unplacedBoxesSize:2
+currentRepackCostTime:33.312s , currentRepackMaxTime:430.829s
+iter42		 Improve solution by repack 0.14991400161246976->0.14905401773716742 , unplacedBoxesSize:2
+currentRepackCostTime:33.585s , currentRepackMaxTime:430.829s
+iter48		 Improve solution by repack 0.14905401773716742->0.12907954850846545 , unplacedBoxesSize:2
+currentRepackCostTime:33.628s , currentRepackMaxTime:430.829s
+iter242		 Improve solution by repack 0.12907954850846545->0.10702902445579145 , unplacedBoxesSize:1
+currentRepackCostTime:34.777s , currentRepackMaxTime:430.829s
+iter287		 Improve solution by repack 0.10702902445579145->0.10459688255845202 , unplacedBoxesSize:1
+currentRepackCostTime:35.03s , currentRepackMaxTime:430.829s
+iter369		 Improve solution by repack 0.10459688255845202->0.09742139209889815 , unplacedBoxesSize:1
+currentRepackCostTime:35.515s , currentRepackMaxTime:430.829s
+iter422		 Improve solution by repack 0.09742139209889815->0.07995095404461167 , unplacedBoxesSize:2
+currentRepackCostTime:35.787s , currentRepackMaxTime:430.829s
+iter518		 Improve solution by repack 0.07995095404461167->0.07122278957269551 , unplacedBoxesSize:1
+currentRepackCostTime:36.369s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter1		 Improve solution by repack 0.9140069873689869->0.9047399892502015 , unplacedBoxesSize:10
+currentRepackCostTime:39.075s , currentRepackMaxTime:430.829s
+iter5		 Improve solution by repack 0.9047399892502015->0.9021284600913733 , unplacedBoxesSize:11
+currentRepackCostTime:39.108000000000004s , currentRepackMaxTime:430.829s
+iter6		 Improve solution by repack 0.9021284600913733->0.9019510884170923 , unplacedBoxesSize:9
+currentRepackCostTime:39.114000000000004s , currentRepackMaxTime:430.829s
+iter12		 Improve solution by repack 0.9019510884170923->0.9003937113679119 , unplacedBoxesSize:9
+currentRepackCostTime:39.154s , currentRepackMaxTime:430.829s
+iter19		 Improve solution by repack 0.9003937113679119->0.8934560601988712 , unplacedBoxesSize:9
+currentRepackCostTime:39.202s , currentRepackMaxTime:430.829s
+iter28		 Improve solution by repack 0.8934560601988712->0.12907954850846545 , unplacedBoxesSize:2
+currentRepackCostTime:39.259s , currentRepackMaxTime:430.829s
+iter59		 Improve solution by repack 0.12907954850846545->0.11022037086804623 , unplacedBoxesSize:1
+currentRepackCostTime:39.478s , currentRepackMaxTime:430.829s
+iter76		 Improve solution by repack 0.11022037086804623->0.10216003762429454 , unplacedBoxesSize:1
+currentRepackCostTime:39.583s , currentRepackMaxTime:430.829s
+iter83		 Improve solution by repack 0.10216003762429454->0.09742139209889815 , unplacedBoxesSize:1
+currentRepackCostTime:39.617s , currentRepackMaxTime:430.829s
+iter108		 Improve solution by repack 0.09742139209889815->0.08218556839559259 , unplacedBoxesSize:1
+currentRepackCostTime:39.742s , currentRepackMaxTime:430.829s
+iter204		 Improve solution by repack 0.08218556839559259->0.07480381617844666 , unplacedBoxesSize:1
+currentRepackCostTime:40.251s , currentRepackMaxTime:430.829s
+iter257		 Improve solution by repack 0.07480381617844666->0.07122278957269551 , unplacedBoxesSize:1
+currentRepackCostTime:40.526s , currentRepackMaxTime:430.829s
+iter268		 Improve solution by repack 0.07122278957269551->0.06621203977425423 , unplacedBoxesSize:2
+currentRepackCostTime:40.608000000000004s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter1		 Improve solution by repack 0.9043637463047567->0.8742575920451491 , unplacedBoxesSize:3
+currentRepackCostTime:43.106s , currentRepackMaxTime:430.829s
+iter7		 Improve solution by repack 0.8742575920451491->0.8621694436979307 , unplacedBoxesSize:5
+currentRepackCostTime:43.135s , currentRepackMaxTime:430.829s
+iter14		 Improve solution by repack 0.8621694436979307->0.8617145928513841 , unplacedBoxesSize:5
+currentRepackCostTime:43.172000000000004s , currentRepackMaxTime:430.829s
+iter31		 Improve solution by repack 0.8617145928513841->0.08773515184090298 , unplacedBoxesSize:1
+currentRepackCostTime:43.267s , currentRepackMaxTime:430.829s
+iter163		 Improve solution by repack 0.08773515184090298->0.07480381617844666 , unplacedBoxesSize:1
+currentRepackCostTime:43.956s , currentRepackMaxTime:430.829s
+iter287		 Improve solution by repack 0.07480381617844666->0.07267199677506046 , unplacedBoxesSize:2
+currentRepackCostTime:44.684s , currentRepackMaxTime:430.829s
+iter289		 Improve solution by repack 0.07267199677506046->0.06764646600376244 , unplacedBoxesSize:2
+currentRepackCostTime:44.696s , currentRepackMaxTime:430.829s
+iter295		 Improve solution by repack 0.06764646600376244->0.04689398011287288 , unplacedBoxesSize:1
+currentRepackCostTime:44.728s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter2		 Improve solution by repack 0.9266265788766461->0.9139639881752216 , unplacedBoxesSize:7
+currentRepackCostTime:46.742000000000004s , currentRepackMaxTime:430.829s
+iter5		 Improve solution by repack 0.9139639881752216->0.9074140016124698 , unplacedBoxesSize:7
+currentRepackCostTime:46.766s , currentRepackMaxTime:430.829s
+iter10		 Improve solution by repack 0.9074140016124698->0.10216003762429454 , unplacedBoxesSize:1
+currentRepackCostTime:46.794000000000004s , currentRepackMaxTime:430.829s
+iter17		 Improve solution by repack 0.10216003762429454->0.09742139209889815 , unplacedBoxesSize:1
+currentRepackCostTime:46.835s , currentRepackMaxTime:430.829s
+iter47		 Improve solution by repack 0.09742139209889815->0.04689398011287288 , unplacedBoxesSize:1
+currentRepackCostTime:46.993s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter2		 Improve solution by repack 0.9339680193496371->0.907234614350981 , unplacedBoxesSize:9
+currentRepackCostTime:50.413000000000004s , currentRepackMaxTime:430.829s
+iter9		 Improve solution by repack 0.907234614350981->0.8747970975544208 , unplacedBoxesSize:6
+currentRepackCostTime:50.473s , currentRepackMaxTime:430.829s
+iter10		 Improve solution by repack 0.8747970975544208->0.09742139209889815 , unplacedBoxesSize:1
+currentRepackCostTime:50.476s , currentRepackMaxTime:430.829s
+iter70		 Improve solution by repack 0.09742139209889815->0.08004904595538834 , unplacedBoxesSize:2
+currentRepackCostTime:50.778s , currentRepackMaxTime:430.829s
+iter77		 Improve solution by repack 0.08004904595538834->0.04689398011287288 , unplacedBoxesSize:1
+currentRepackCostTime:50.824s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter2		 Improve solution by repack 0.9411367911851652->0.8808022037086805 , unplacedBoxesSize:5
+currentRepackCostTime:54.145s , currentRepackMaxTime:430.829s
+iter9		 Improve solution by repack 0.8808022037086805->0.09742139209889815 , unplacedBoxesSize:1
+currentRepackCostTime:54.173s , currentRepackMaxTime:430.829s
+iter29		 Improve solution by repack 0.09742139209889815->0.08387798978769148 , unplacedBoxesSize:1
+currentRepackCostTime:54.286s , currentRepackMaxTime:430.829s
+iter31		 Improve solution by repack 0.08387798978769148->0.04689398011287288 , unplacedBoxesSize:1
+currentRepackCostTime:54.292s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter2		 Improve solution by repack 0.9419813222252083->0.9404743348562214 , unplacedBoxesSize:8
+currentRepackCostTime:57.801s , currentRepackMaxTime:430.829s
+iter3		 Improve solution by repack 0.9404743348562214->0.10702902445579145 , unplacedBoxesSize:1
+currentRepackCostTime:57.804s , currentRepackMaxTime:430.829s
+iter5		 Improve solution by repack 0.10702902445579145->0.08387798978769148 , unplacedBoxesSize:1
+currentRepackCostTime:57.811s , currentRepackMaxTime:430.829s
+iter73		 Improve solution by repack 0.08387798978769148->0.08218556839559259 , unplacedBoxesSize:1
+currentRepackCostTime:58.177s , currentRepackMaxTime:430.829s
+iter204		 Improve solution by repack 0.08218556839559259->0.07122278957269551 , unplacedBoxesSize:1
+currentRepackCostTime:58.885s , currentRepackMaxTime:430.829s
+iter258		 Improve solution by repack 0.07122278957269551->0.04689398011287288 , unplacedBoxesSize:1
+currentRepackCostTime:59.174s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter2		 Improve solution by repack 0.9448804084923408->0.9263779897876916 , unplacedBoxesSize:9
+currentRepackCostTime:61.339s , currentRepackMaxTime:430.829s
+iter9		 Improve solution by repack 0.9263779897876916->0.9067589357699544 , unplacedBoxesSize:6
+currentRepackCostTime:61.384s , currentRepackMaxTime:430.829s
+iter22		 Improve solution by repack 0.9067589357699544->0.1285255979575383 , unplacedBoxesSize:2
+currentRepackCostTime:61.454s , currentRepackMaxTime:430.829s
+iter28		 Improve solution by repack 0.1285255979575383->0.08218556839559259 , unplacedBoxesSize:1
+currentRepackCostTime:61.492000000000004s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter1		 Improve solution by repack 0.9485225208277345->0.08218556839559259 , unplacedBoxesSize:1
+currentRepackCostTime:64.709s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter1		 Improve solution by repack 0.9497883633431873->0.9443308250470304 , unplacedBoxesSize:7
+currentRepackCostTime:68.066s , currentRepackMaxTime:430.829s
+iter3		 Improve solution by repack 0.9443308250470304->0.13646331631281913 , unplacedBoxesSize:1
+currentRepackCostTime:68.075s , currentRepackMaxTime:430.829s
+iter41		 Improve solution by repack 0.13646331631281913->0.12907954850846545 , unplacedBoxesSize:2
+currentRepackCostTime:68.271s , currentRepackMaxTime:430.829s
+iter57		 Improve solution by repack 0.12907954850846545->0.11534063423810803 , unplacedBoxesSize:2
+currentRepackCostTime:68.366s , currentRepackMaxTime:430.829s
+iter64		 Improve solution by repack 0.11534063423810803->0.10702902445579145 , unplacedBoxesSize:1
+currentRepackCostTime:68.415s , currentRepackMaxTime:430.829s
+iter68		 Improve solution by repack 0.10702902445579145->0.09742139209889815 , unplacedBoxesSize:1
+currentRepackCostTime:68.433s , currentRepackMaxTime:430.829s
+iter198		 Improve solution by repack 0.09742139209889815->0.08218556839559259 , unplacedBoxesSize:1
+currentRepackCostTime:69.115s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter2		 Improve solution by repack 0.9541380005374899->0.9533371405536146 , unplacedBoxesSize:6
+currentRepackCostTime:71.505s , currentRepackMaxTime:430.829s
+iter12		 Improve solution by repack 0.9533371405536146->0.938907551733405 , unplacedBoxesSize:4
+currentRepackCostTime:71.551s , currentRepackMaxTime:430.829s
+iter14		 Improve solution by repack 0.938907551733405->0.3243241064230046 , unplacedBoxesSize:1
+currentRepackCostTime:71.556s , currentRepackMaxTime:430.829s
+iter51		 Improve solution by repack 0.3243241064230046->0.2866359849502822 , unplacedBoxesSize:3
+currentRepackCostTime:71.699s , currentRepackMaxTime:430.829s
+iter53		 Improve solution by repack 0.2866359849502822->0.28329011018543404 , unplacedBoxesSize:2
+currentRepackCostTime:71.714s , currentRepackMaxTime:430.829s
+iter64		 Improve solution by repack 0.28329011018543404->0.2615506584251545 , unplacedBoxesSize:2
+currentRepackCostTime:71.779s , currentRepackMaxTime:430.829s
+iter95		 Improve solution by repack 0.2615506584251545->0.25174012362268205 , unplacedBoxesSize:2
+currentRepackCostTime:71.937s , currentRepackMaxTime:430.829s
+iter98		 Improve solution by repack 0.25174012362268205->0.2513443966675625 , unplacedBoxesSize:3
+currentRepackCostTime:71.95400000000001s , currentRepackMaxTime:430.829s
+iter103		 Improve solution by repack 0.2513443966675625->0.24173676431066918 , unplacedBoxesSize:3
+currentRepackCostTime:71.997s , currentRepackMaxTime:430.829s
+iter114		 Improve solution by repack 0.24173676431066918->0.2350507256113948 , unplacedBoxesSize:3
+currentRepackCostTime:72.059s , currentRepackMaxTime:430.829s
+iter193		 Improve solution by repack 0.2350507256113948->0.22942253426498252 , unplacedBoxesSize:3
+currentRepackCostTime:72.535s , currentRepackMaxTime:430.829s
+iter203		 Improve solution by repack 0.22942253426498252->0.22699039236764312 , unplacedBoxesSize:3
+currentRepackCostTime:72.598s , currentRepackMaxTime:430.829s
+iter222		 Improve solution by repack 0.22699039236764312->0.22111159634506852 , unplacedBoxesSize:3
+currentRepackCostTime:72.728s , currentRepackMaxTime:430.829s
+iter225		 Improve solution by repack 0.22111159634506852->0.18090365493147004 , unplacedBoxesSize:2
+currentRepackCostTime:72.746s , currentRepackMaxTime:430.829s
+iter369		 Improve solution by repack 0.18090365493147004->0.15433552808384843 , unplacedBoxesSize:2
+currentRepackCostTime:73.583s , currentRepackMaxTime:430.829s
+iter380		 Improve solution by repack 0.15433552808384843->0.14214391292663262 , unplacedBoxesSize:3
+currentRepackCostTime:73.655s , currentRepackMaxTime:430.829s
+iter381		 Improve solution by repack 0.14214391292663262->0.14008599838753025 , unplacedBoxesSize:2
+currentRepackCostTime:73.666s , currentRepackMaxTime:430.829s
+iter385		 Improve solution by repack 0.14008599838753025->0.13765385649019082 , unplacedBoxesSize:2
+currentRepackCostTime:73.684s , currentRepackMaxTime:430.829s
+iter386		 Improve solution by repack 0.13765385649019082->0.13047836603063692 , unplacedBoxesSize:2
+currentRepackCostTime:73.69s , currentRepackMaxTime:430.829s
+iter408		 Improve solution by repack 0.13047836603063692->0.09742139209889815 , unplacedBoxesSize:1
+currentRepackCostTime:73.821s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter3		 Improve solution by repack 0.93836406879871->0.8836381349099705 , unplacedBoxesSize:3
+currentRepackCostTime:76.84700000000001s , currentRepackMaxTime:430.829s
+iter8		 Improve solution by repack 0.8836381349099705->0.8742575920451491 , unplacedBoxesSize:3
+currentRepackCostTime:76.862s , currentRepackMaxTime:430.829s
+iter9		 Improve solution by repack 0.8742575920451491->0.8579572023649557 , unplacedBoxesSize:3
+currentRepackCostTime:76.868s , currentRepackMaxTime:430.829s
+iter11		 Improve solution by repack 0.8579572023649557->0.8577452297769417 , unplacedBoxesSize:3
+currentRepackCostTime:76.874s , currentRepackMaxTime:430.829s
+iter35		 Improve solution by repack 0.8577452297769417->0.16864418167159367 , unplacedBoxesSize:2
+currentRepackCostTime:76.985s , currentRepackMaxTime:430.829s
+iter43		 Improve solution by repack 0.16864418167159367->0.16676766998118783 , unplacedBoxesSize:1
+currentRepackCostTime:77.03s , currentRepackMaxTime:430.829s
+iter67		 Improve solution by repack 0.16676766998118783->0.14471109916689062 , unplacedBoxesSize:1
+currentRepackCostTime:77.137s , currentRepackMaxTime:430.829s
+iter87		 Improve solution by repack 0.14471109916689062->0.13646331631281913 , unplacedBoxesSize:1
+currentRepackCostTime:77.231s , currentRepackMaxTime:430.829s
+iter147		 Improve solution by repack 0.13646331631281913->0.09742139209889815 , unplacedBoxesSize:1
+currentRepackCostTime:77.517s , currentRepackMaxTime:430.829s
+iter345		 Improve solution by repack 0.09742139209889815->0.08773515184090298 , unplacedBoxesSize:1
+currentRepackCostTime:78.616s , currentRepackMaxTime:430.829s
+iter360		 Improve solution by repack 0.08773515184090298->0.03305697393173878 , unplacedBoxesSize:1
+currentRepackCostTime:78.69500000000001s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter2		 Improve solution by repack 0.9452761354474604->0.9068845740392367 , unplacedBoxesSize:7
+currentRepackCostTime:82.364s , currentRepackMaxTime:430.829s
+iter3		 Improve solution by repack 0.9068845740392367->0.09742139209889815 , unplacedBoxesSize:1
+currentRepackCostTime:82.369s , currentRepackMaxTime:430.829s
+iter105		 Improve solution by repack 0.09742139209889815->0.0883176565439398 , unplacedBoxesSize:1
+currentRepackCostTime:82.908s , currentRepackMaxTime:430.829s
+iter125		 Improve solution by repack 0.0883176565439398->0.08218556839559259 , unplacedBoxesSize:1
+currentRepackCostTime:83.004s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter1		 Improve solution by repack 0.9190210964794411->0.8865862671324913 , unplacedBoxesSize:7
+currentRepackCostTime:85.881s , currentRepackMaxTime:430.829s
+iter10		 Improve solution by repack 0.8865862671324913->0.08218556839559259 , unplacedBoxesSize:1
+currentRepackCostTime:85.928s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter1		 Improve solution by repack 0.9598790647675356->0.9403271969900564 , unplacedBoxesSize:9
+currentRepackCostTime:89.403s , currentRepackMaxTime:430.829s
+iter3		 Improve solution by repack 0.9403271969900564->0.9230677237301801 , unplacedBoxesSize:6
+currentRepackCostTime:89.42s , currentRepackMaxTime:430.829s
+iter7		 Improve solution by repack 0.9230677237301801->0.9153292125772642 , unplacedBoxesSize:3
+currentRepackCostTime:89.446s , currentRepackMaxTime:430.829s
+iter11		 Improve solution by repack 0.9153292125772642->0.9099630475678582 , unplacedBoxesSize:3
+currentRepackCostTime:89.459s , currentRepackMaxTime:430.829s
+iter13		 Improve solution by repack 0.9099630475678582->0.8990002687449611 , unplacedBoxesSize:3
+currentRepackCostTime:89.46600000000001s , currentRepackMaxTime:430.829s
+iter16		 Improve solution by repack 0.8990002687449611->0.14595404461166353 , unplacedBoxesSize:1
+currentRepackCostTime:89.477s , currentRepackMaxTime:430.829s
+iter38		 Improve solution by repack 0.14595404461166353->0.12955455522708947 , unplacedBoxesSize:2
+currentRepackCostTime:89.602s , currentRepackMaxTime:430.829s
+iter44		 Improve solution by repack 0.12955455522708947->0.07995095404461167 , unplacedBoxesSize:2
+currentRepackCostTime:89.635s , currentRepackMaxTime:430.829s
+iter58		 Improve solution by repack 0.07995095404461167->0.07480381617844666 , unplacedBoxesSize:1
+currentRepackCostTime:89.72s , currentRepackMaxTime:430.829s
+iter70		 Improve solution by repack 0.07480381617844666->0.07336300725611394 , unplacedBoxesSize:2
+currentRepackCostTime:89.784s , currentRepackMaxTime:430.829s
+iter116		 Improve solution by repack 0.07336300725611394->0.07122278957269551 , unplacedBoxesSize:1
+currentRepackCostTime:90.072s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter1		 Improve solution by repack 0.9560219027143242->0.9421479441010481 , unplacedBoxesSize:9
+currentRepackCostTime:93.188s , currentRepackMaxTime:430.829s
+iter2		 Improve solution by repack 0.9421479441010481->0.9044611663531309 , unplacedBoxesSize:9
+currentRepackCostTime:93.19500000000001s , currentRepackMaxTime:430.829s
+iter8		 Improve solution by repack 0.9044611663531309->0.895953372749261 , unplacedBoxesSize:8
+currentRepackCostTime:93.242s , currentRepackMaxTime:430.829s
+iter11		 Improve solution by repack 0.895953372749261->0.08218556839559259 , unplacedBoxesSize:1
+currentRepackCostTime:93.258s , currentRepackMaxTime:430.829s
+iter59		 Improve solution by repack 0.08218556839559259->0.07480381617844666 , unplacedBoxesSize:1
+currentRepackCostTime:93.538s , currentRepackMaxTime:430.829s
+iter61		 Improve solution by repack 0.07480381617844666->0.07122278957269551 , unplacedBoxesSize:1
+currentRepackCostTime:93.553s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter1		 Improve solution by repack 0.9907393845740393->0.9795501881214728 , unplacedBoxesSize:9
+currentRepackCostTime:96.98s , currentRepackMaxTime:430.829s
+iter4		 Improve solution by repack 0.9795501881214728->0.9733055630206934 , unplacedBoxesSize:9
+currentRepackCostTime:97.009s , currentRepackMaxTime:430.829s
+iter6		 Improve solution by repack 0.9733055630206934->0.9545666487503359 , unplacedBoxesSize:8
+currentRepackCostTime:97.027s , currentRepackMaxTime:430.829s
+iter8		 Improve solution by repack 0.9545666487503359->0.940996371943026 , unplacedBoxesSize:9
+currentRepackCostTime:97.043s , currentRepackMaxTime:430.829s
+iter12		 Improve solution by repack 0.940996371943026->0.15340835796828808 , unplacedBoxesSize:2
+currentRepackCostTime:97.074s , currentRepackMaxTime:430.829s
+iter20		 Improve solution by repack 0.15340835796828808->0.10459688255845202 , unplacedBoxesSize:1
+currentRepackCostTime:97.136s , currentRepackMaxTime:430.829s
+iter26		 Improve solution by repack 0.10459688255845202->0.08218556839559259 , unplacedBoxesSize:1
+currentRepackCostTime:97.157s , currentRepackMaxTime:430.829s
+iter58		 Improve solution by repack 0.08218556839559259->0.07853063692555765 , unplacedBoxesSize:2
+currentRepackCostTime:97.34700000000001s , currentRepackMaxTime:430.829s
+iter59		 Improve solution by repack 0.07853063692555765->0.04689398011287288 , unplacedBoxesSize:1
+currentRepackCostTime:97.35000000000001s , currentRepackMaxTime:430.829s
+iter64		 Improve solution by repack 0.04689398011287288->0.03305697393173878 , unplacedBoxesSize:1
+currentRepackCostTime:97.375s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+Completed repack sweep without reducing board count. No-reduction sweeps: 1/3
+Selecting boards with low utilization for repacking...
+Selecting boards with low utilization for repacking...
+iter4		 Improve solution by repack 0.8999274388605213->0.03305697393173878 , unplacedBoxesSize:1
+currentRepackCostTime:102.983s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter7		 Improve solution by repack 0.9005475678581027->0.8836381349099705 , unplacedBoxesSize:3
+currentRepackCostTime:106.81s , currentRepackMaxTime:430.829s
+iter13		 Improve solution by repack 0.8836381349099705->0.8735064498790647 , unplacedBoxesSize:7
+currentRepackCostTime:106.833s , currentRepackMaxTime:430.829s
+iter26		 Improve solution by repack 0.8735064498790647->0.08218556839559259 , unplacedBoxesSize:1
+currentRepackCostTime:106.919s , currentRepackMaxTime:430.829s
+iter172		 Improve solution by repack 0.08218556839559259->0.07480381617844666 , unplacedBoxesSize:1
+currentRepackCostTime:107.696s , currentRepackMaxTime:430.829s
+iter173		 Improve solution by repack 0.07480381617844666->0.07143476216070949 , unplacedBoxesSize:1
+currentRepackCostTime:107.706s , currentRepackMaxTime:430.829s
+iter205		 Improve solution by repack 0.07143476216070949->0.07122278957269551 , unplacedBoxesSize:1
+currentRepackCostTime:107.894s , currentRepackMaxTime:430.829s
+iter277		 Improve solution by repack 0.07122278957269551->0.0 , unplacedBoxesSize:0
+currentRepackCostTime:108.319s , currentRepackMaxTime:430.829s
+Improved success. Continue searching for another removable board.
+Selecting boards with low utilization for repacking...
+iter1		 Improve solution by repack 0.8983122816447191->0.8883902176834184 , unplacedBoxesSize:7
+currentRepackCostTime:108.33500000000001s , currentRepackMaxTime:430.829s
+iter22		 Improve solution by repack 0.8883902176834184->0.8850786079011018 , unplacedBoxesSize:7
+currentRepackCostTime:108.468s , currentRepackMaxTime:430.829s
+iter51		 Improve solution by repack 0.8850786079011018->0.8825181402848697 , unplacedBoxesSize:8
+currentRepackCostTime:108.659s , currentRepackMaxTime:430.829s
+iter55		 Improve solution by repack 0.8825181402848697->0.8696788497715667 , unplacedBoxesSize:7
+currentRepackCostTime:108.68s , currentRepackMaxTime:430.829s
+iter148		 Improve solution by repack 0.8696788497715667->0.8679165546895996 , unplacedBoxesSize:6
+currentRepackCostTime:109.26s , currentRepackMaxTime:430.829s
+iter173		 Improve solution by repack 0.8679165546895996->0.8591057511421661 , unplacedBoxesSize:6
+currentRepackCostTime:109.412s , currentRepackMaxTime:430.829s
+iter196		 Improve solution by repack 0.8591057511421661->0.8507074711099167 , unplacedBoxesSize:6
+currentRepackCostTime:109.532s , currentRepackMaxTime:430.829s
+iter210		 Improve solution by repack 0.8507074711099167->0.8473958613276 , unplacedBoxesSize:6
+currentRepackCostTime:109.61800000000001s , currentRepackMaxTime:430.829s
+iter250		 Improve solution by repack 0.8473958613276->0.8384614350980918 , unplacedBoxesSize:6
+currentRepackCostTime:109.845s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter4		 Improve solution by repack 0.9137409298575653->0.8759419510884171 , unplacedBoxesSize:8
+currentRepackCostTime:111.85900000000001s , currentRepackMaxTime:430.829s
+iter178		 Improve solution by repack 0.8759419510884171->0.8713222252082774 , unplacedBoxesSize:5
+currentRepackCostTime:113.016s , currentRepackMaxTime:430.829s
+iter328		 Improve solution by repack 0.8713222252082774->0.8702821822090835 , unplacedBoxesSize:5
+currentRepackCostTime:113.772s , currentRepackMaxTime:430.829s
+iter583		 Improve solution by repack 0.8702821822090835->0.8600759204514916 , unplacedBoxesSize:6
+currentRepackCostTime:115.042s , currentRepackMaxTime:430.829s
+iter645		 Improve solution by repack 0.8600759204514916->0.8511018543402311 , unplacedBoxesSize:5
+currentRepackCostTime:115.38s , currentRepackMaxTime:430.829s
+iter648		 Improve solution by repack 0.8511018543402311->0.8495296963181941 , unplacedBoxesSize:5
+currentRepackCostTime:115.392s , currentRepackMaxTime:430.829s
+iter650		 Improve solution by repack 0.8495296963181941->0.8393073098629401 , unplacedBoxesSize:4
+currentRepackCostTime:115.407s , currentRepackMaxTime:430.829s
+iter659		 Improve solution by repack 0.8393073098629401->0.834416151572158 , unplacedBoxesSize:4
+currentRepackCostTime:115.44200000000001s , currentRepackMaxTime:430.829s
+iter660		 Improve solution by repack 0.834416151572158->0.8278856490190809 , unplacedBoxesSize:4
+currentRepackCostTime:115.45s , currentRepackMaxTime:430.829s
+iter693		 Improve solution by repack 0.8278856490190809->0.8184574039236765 , unplacedBoxesSize:5
+currentRepackCostTime:115.59400000000001s , currentRepackMaxTime:430.829s
+iter726		 Improve solution by repack 0.8184574039236765->0.8167649825315775 , unplacedBoxesSize:5
+currentRepackCostTime:115.781s , currentRepackMaxTime:430.829s
+iter765		 Improve solution by repack 0.8167649825315775->0.8118959957000806 , unplacedBoxesSize:5
+currentRepackCostTime:115.985s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter13		 Improve solution by repack 0.9205489115829077->0.8503547433485622 , unplacedBoxesSize:5
+currentRepackCostTime:118.34700000000001s , currentRepackMaxTime:430.829s
+iter26		 Improve solution by repack 0.8503547433485622->0.8222923945176028 , unplacedBoxesSize:7
+currentRepackCostTime:118.424s , currentRepackMaxTime:430.829s
+iter29		 Improve solution by repack 0.8222923945176028->0.8198602526202634 , unplacedBoxesSize:7
+currentRepackCostTime:118.447s , currentRepackMaxTime:430.829s
+iter30		 Improve solution by repack 0.8198602526202634->0.8165143778554153 , unplacedBoxesSize:6
+currentRepackCostTime:118.452s , currentRepackMaxTime:430.829s
+iter49		 Improve solution by repack 0.8165143778554153->0.8070209621069605 , unplacedBoxesSize:6
+currentRepackCostTime:118.554s , currentRepackMaxTime:430.829s
+iter149		 Improve solution by repack 0.8070209621069605->0.8056795888202096 , unplacedBoxesSize:5
+currentRepackCostTime:119.068s , currentRepackMaxTime:430.829s
+iter156		 Improve solution by repack 0.8056795888202096->0.8024882424079548 , unplacedBoxesSize:5
+currentRepackCostTime:119.111s , currentRepackMaxTime:430.829s
+iter194		 Improve solution by repack 0.8024882424079548->0.8000561005106155 , unplacedBoxesSize:5
+currentRepackCostTime:119.319s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter3		 Improve solution by repack 0.9393947057242676->0.9244033861865091 , unplacedBoxesSize:7
+currentRepackCostTime:121.485s , currentRepackMaxTime:430.829s
+iter4		 Improve solution by repack 0.9244033861865091->0.8367394517602795 , unplacedBoxesSize:5
+currentRepackCostTime:121.488s , currentRepackMaxTime:430.829s
+iter197		 Improve solution by repack 0.8367394517602795->0.8363323031443161 , unplacedBoxesSize:5
+currentRepackCostTime:122.525s , currentRepackMaxTime:430.829s
+iter219		 Improve solution by repack 0.8363323031443161->0.832000806234883 , unplacedBoxesSize:5
+currentRepackCostTime:122.639s , currentRepackMaxTime:430.829s
+iter224		 Improve solution by repack 0.832000806234883->0.8295686643375436 , unplacedBoxesSize:5
+currentRepackCostTime:122.663s , currentRepackMaxTime:430.829s
+iter284		 Improve solution by repack 0.8295686643375436->0.8273696586938994 , unplacedBoxesSize:5
+currentRepackCostTime:122.98700000000001s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter23		 Improve solution by repack 0.9401615829078205->0.8704871002418704 , unplacedBoxesSize:6
+currentRepackCostTime:124.792s , currentRepackMaxTime:430.829s
+iter24		 Improve solution by repack 0.8704871002418704->0.849533055630207 , unplacedBoxesSize:8
+currentRepackCostTime:124.798s , currentRepackMaxTime:430.829s
+iter69		 Improve solution by repack 0.849533055630207->0.8387308519215265 , unplacedBoxesSize:7
+currentRepackCostTime:125.215s , currentRepackMaxTime:430.829s
+iter84		 Improve solution by repack 0.8387308519215265->0.8324845471647407 , unplacedBoxesSize:7
+currentRepackCostTime:125.321s , currentRepackMaxTime:430.829s
+iter94		 Improve solution by repack 0.8324845471647407->0.8277774791722655 , unplacedBoxesSize:2
+currentRepackCostTime:125.381s , currentRepackMaxTime:430.829s
+iter169		 Improve solution by repack 0.8277774791722655->0.8236240257995163 , unplacedBoxesSize:7
+currentRepackCostTime:125.656s , currentRepackMaxTime:430.829s
+iter390		 Improve solution by repack 0.8236240257995163->0.81716406879871 , unplacedBoxesSize:6
+currentRepackCostTime:127.233s , currentRepackMaxTime:430.829s
+iter458		 Improve solution by repack 0.81716406879871->0.8158048911582907 , unplacedBoxesSize:7
+currentRepackCostTime:127.601s , currentRepackMaxTime:430.829s
+iter620		 Improve solution by repack 0.8158048911582907->0.8127277613544746 , unplacedBoxesSize:7
+currentRepackCostTime:128.65800000000002s , currentRepackMaxTime:430.829s
+iter845		 Improve solution by repack 0.8127277613544746->0.8061972588013974 , unplacedBoxesSize:7
+currentRepackCostTime:130.068s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter2		 Improve solution by repack 0.942436173071755->0.9157625638269283 , unplacedBoxesSize:5
+currentRepackCostTime:132.386s , currentRepackMaxTime:430.829s
+iter3		 Improve solution by repack 0.9157625638269283->0.8225601316850308 , unplacedBoxesSize:9
+currentRepackCostTime:132.391s , currentRepackMaxTime:430.829s
+iter6		 Improve solution by repack 0.8225601316850308->0.8068563558183284 , unplacedBoxesSize:8
+currentRepackCostTime:132.412s , currentRepackMaxTime:430.829s
+iter10		 Improve solution by repack 0.8068563558183284->0.7865224402042461 , unplacedBoxesSize:2
+currentRepackCostTime:132.433s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter1		 Improve solution by repack 0.9424637194302607->0.9354689599570009 , unplacedBoxesSize:7
+currentRepackCostTime:134.89000000000001s , currentRepackMaxTime:430.829s
+iter5		 Improve solution by repack 0.9354689599570009->0.9301639344262295 , unplacedBoxesSize:7
+currentRepackCostTime:134.913s , currentRepackMaxTime:430.829s
+iter7		 Improve solution by repack 0.9301639344262295->0.8681967213114754 , unplacedBoxesSize:5
+currentRepackCostTime:134.923s , currentRepackMaxTime:430.829s
+iter13		 Improve solution by repack 0.8681967213114754->0.866639344262295 , unplacedBoxesSize:5
+currentRepackCostTime:134.959s , currentRepackMaxTime:430.829s
+iter14		 Improve solution by repack 0.866639344262295->0.8522930663800055 , unplacedBoxesSize:5
+currentRepackCostTime:134.961s , currentRepackMaxTime:430.829s
+iter85		 Improve solution by repack 0.8522930663800055->0.8518126847621607 , unplacedBoxesSize:7
+currentRepackCostTime:135.337s , currentRepackMaxTime:430.829s
+iter87		 Improve solution by repack 0.8518126847621607->0.8208566245632894 , unplacedBoxesSize:7
+currentRepackCostTime:135.348s , currentRepackMaxTime:430.829s
+iter93		 Improve solution by repack 0.8208566245632894->0.8058028755710831 , unplacedBoxesSize:8
+currentRepackCostTime:135.381s , currentRepackMaxTime:430.829s
+iter107		 Improve solution by repack 0.8058028755710831->0.7999408761085729 , unplacedBoxesSize:6
+currentRepackCostTime:135.461s , currentRepackMaxTime:430.829s
+iter111		 Improve solution by repack 0.7999408761085729->0.7978970706799248 , unplacedBoxesSize:5
+currentRepackCostTime:135.479s , currentRepackMaxTime:430.829s
+iter172		 Improve solution by repack 0.7978970706799248->0.7935319806503628 , unplacedBoxesSize:5
+currentRepackCostTime:135.775s , currentRepackMaxTime:430.829s
+iter173		 Improve solution by repack 0.7935319806503628->0.7887933351249664 , unplacedBoxesSize:5
+currentRepackCostTime:135.786s , currentRepackMaxTime:430.829s
+iter176		 Improve solution by repack 0.7887933351249664->0.7885232464391292 , unplacedBoxesSize:7
+currentRepackCostTime:135.805s , currentRepackMaxTime:430.829s
+iter234		 Improve solution by repack 0.7885232464391292->0.7865224402042461 , unplacedBoxesSize:2
+currentRepackCostTime:136.235s , currentRepackMaxTime:430.829s
+iter446		 Improve solution by repack 0.7865224402042461->0.7811475409836065 , unplacedBoxesSize:6
+currentRepackCostTime:137.092s , currentRepackMaxTime:430.829s
+iter460		 Improve solution by repack 0.7811475409836065->0.7778016662187585 , unplacedBoxesSize:5
+currentRepackCostTime:137.175s , currentRepackMaxTime:430.829s
+iter517		 Improve solution by repack 0.7778016662187585->0.7716541252351519 , unplacedBoxesSize:6
+currentRepackCostTime:137.499s , currentRepackMaxTime:430.829s
+iter594		 Improve solution by repack 0.7716541252351519->0.7683082504703036 , unplacedBoxesSize:5
+currentRepackCostTime:137.972s , currentRepackMaxTime:430.829s
+iter725		 Improve solution by repack 0.7683082504703036->0.758814834721849 , unplacedBoxesSize:5
+currentRepackCostTime:138.666s , currentRepackMaxTime:430.829s
+iter916		 Improve solution by repack 0.758814834721849->0.756588282719699 , unplacedBoxesSize:6
+currentRepackCostTime:139.721s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter6		 Improve solution by repack 0.9094618382155335->0.8060004031174416 , unplacedBoxesSize:7
+currentRepackCostTime:143.274s , currentRepackMaxTime:430.829s
+iter15		 Improve solution by repack 0.8060004031174416->0.7981658156409567 , unplacedBoxesSize:6
+currentRepackCostTime:143.322s , currentRepackMaxTime:430.829s
+iter34		 Improve solution by repack 0.7981658156409567->0.7868899489384574 , unplacedBoxesSize:6
+currentRepackCostTime:143.421s , currentRepackMaxTime:430.829s
+iter62		 Improve solution by repack 0.7868899489384574->0.7834634506852997 , unplacedBoxesSize:6
+currentRepackCostTime:143.582s , currentRepackMaxTime:430.829s
+iter121		 Improve solution by repack 0.7834634506852997->0.7773313625369523 , unplacedBoxesSize:6
+currentRepackCostTime:143.964s , currentRepackMaxTime:430.829s
+iter265		 Improve solution by repack 0.7773313625369523->0.7740197527546359 , unplacedBoxesSize:6
+currentRepackCostTime:144.809s , currentRepackMaxTime:430.829s
+iter283		 Improve solution by repack 0.7740197527546359->0.7650853265251276 , unplacedBoxesSize:6
+currentRepackCostTime:144.909s , currentRepackMaxTime:430.829s
+iter376		 Improve solution by repack 0.7650853265251276->0.761180462241333 , unplacedBoxesSize:5
+currentRepackCostTime:145.448s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter9		 Improve solution by repack 0.9444369793066381->0.9382115022843323 , unplacedBoxesSize:6
+currentRepackCostTime:148.364s , currentRepackMaxTime:430.829s
+iter13		 Improve solution by repack 0.9382115022843323->0.8273710024187046 , unplacedBoxesSize:5
+currentRepackCostTime:148.382s , currentRepackMaxTime:430.829s
+iter14		 Improve solution by repack 0.8273710024187046->0.7964149422198334 , unplacedBoxesSize:5
+currentRepackCostTime:148.387s , currentRepackMaxTime:430.829s
+iter24		 Improve solution by repack 0.7964149422198334->0.7933203439935501 , unplacedBoxesSize:5
+currentRepackCostTime:148.433s , currentRepackMaxTime:430.829s
+iter59		 Improve solution by repack 0.7933203439935501->0.7804810534802472 , unplacedBoxesSize:4
+currentRepackCostTime:148.649s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter2		 Improve solution by repack 0.9460991668906208->0.9192622950819672 , unplacedBoxesSize:9
+currentRepackCostTime:151.365s , currentRepackMaxTime:430.829s
+iter44		 Improve solution by repack 0.9192622950819672->0.8157672668637462 , unplacedBoxesSize:6
+currentRepackCostTime:151.637s , currentRepackMaxTime:430.829s
+iter60		 Improve solution by repack 0.8157672668637462->0.8071499596882558 , unplacedBoxesSize:2
+currentRepackCostTime:151.736s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter7		 Improve solution by repack 0.9086529158828272->0.901772373018006 , unplacedBoxesSize:7
+currentRepackCostTime:153.946s , currentRepackMaxTime:430.829s
+iter10		 Improve solution by repack 0.901772373018006->0.8540439398011287 , unplacedBoxesSize:3
+currentRepackCostTime:153.959s , currentRepackMaxTime:430.829s
+iter219		 Improve solution by repack 0.8540439398011287->0.8334164203171192 , unplacedBoxesSize:3
+currentRepackCostTime:154.935s , currentRepackMaxTime:430.829s
+iter340		 Improve solution by repack 0.8334164203171192->0.8312966944369793 , unplacedBoxesSize:6
+currentRepackCostTime:155.517s , currentRepackMaxTime:430.829s
+iter343		 Improve solution by repack 0.8312966944369793->0.8286891964525666 , unplacedBoxesSize:5
+currentRepackCostTime:155.52700000000002s , currentRepackMaxTime:430.829s
+iter351		 Improve solution by repack 0.8286891964525666->0.821689062080086 , unplacedBoxesSize:6
+currentRepackCostTime:155.565s , currentRepackMaxTime:430.829s
+iter359		 Improve solution by repack 0.821689062080086->0.819996640687987 , unplacedBoxesSize:6
+currentRepackCostTime:155.602s , currentRepackMaxTime:430.829s
+iter392		 Improve solution by repack 0.819996640687987->0.8071573501746842 , unplacedBoxesSize:5
+currentRepackCostTime:155.81300000000002s , currentRepackMaxTime:430.829s
+iter596		 Improve solution by repack 0.8071573501746842->0.7949113141628594 , unplacedBoxesSize:5
+currentRepackCostTime:156.911s , currentRepackMaxTime:430.829s
+iter629		 Improve solution by repack 0.7949113141628594->0.7915654393980114 , unplacedBoxesSize:4
+currentRepackCostTime:157.071s , currentRepackMaxTime:430.829s
+iter631		 Improve solution by repack 0.7915654393980114->0.7909325450147809 , unplacedBoxesSize:4
+currentRepackCostTime:157.083s , currentRepackMaxTime:430.829s
+iter633		 Improve solution by repack 0.7909325450147809->0.7754991937651169 , unplacedBoxesSize:4
+currentRepackCostTime:157.098s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter7		 Improve solution by repack 0.8970794141359849->0.8290728298844396 , unplacedBoxesSize:5
+currentRepackCostTime:159.889s , currentRepackMaxTime:430.829s
+iter17		 Improve solution by repack 0.8290728298844396->0.828773179252889 , unplacedBoxesSize:4
+currentRepackCostTime:159.949s , currentRepackMaxTime:430.829s
+iter20		 Improve solution by repack 0.828773179252889->0.8192797635044343 , unplacedBoxesSize:4
+currentRepackCostTime:159.955s , currentRepackMaxTime:430.829s
+iter22		 Improve solution by repack 0.8192797635044343->0.8145411179790378 , unplacedBoxesSize:4
+currentRepackCostTime:159.961s , currentRepackMaxTime:430.829s
+iter48		 Improve solution by repack 0.8145411179790378->0.797946116635313 , unplacedBoxesSize:5
+currentRepackCostTime:160.093s , currentRepackMaxTime:430.829s
+iter69		 Improve solution by repack 0.797946116635313->0.7939673474872345 , unplacedBoxesSize:4
+currentRepackCostTime:160.204s , currentRepackMaxTime:430.829s
+iter72		 Improve solution by repack 0.7939673474872345->0.7851068261220102 , unplacedBoxesSize:4
+currentRepackCostTime:160.218s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter1		 Improve solution by repack 0.9280912389142704->0.8911670249932814 , unplacedBoxesSize:4
+currentRepackCostTime:162.798s , currentRepackMaxTime:430.829s
+iter21		 Improve solution by repack 0.8911670249932814->0.7851068261220102 , unplacedBoxesSize:4
+currentRepackCostTime:162.89000000000001s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter9		 Improve solution by repack 0.9410739720505241->0.8259694974469228 , unplacedBoxesSize:5
+currentRepackCostTime:165.85s , currentRepackMaxTime:430.829s
+iter33		 Improve solution by repack 0.8259694974469228->0.8207592045149154 , unplacedBoxesSize:6
+currentRepackCostTime:165.983s , currentRepackMaxTime:430.829s
+iter42		 Improve solution by repack 0.8207592045149154->0.81615627519484 , unplacedBoxesSize:6
+currentRepackCostTime:166.038s , currentRepackMaxTime:430.829s
+iter46		 Improve solution by repack 0.81615627519484->0.8128984144047299 , unplacedBoxesSize:7
+currentRepackCostTime:166.056s , currentRepackMaxTime:430.829s
+iter58		 Improve solution by repack 0.8128984144047299->0.8126800591238914 , unplacedBoxesSize:4
+currentRepackCostTime:166.15200000000002s , currentRepackMaxTime:430.829s
+iter130		 Improve solution by repack 0.8126800591238914->0.8050262026337006 , unplacedBoxesSize:7
+currentRepackCostTime:166.504s , currentRepackMaxTime:430.829s
+iter175		 Improve solution by repack 0.8050262026337006->0.8002875571083042 , unplacedBoxesSize:7
+currentRepackCostTime:166.79s , currentRepackMaxTime:430.829s
+iter274		 Improve solution by repack 0.8002875571083042->0.7980885514646601 , unplacedBoxesSize:7
+currentRepackCostTime:167.42600000000002s , currentRepackMaxTime:430.829s
+iter331		 Improve solution by repack 0.7980885514646601->0.7943889411448536 , unplacedBoxesSize:8
+currentRepackCostTime:167.832s , currentRepackMaxTime:430.829s
+iter332		 Improve solution by repack 0.7943889411448536->0.7919356355818328 , unplacedBoxesSize:6
+currentRepackCostTime:167.84s , currentRepackMaxTime:430.829s
+iter335		 Improve solution by repack 0.7919356355818328->0.7824092985756518 , unplacedBoxesSize:7
+currentRepackCostTime:167.86s , currentRepackMaxTime:430.829s
+iter430		 Improve solution by repack 0.7824092985756518->0.7738417092179521 , unplacedBoxesSize:7
+currentRepackCostTime:168.471s , currentRepackMaxTime:430.829s
+iter511		 Improve solution by repack 0.7738417092179521->0.7602983069067456 , unplacedBoxesSize:7
+currentRepackCostTime:168.996s , currentRepackMaxTime:430.829s
+iter555		 Improve solution by repack 0.7602983069067456->0.7563188658962645 , unplacedBoxesSize:7
+currentRepackCostTime:169.287s , currentRepackMaxTime:430.829s
+iter565		 Improve solution by repack 0.7563188658962645->0.751394786347756 , unplacedBoxesSize:6
+currentRepackCostTime:169.351s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter4		 Improve solution by repack 0.9411797903789305->0.9345511959150765 , unplacedBoxesSize:9
+currentRepackCostTime:171.484s , currentRepackMaxTime:430.829s
+iter10		 Improve solution by repack 0.9345511959150765->0.9253557511421661 , unplacedBoxesSize:11
+currentRepackCostTime:171.537s , currentRepackMaxTime:430.829s
+iter11		 Improve solution by repack 0.9253557511421661->0.8087190943294813 , unplacedBoxesSize:10
+currentRepackCostTime:171.54500000000002s , currentRepackMaxTime:430.829s
+iter14		 Improve solution by repack 0.8087190943294813->0.8086210024187047 , unplacedBoxesSize:10
+currentRepackCostTime:171.573s , currentRepackMaxTime:430.829s
+iter33		 Improve solution by repack 0.8086210024187047->0.806790849234077 , unplacedBoxesSize:9
+currentRepackCostTime:171.735s , currentRepackMaxTime:430.829s
+iter35		 Improve solution by repack 0.806790849234077->0.806578876646063 , unplacedBoxesSize:9
+currentRepackCostTime:171.746s , currentRepackMaxTime:430.829s
+iter49		 Improve solution by repack 0.806578876646063->0.8013907551733406 , unplacedBoxesSize:8
+currentRepackCostTime:171.84s , currentRepackMaxTime:430.829s
+iter50		 Improve solution by repack 0.8013907551733406->0.7957108304219296 , unplacedBoxesSize:6
+currentRepackCostTime:171.847s , currentRepackMaxTime:430.829s
+iter53		 Improve solution by repack 0.7957108304219296->0.7850423273313626 , unplacedBoxesSize:7
+currentRepackCostTime:171.871s , currentRepackMaxTime:430.829s
+iter71		 Improve solution by repack 0.7850423273313626->0.7783532652512765 , unplacedBoxesSize:6
+currentRepackCostTime:171.964s , currentRepackMaxTime:430.829s
+iter127		 Improve solution by repack 0.7783532652512765->0.776882558452029 , unplacedBoxesSize:7
+currentRepackCostTime:172.302s , currentRepackMaxTime:430.829s
+iter226		 Improve solution by repack 0.776882558452029->0.7738417092179521 , unplacedBoxesSize:7
+currentRepackCostTime:172.972s , currentRepackMaxTime:430.829s
+iter353		 Improve solution by repack 0.7738417092179521->0.7642340768610588 , unplacedBoxesSize:7
+currentRepackCostTime:173.804s , currentRepackMaxTime:430.829s
+iter397		 Improve solution by repack 0.7642340768610588->0.7546855683955925 , unplacedBoxesSize:4
+currentRepackCostTime:174.06900000000002s , currentRepackMaxTime:430.829s
+iter404		 Improve solution by repack 0.7546855683955925->0.7474240795485084 , unplacedBoxesSize:3
+currentRepackCostTime:174.103s , currentRepackMaxTime:430.829s
+iter515		 Improve solution by repack 0.7474240795485084->0.7441332975006719 , unplacedBoxesSize:5
+currentRepackCostTime:174.606s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter3		 Improve solution by repack 0.9501176296694437->0.9481631281913464 , unplacedBoxesSize:9
+currentRepackCostTime:176.692s , currentRepackMaxTime:430.829s
+iter7		 Improve solution by repack 0.9481631281913464->0.7805287557108304 , unplacedBoxesSize:7
+currentRepackCostTime:176.723s , currentRepackMaxTime:430.829s
+iter12		 Improve solution by repack 0.7805287557108304->0.7725987637731793 , unplacedBoxesSize:7
+currentRepackCostTime:176.76s , currentRepackMaxTime:430.829s
+iter60		 Improve solution by repack 0.7725987637731793->0.759760145122279 , unplacedBoxesSize:7
+currentRepackCostTime:177.04500000000002s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter10		 Improve solution by repack 0.9613214995968825->0.9513914270357431 , unplacedBoxesSize:8
+currentRepackCostTime:180.531s , currentRepackMaxTime:430.829s
+iter11		 Improve solution by repack 0.9513914270357431->0.9403466809997312 , unplacedBoxesSize:8
+currentRepackCostTime:180.532s , currentRepackMaxTime:430.829s
+iter16		 Improve solution by repack 0.9403466809997312->0.8142965600644988 , unplacedBoxesSize:8
+currentRepackCostTime:180.56300000000002s , currentRepackMaxTime:430.829s
+iter25		 Improve solution by repack 0.8142965600644988->0.8099946251007795 , unplacedBoxesSize:8
+currentRepackCostTime:180.623s , currentRepackMaxTime:430.829s
+iter35		 Improve solution by repack 0.8099946251007795->0.7710151840902983 , unplacedBoxesSize:7
+currentRepackCostTime:180.68800000000002s , currentRepackMaxTime:430.829s
+iter62		 Improve solution by repack 0.7710151840902983->0.761537221177103 , unplacedBoxesSize:6
+currentRepackCostTime:180.866s , currentRepackMaxTime:430.829s
+iter96		 Improve solution by repack 0.761537221177103->0.7609043267938725 , unplacedBoxesSize:6
+currentRepackCostTime:181.056s , currentRepackMaxTime:430.829s
+iter159		 Improve solution by repack 0.7609043267938725->0.7607813759742005 , unplacedBoxesSize:6
+currentRepackCostTime:181.44s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter12		 Improve solution by repack 0.9673021365224402->0.9585447460360118 , unplacedBoxesSize:7
+currentRepackCostTime:184.14600000000002s , currentRepackMaxTime:430.829s
+iter27		 Improve solution by repack 0.9585447460360118->0.9538061005106155 , unplacedBoxesSize:7
+currentRepackCostTime:184.238s , currentRepackMaxTime:430.829s
+iter29		 Improve solution by repack 0.9538061005106155->0.8270673206127386 , unplacedBoxesSize:6
+currentRepackCostTime:184.244s , currentRepackMaxTime:430.829s
+iter45		 Improve solution by repack 0.8270673206127386->0.8071499596882558 , unplacedBoxesSize:2
+currentRepackCostTime:184.347s , currentRepackMaxTime:430.829s
+iter207		 Improve solution by repack 0.8071499596882558->0.7676625907014243 , unplacedBoxesSize:4
+currentRepackCostTime:184.996s , currentRepackMaxTime:430.829s
+iter231		 Improve solution by repack 0.7676625907014243->0.7580979575382961 , unplacedBoxesSize:5
+currentRepackCostTime:185.105s , currentRepackMaxTime:430.829s
+iter256		 Improve solution by repack 0.7580979575382961->0.7556658156409567 , unplacedBoxesSize:5
+currentRepackCostTime:185.238s , currentRepackMaxTime:430.829s
+iter272		 Improve solution by repack 0.7556658156409567->0.7541709217952164 , unplacedBoxesSize:4
+currentRepackCostTime:185.33700000000002s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter2		 Improve solution by repack 0.9619400026874496->0.9341836871808653 , unplacedBoxesSize:9
+currentRepackCostTime:186.949s , currentRepackMaxTime:430.829s
+iter6		 Improve solution by repack 0.9341836871808653->0.9227472453641494 , unplacedBoxesSize:6
+currentRepackCostTime:186.976s , currentRepackMaxTime:430.829s
+iter12		 Improve solution by repack 0.9227472453641494->0.8071499596882558 , unplacedBoxesSize:2
+currentRepackCostTime:187.012s , currentRepackMaxTime:430.829s
+iter30		 Improve solution by repack 0.8071499596882558->0.8067461703843053 , unplacedBoxesSize:5
+currentRepackCostTime:187.079s , currentRepackMaxTime:430.829s
+iter65		 Improve solution by repack 0.8067461703843053->0.8000601316850309 , unplacedBoxesSize:5
+currentRepackCostTime:187.256s , currentRepackMaxTime:430.829s
+iter131		 Improve solution by repack 0.8000601316850309->0.7943788632088149 , unplacedBoxesSize:5
+currentRepackCostTime:187.638s , currentRepackMaxTime:430.829s
+iter170		 Improve solution by repack 0.7943788632088149->0.7829488040849235 , unplacedBoxesSize:4
+currentRepackCostTime:187.846s , currentRepackMaxTime:430.829s
+iter324		 Improve solution by repack 0.7829488040849235->0.7778231658156409 , unplacedBoxesSize:5
+currentRepackCostTime:188.605s , currentRepackMaxTime:430.829s
+iter330		 Improve solution by repack 0.7778231658156409->0.7764787691480785 , unplacedBoxesSize:4
+currentRepackCostTime:188.641s , currentRepackMaxTime:430.829s
+iter424		 Improve solution by repack 0.7764787691480785->0.7750792797635044 , unplacedBoxesSize:4
+currentRepackCostTime:189.119s , currentRepackMaxTime:430.829s
+iter431		 Improve solution by repack 0.7750792797635044->0.7718879333512496 , unplacedBoxesSize:4
+currentRepackCostTime:189.15800000000002s , currentRepackMaxTime:430.829s
+iter561		 Improve solution by repack 0.7718879333512496->0.7622843321687718 , unplacedBoxesSize:4
+currentRepackCostTime:189.738s , currentRepackMaxTime:430.829s
+iter704		 Improve solution by repack 0.7622843321687718->0.757415345337275 , unplacedBoxesSize:4
+currentRepackCostTime:190.46800000000002s , currentRepackMaxTime:430.829s
+iter833		 Improve solution by repack 0.757415345337275->0.7526766998118785 , unplacedBoxesSize:4
+currentRepackCostTime:191.061s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter2		 Improve solution by repack 0.9676639344262296->0.9308579682880946 , unplacedBoxesSize:9
+currentRepackCostTime:192.931s , currentRepackMaxTime:430.829s
+iter10		 Improve solution by repack 0.9308579682880946->0.7939223327062618 , unplacedBoxesSize:5
+currentRepackCostTime:192.978s , currentRepackMaxTime:430.829s
+iter42		 Improve solution by repack 0.7939223327062618->0.7891836871808654 , unplacedBoxesSize:5
+currentRepackCostTime:193.126s , currentRepackMaxTime:430.829s
+iter44		 Improve solution by repack 0.7891836871808654->0.7796251007793604 , unplacedBoxesSize:5
+currentRepackCostTime:193.138s , currentRepackMaxTime:430.829s
+iter59		 Improve solution by repack 0.7796251007793604->0.7785816984681537 , unplacedBoxesSize:5
+currentRepackCostTime:193.213s , currentRepackMaxTime:430.829s
+iter63		 Improve solution by repack 0.7785816984681537->0.7773185971513034 , unplacedBoxesSize:5
+currentRepackCostTime:193.235s , currentRepackMaxTime:430.829s
+iter88		 Improve solution by repack 0.7773185971513034->0.76771096479441 , unplacedBoxesSize:5
+currentRepackCostTime:193.369s , currentRepackMaxTime:430.829s
+iter154		 Improve solution by repack 0.76771096479441->0.7637751948400968 , unplacedBoxesSize:5
+currentRepackCostTime:193.744s , currentRepackMaxTime:430.829s
+iter307		 Improve solution by repack 0.7637751948400968->0.7535749798441279 , unplacedBoxesSize:4
+currentRepackCostTime:194.594s , currentRepackMaxTime:430.829s
+iter364		 Improve solution by repack 0.7535749798441279->0.752672668637463 , unplacedBoxesSize:4
+currentRepackCostTime:194.85s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter1		 Improve solution by repack 0.9694181671593657->0.9581423004568664 , unplacedBoxesSize:6
+currentRepackCostTime:197.472s , currentRepackMaxTime:430.829s
+iter4		 Improve solution by repack 0.9581423004568664->0.9254864283794679 , unplacedBoxesSize:8
+currentRepackCostTime:197.485s , currentRepackMaxTime:430.829s
+iter17		 Improve solution by repack 0.9254864283794679->0.8021620532115022 , unplacedBoxesSize:5
+currentRepackCostTime:197.574s , currentRepackMaxTime:430.829s
+iter89		 Improve solution by repack 0.8021620532115022->0.7622803009943563 , unplacedBoxesSize:4
+currentRepackCostTime:197.915s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter1		 Improve solution by repack 0.9716292663262563->0.9688853802741199 , unplacedBoxesSize:8
+currentRepackCostTime:200.357s , currentRepackMaxTime:430.829s
+iter3		 Improve solution by repack 0.9688853802741199->0.9640341977962914 , unplacedBoxesSize:10
+currentRepackCostTime:200.368s , currentRepackMaxTime:430.829s
+iter4		 Improve solution by repack 0.9640341977962914->0.9511522440204246 , unplacedBoxesSize:7
+currentRepackCostTime:200.37800000000001s , currentRepackMaxTime:430.829s
+iter8		 Improve solution by repack 0.9511522440204246->0.8391749529696318 , unplacedBoxesSize:8
+currentRepackCostTime:200.40200000000002s , currentRepackMaxTime:430.829s
+iter25		 Improve solution by repack 0.8391749529696318->0.8369873689868315 , unplacedBoxesSize:5
+currentRepackCostTime:200.52100000000002s , currentRepackMaxTime:430.829s
+iter65		 Improve solution by repack 0.8369873689868315->0.8278856490190809 , unplacedBoxesSize:4
+currentRepackCostTime:200.73000000000002s , currentRepackMaxTime:430.829s
+iter96		 Improve solution by repack 0.8278856490190809->0.8255203574307982 , unplacedBoxesSize:4
+currentRepackCostTime:200.89600000000002s , currentRepackMaxTime:430.829s
+iter101		 Improve solution by repack 0.8255203574307982->0.8253083848427842 , unplacedBoxesSize:4
+currentRepackCostTime:200.921s , currentRepackMaxTime:430.829s
+iter123		 Improve solution by repack 0.8253083848427842->0.8207793603869927 , unplacedBoxesSize:4
+currentRepackCostTime:201.036s , currentRepackMaxTime:430.829s
+iter213		 Improve solution by repack 0.8207793603869927->0.8147144584789036 , unplacedBoxesSize:7
+currentRepackCostTime:201.481s , currentRepackMaxTime:430.829s
+iter217		 Improve solution by repack 0.8147144584789036->0.8113685837140553 , unplacedBoxesSize:6
+currentRepackCostTime:201.499s , currentRepackMaxTime:430.829s
+iter229		 Improve solution by repack 0.8113685837140553->0.8109768879333512 , unplacedBoxesSize:7
+currentRepackCostTime:201.556s , currentRepackMaxTime:430.829s
+iter231		 Improve solution by repack 0.8109768879333512->0.8065372211771029 , unplacedBoxesSize:7
+currentRepackCostTime:201.56300000000002s , currentRepackMaxTime:430.829s
+iter446		 Improve solution by repack 0.8065372211771029->0.8041003762429454 , unplacedBoxesSize:7
+currentRepackCostTime:202.969s , currentRepackMaxTime:430.829s
+iter510		 Improve solution by repack 0.8041003762429454->0.799361730717549 , unplacedBoxesSize:7
+currentRepackCostTime:203.394s , currentRepackMaxTime:430.829s
+iter512		 Improve solution by repack 0.799361730717549->0.797117710292932 , unplacedBoxesSize:7
+currentRepackCostTime:203.404s , currentRepackMaxTime:430.829s
+iter514		 Improve solution by repack 0.797117710292932->0.7920794141359849 , unplacedBoxesSize:6
+currentRepackCostTime:203.412s , currentRepackMaxTime:430.829s
+iter550		 Improve solution by repack 0.7920794141359849->0.7914465197527546 , unplacedBoxesSize:6
+currentRepackCostTime:203.595s , currentRepackMaxTime:430.829s
+iter662		 Improve solution by repack 0.7914465197527546->0.7831987368986831 , unplacedBoxesSize:6
+currentRepackCostTime:204.248s , currentRepackMaxTime:430.829s
+iter698		 Improve solution by repack 0.7831987368986831->0.7821828809459823 , unplacedBoxesSize:4
+currentRepackCostTime:204.488s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter1		 Improve solution by repack 0.9764169578070411->0.9605193496371943 , unplacedBoxesSize:9
+currentRepackCostTime:206.897s , currentRepackMaxTime:430.829s
+iter5		 Improve solution by repack 0.9605193496371943->0.7714915345337274 , unplacedBoxesSize:4
+currentRepackCostTime:206.933s , currentRepackMaxTime:430.829s
+iter21		 Improve solution by repack 0.7714915345337274->0.7648054958344531 , unplacedBoxesSize:4
+currentRepackCostTime:207.01s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter2		 Improve solution by repack 0.9765231120666488->0.9515916420317119 , unplacedBoxesSize:9
+currentRepackCostTime:209.998s , currentRepackMaxTime:430.829s
+iter3		 Improve solution by repack 0.9515916420317119->0.8652233942488579 , unplacedBoxesSize:8
+currentRepackCostTime:210.002s , currentRepackMaxTime:430.829s
+iter18		 Improve solution by repack 0.8652233942488579->0.8630038968019349 , unplacedBoxesSize:6
+currentRepackCostTime:210.106s , currentRepackMaxTime:430.829s
+iter26		 Improve solution by repack 0.8630038968019349->0.8602506046761624 , unplacedBoxesSize:5
+currentRepackCostTime:210.148s , currentRepackMaxTime:430.829s
+iter31		 Improve solution by repack 0.8602506046761624->0.8302022305831765 , unplacedBoxesSize:5
+currentRepackCostTime:210.177s , currentRepackMaxTime:430.829s
+iter40		 Improve solution by repack 0.8302022305831765->0.8297524187046492 , unplacedBoxesSize:6
+currentRepackCostTime:210.229s , currentRepackMaxTime:430.829s
+iter51		 Improve solution by repack 0.8297524187046492->0.8071499596882558 , unplacedBoxesSize:2
+currentRepackCostTime:210.299s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter1		 Improve solution by repack 0.9790735017468422->0.949627116366568 , unplacedBoxesSize:10
+currentRepackCostTime:212.536s , currentRepackMaxTime:430.829s
+iter2		 Improve solution by repack 0.949627116366568->0.9437839290513302 , unplacedBoxesSize:9
+currentRepackCostTime:212.548s , currentRepackMaxTime:430.829s
+iter11		 Improve solution by repack 0.9437839290513302->0.8947016930932544 , unplacedBoxesSize:3
+currentRepackCostTime:212.61s , currentRepackMaxTime:430.829s
+iter52		 Improve solution by repack 0.8947016930932544->0.8893355280838485 , unplacedBoxesSize:3
+currentRepackCostTime:212.79500000000002s , currentRepackMaxTime:430.829s
+iter99		 Improve solution by repack 0.8893355280838485->0.8819537758667025 , unplacedBoxesSize:3
+currentRepackCostTime:213.014s , currentRepackMaxTime:430.829s
+iter138		 Improve solution by repack 0.8819537758667025->0.8783727492609513 , unplacedBoxesSize:3
+currentRepackCostTime:213.187s , currentRepackMaxTime:430.829s
+iter186		 Improve solution by repack 0.8783727492609513->0.8540439398011287 , unplacedBoxesSize:3
+currentRepackCostTime:213.40200000000002s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+Completed repack sweep without reducing board count. No-reduction sweeps: 1/3
+Selecting boards with low utilization for repacking...
+Selecting boards with low utilization for repacking...
+iter3		 Improve solution by repack 0.9247211771029293->0.8071499596882558 , unplacedBoxesSize:2
+currentRepackCostTime:216.608s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter5		 Improve solution by repack 0.9291111260413867->0.9248589088954582 , unplacedBoxesSize:8
+currentRepackCostTime:219.096s , currentRepackMaxTime:430.829s
+iter11		 Improve solution by repack 0.9248589088954582->0.8947016930932544 , unplacedBoxesSize:3
+currentRepackCostTime:219.136s , currentRepackMaxTime:430.829s
+iter37		 Improve solution by repack 0.8947016930932544->0.8511495565708143 , unplacedBoxesSize:5
+currentRepackCostTime:219.24s , currentRepackMaxTime:430.829s
+iter70		 Improve solution by repack 0.8511495565708143->0.848717414673475 , unplacedBoxesSize:5
+currentRepackCostTime:219.39600000000002s , currentRepackMaxTime:430.829s
+iter92		 Improve solution by repack 0.848717414673475->0.8300060467616232 , unplacedBoxesSize:5
+currentRepackCostTime:219.51500000000001s , currentRepackMaxTime:430.829s
+iter94		 Improve solution by repack 0.8300060467616232->0.8071499596882558 , unplacedBoxesSize:2
+currentRepackCostTime:219.529s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter3		 Improve solution by repack 0.9230025530771299->0.8942952163396936 , unplacedBoxesSize:8
+currentRepackCostTime:221.671s , currentRepackMaxTime:430.829s
+iter14		 Improve solution by repack 0.8942952163396936->0.8811193227626981 , unplacedBoxesSize:8
+currentRepackCostTime:221.745s , currentRepackMaxTime:430.829s
+iter15		 Improve solution by repack 0.8811193227626981->0.8071499596882558 , unplacedBoxesSize:2
+currentRepackCostTime:221.749s , currentRepackMaxTime:430.829s
+iter150		 Improve solution by repack 0.8071499596882558->0.8033270626175759 , unplacedBoxesSize:4
+currentRepackCostTime:222.308s , currentRepackMaxTime:430.829s
+iter177		 Improve solution by repack 0.8033270626175759->0.7982450954044612 , unplacedBoxesSize:4
+currentRepackCostTime:222.443s , currentRepackMaxTime:430.829s
+iter180		 Improve solution by repack 0.7982450954044612->0.7939135984950282 , unplacedBoxesSize:4
+currentRepackCostTime:222.454s , currentRepackMaxTime:430.829s
+iter279		 Improve solution by repack 0.7939135984950282->0.7912751948400968 , unplacedBoxesSize:4
+currentRepackCostTime:222.898s , currentRepackMaxTime:430.829s
+iter326		 Improve solution by repack 0.7912751948400968->0.7888430529427574 , unplacedBoxesSize:4
+currentRepackCostTime:223.12s , currentRepackMaxTime:430.829s
+iter524		 Improve solution by repack 0.7888430529427574->0.7849690943294814 , unplacedBoxesSize:5
+currentRepackCostTime:224.119s , currentRepackMaxTime:430.829s
+iter557		 Improve solution by repack 0.7849690943294814->0.7829467884977156 , unplacedBoxesSize:5
+currentRepackCostTime:224.286s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter2		 Improve solution by repack 0.9305096076323569->0.9248639478634776 , unplacedBoxesSize:8
+currentRepackCostTime:226.03900000000002s , currentRepackMaxTime:430.829s
+iter8		 Improve solution by repack 0.9248639478634776->0.9204195780704112 , unplacedBoxesSize:8
+currentRepackCostTime:226.071s , currentRepackMaxTime:430.829s
+iter14		 Improve solution by repack 0.9204195780704112->0.9100513974737974 , unplacedBoxesSize:8
+currentRepackCostTime:226.11100000000002s , currentRepackMaxTime:430.829s
+iter32		 Improve solution by repack 0.9100513974737974->0.901190876108573 , unplacedBoxesSize:8
+currentRepackCostTime:226.245s , currentRepackMaxTime:430.829s
+iter36		 Improve solution by repack 0.901190876108573->0.877224200483741 , unplacedBoxesSize:7
+currentRepackCostTime:226.266s , currentRepackMaxTime:430.829s
+iter47		 Improve solution by repack 0.877224200483741->0.8683290782047837 , unplacedBoxesSize:5
+currentRepackCostTime:226.321s , currentRepackMaxTime:430.829s
+iter49		 Improve solution by repack 0.8683290782047837->0.8594685568395594 , unplacedBoxesSize:5
+currentRepackCostTime:226.33s , currentRepackMaxTime:430.829s
+iter63		 Improve solution by repack 0.8594685568395594->0.7997299113141628 , unplacedBoxesSize:5
+currentRepackCostTime:226.403s , currentRepackMaxTime:430.829s
+iter112		 Improve solution by repack 0.7997299113141628->0.7988900833109379 , unplacedBoxesSize:4
+currentRepackCostTime:226.657s , currentRepackMaxTime:430.829s
+iter234		 Improve solution by repack 0.7988900833109379->0.791714592851384 , unplacedBoxesSize:4
+currentRepackCostTime:227.235s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter1		 Improve solution by repack 0.913179924751411->0.9036139478634776 , unplacedBoxesSize:7
+currentRepackCostTime:228.973s , currentRepackMaxTime:430.829s
+iter6		 Improve solution by repack 0.9036139478634776->0.8548854474603602 , unplacedBoxesSize:6
+currentRepackCostTime:229.0s , currentRepackMaxTime:430.829s
+iter41		 Improve solution by repack 0.8548854474603602->0.8519269013705993 , unplacedBoxesSize:5
+currentRepackCostTime:229.199s , currentRepackMaxTime:430.829s
+iter43		 Improve solution by repack 0.8519269013705993->0.8429602257457672 , unplacedBoxesSize:6
+currentRepackCostTime:229.209s , currentRepackMaxTime:430.829s
+iter46		 Improve solution by repack 0.8429602257457672->0.8368281375974201 , unplacedBoxesSize:6
+currentRepackCostTime:229.221s , currentRepackMaxTime:430.829s
+iter56		 Improve solution by repack 0.8368281375974201->0.8089821284600913 , unplacedBoxesSize:4
+currentRepackCostTime:229.258s , currentRepackMaxTime:430.829s
+iter63		 Improve solution by repack 0.8089821284600913->0.8067831228164472 , unplacedBoxesSize:4
+currentRepackCostTime:229.288s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter5		 Improve solution by repack 0.9071506315506583->0.902932007524859 , unplacedBoxesSize:3
+currentRepackCostTime:231.936s , currentRepackMaxTime:430.829s
+iter7		 Improve solution by repack 0.902932007524859->0.8979259607632356 , unplacedBoxesSize:7
+currentRepackCostTime:231.94400000000002s , currentRepackMaxTime:430.829s
+iter17		 Improve solution by repack 0.8979259607632356->0.880563020693362 , unplacedBoxesSize:7
+currentRepackCostTime:231.982s , currentRepackMaxTime:430.829s
+iter30		 Improve solution by repack 0.880563020693362->0.8664814565976887 , unplacedBoxesSize:7
+currentRepackCostTime:232.08s , currentRepackMaxTime:430.829s
+iter37		 Improve solution by repack 0.8664814565976887->0.8213773179252889 , unplacedBoxesSize:5
+currentRepackCostTime:232.116s , currentRepackMaxTime:430.829s
+iter58		 Improve solution by repack 0.8213773179252889->0.7960323165815641 , unplacedBoxesSize:4
+currentRepackCostTime:232.235s , currentRepackMaxTime:430.829s
+iter205		 Improve solution by repack 0.7960323165815641->0.7951068261220102 , unplacedBoxesSize:6
+currentRepackCostTime:232.991s , currentRepackMaxTime:430.829s
+iter234		 Improve solution by repack 0.7951068261220102->0.7905778016662188 , unplacedBoxesSize:6
+currentRepackCostTime:233.183s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter5		 Improve solution by repack 0.9257054555227089->0.8999274388605213 , unplacedBoxesSize:3
+currentRepackCostTime:235.566s , currentRepackMaxTime:430.829s
+iter8		 Improve solution by repack 0.8999274388605213->0.7905778016662188 , unplacedBoxesSize:6
+currentRepackCostTime:235.578s , currentRepackMaxTime:430.829s
+iter162		 Improve solution by repack 0.7905778016662188->0.7874355012093524 , unplacedBoxesSize:6
+currentRepackCostTime:236.567s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter3		 Improve solution by repack 0.9326719967750605->0.9156375974200484 , unplacedBoxesSize:4
+currentRepackCostTime:239.369s , currentRepackMaxTime:430.829s
+iter17		 Improve solution by repack 0.9156375974200484->0.8207141897339425 , unplacedBoxesSize:4
+currentRepackCostTime:239.43s , currentRepackMaxTime:430.829s
+iter85		 Improve solution by repack 0.8207141897339425->0.8205898951894651 , unplacedBoxesSize:4
+currentRepackCostTime:239.77s , currentRepackMaxTime:430.829s
+iter155		 Improve solution by repack 0.8205898951894651->0.8071499596882558 , unplacedBoxesSize:2
+currentRepackCostTime:240.13s , currentRepackMaxTime:430.829s
+iter339		 Improve solution by repack 0.8071499596882558->0.7999623757054555 , unplacedBoxesSize:4
+currentRepackCostTime:240.875s , currentRepackMaxTime:430.829s
+iter368		 Improve solution by repack 0.7999623757054555->0.7988900833109379 , unplacedBoxesSize:4
+currentRepackCostTime:241.02100000000002s , currentRepackMaxTime:430.829s
+iter379		 Improve solution by repack 0.7988900833109379->0.7966951088417092 , unplacedBoxesSize:5
+currentRepackCostTime:241.083s , currentRepackMaxTime:430.829s
+iter381		 Improve solution by repack 0.7966951088417092->0.7865224402042461 , unplacedBoxesSize:2
+currentRepackCostTime:241.094s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter1		 Improve solution by repack 0.9376303413061006->0.928230986294007 , unplacedBoxesSize:9
+currentRepackCostTime:243.312s , currentRepackMaxTime:430.829s
+iter4		 Improve solution by repack 0.928230986294007->0.9036871808653587 , unplacedBoxesSize:9
+currentRepackCostTime:243.34s , currentRepackMaxTime:430.829s
+iter17		 Improve solution by repack 0.9036871808653587->0.8712644450416555 , unplacedBoxesSize:6
+currentRepackCostTime:243.431s , currentRepackMaxTime:430.829s
+iter25		 Improve solution by repack 0.8712644450416555->0.7865224402042461 , unplacedBoxesSize:2
+currentRepackCostTime:243.473s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter3		 Improve solution by repack 0.932986428379468->0.928198400967482 , unplacedBoxesSize:9
+currentRepackCostTime:245.898s , currentRepackMaxTime:430.829s
+iter5		 Improve solution by repack 0.928198400967482->0.9174570008062349 , unplacedBoxesSize:5
+currentRepackCostTime:245.918s , currentRepackMaxTime:430.829s
+iter7		 Improve solution by repack 0.9174570008062349->0.9103137597420048 , unplacedBoxesSize:9
+currentRepackCostTime:245.928s , currentRepackMaxTime:430.829s
+iter31		 Improve solution by repack 0.9103137597420048->0.8995908357968289 , unplacedBoxesSize:9
+currentRepackCostTime:246.09300000000002s , currentRepackMaxTime:430.829s
+iter65		 Improve solution by repack 0.8995908357968289->0.8651323568933083 , unplacedBoxesSize:6
+currentRepackCostTime:246.327s , currentRepackMaxTime:430.829s
+iter107		 Improve solution by repack 0.8651323568933083->0.8611535877452298 , unplacedBoxesSize:5
+currentRepackCostTime:246.566s , currentRepackMaxTime:430.829s
+iter133		 Improve solution by repack 0.8611535877452298->0.8490560333243751 , unplacedBoxesSize:6
+currentRepackCostTime:246.717s , currentRepackMaxTime:430.829s
+iter164		 Improve solution by repack 0.8490560333243751->0.8334164203171192 , unplacedBoxesSize:3
+currentRepackCostTime:246.922s , currentRepackMaxTime:430.829s
+iter165		 Improve solution by repack 0.8334164203171192->0.8196775060467616 , unplacedBoxesSize:3
+currentRepackCostTime:246.929s , currentRepackMaxTime:430.829s
+iter179		 Improve solution by repack 0.8196775060467616->0.8195794141359849 , unplacedBoxesSize:3
+currentRepackCostTime:247.014s , currentRepackMaxTime:430.829s
+iter197		 Improve solution by repack 0.8195794141359849->0.8071499596882558 , unplacedBoxesSize:2
+currentRepackCostTime:247.102s , currentRepackMaxTime:430.829s
+iter331		 Improve solution by repack 0.8071499596882558->0.8021620532115022 , unplacedBoxesSize:5
+currentRepackCostTime:247.636s , currentRepackMaxTime:430.829s
+iter443		 Improve solution by repack 0.8021620532115022->0.7997299113141628 , unplacedBoxesSize:5
+currentRepackCostTime:248.21800000000002s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter9		 Improve solution by repack 0.9501176296694437->0.8520639613007257 , unplacedBoxesSize:6
+currentRepackCostTime:250.679s , currentRepackMaxTime:430.829s
+iter85		 Improve solution by repack 0.8520639613007257->0.8518946519752755 , unplacedBoxesSize:5
+currentRepackCostTime:251.101s , currentRepackMaxTime:430.829s
+iter92		 Improve solution by repack 0.8518946519752755->0.8496271163665681 , unplacedBoxesSize:6
+currentRepackCostTime:251.141s , currentRepackMaxTime:430.829s
+iter101		 Improve solution by repack 0.8496271163665681->0.844588820209621 , unplacedBoxesSize:5
+currentRepackCostTime:251.187s , currentRepackMaxTime:430.829s
+iter120		 Improve solution by repack 0.844588820209621->0.8403319000268745 , unplacedBoxesSize:4
+currentRepackCostTime:251.28s , currentRepackMaxTime:430.829s
+iter127		 Improve solution by repack 0.8403319000268745->0.7997299113141628 , unplacedBoxesSize:5
+currentRepackCostTime:251.32s , currentRepackMaxTime:430.829s
+iter270		 Improve solution by repack 0.7997299113141628->0.7865224402042461 , unplacedBoxesSize:2
+currentRepackCostTime:252.077s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter6		 Improve solution by repack 0.9088779897876915->0.7865224402042461 , unplacedBoxesSize:2
+currentRepackCostTime:253.532s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter3		 Improve solution by repack 0.9362106960494492->0.9261314162859446 , unplacedBoxesSize:9
+currentRepackCostTime:256.045s , currentRepackMaxTime:430.829s
+iter6		 Improve solution by repack 0.9261314162859446->0.8948854474603601 , unplacedBoxesSize:10
+currentRepackCostTime:256.075s , currentRepackMaxTime:430.829s
+iter7		 Improve solution by repack 0.8948854474603601->0.8267303816178446 , unplacedBoxesSize:3
+currentRepackCostTime:256.081s , currentRepackMaxTime:430.829s
+iter221		 Improve solution by repack 0.8267303816178446->0.7865224402042461 , unplacedBoxesSize:2
+currentRepackCostTime:257.10200000000003s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter2		 Improve solution by repack 0.9460037624294544->0.9018919645256651 , unplacedBoxesSize:8
+currentRepackCostTime:258.719s , currentRepackMaxTime:430.829s
+iter4		 Improve solution by repack 0.9018919645256651->0.8967300456866433 , unplacedBoxesSize:8
+currentRepackCostTime:258.734s , currentRepackMaxTime:430.829s
+iter8		 Improve solution by repack 0.8967300456866433->0.8901995431335663 , unplacedBoxesSize:8
+currentRepackCostTime:258.76300000000003s , currentRepackMaxTime:430.829s
+iter13		 Improve solution by repack 0.8901995431335663->0.8297050524052674 , unplacedBoxesSize:5
+currentRepackCostTime:258.802s , currentRepackMaxTime:430.829s
+iter15		 Improve solution by repack 0.8297050524052674->0.7865224402042461 , unplacedBoxesSize:2
+currentRepackCostTime:258.81s , currentRepackMaxTime:430.829s
+iter180		 Improve solution by repack 0.7865224402042461->0.7854676162321956 , unplacedBoxesSize:5
+currentRepackCostTime:259.48900000000003s , currentRepackMaxTime:430.829s
+iter185		 Improve solution by repack 0.7854676162321956->0.7799979844127923 , unplacedBoxesSize:5
+currentRepackCostTime:259.51800000000003s , currentRepackMaxTime:430.829s
+iter223		 Improve solution by repack 0.7799979844127923->0.776154931470035 , unplacedBoxesSize:5
+currentRepackCostTime:259.765s , currentRepackMaxTime:430.829s
+iter235		 Improve solution by repack 0.776154931470035->0.7592454985219027 , unplacedBoxesSize:4
+currentRepackCostTime:259.848s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter7		 Improve solution by repack 0.9062570545552271->0.7781711905401772 , unplacedBoxesSize:4
+currentRepackCostTime:261.731s , currentRepackMaxTime:430.829s
+iter16		 Improve solution by repack 0.7781711905401772->0.7592454985219027 , unplacedBoxesSize:4
+currentRepackCostTime:261.773s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter1		 Improve solution by repack 0.9490916420317119->0.944915345337275 , unplacedBoxesSize:6
+currentRepackCostTime:264.705s , currentRepackMaxTime:430.829s
+iter2		 Improve solution by repack 0.944915345337275->0.8526518409029832 , unplacedBoxesSize:5
+currentRepackCostTime:264.708s , currentRepackMaxTime:430.829s
+iter17		 Improve solution by repack 0.8526518409029832->0.8412039774254232 , unplacedBoxesSize:5
+currentRepackCostTime:264.795s , currentRepackMaxTime:430.829s
+iter66		 Improve solution by repack 0.8412039774254232->0.8251605751142166 , unplacedBoxesSize:6
+currentRepackCostTime:265.052s , currentRepackMaxTime:430.829s
+iter73		 Improve solution by repack 0.8251605751142166->0.8219692287019618 , unplacedBoxesSize:6
+currentRepackCostTime:265.081s , currentRepackMaxTime:430.829s
+iter137		 Improve solution by repack 0.8219692287019618->0.816801263101317 , unplacedBoxesSize:6
+currentRepackCostTime:265.435s , currentRepackMaxTime:430.829s
+iter170		 Improve solution by repack 0.816801263101317->0.8066904058048912 , unplacedBoxesSize:5
+currentRepackCostTime:265.604s , currentRepackMaxTime:430.829s
+iter195		 Improve solution by repack 0.8066904058048912->0.7956308787960226 , unplacedBoxesSize:5
+currentRepackCostTime:265.737s , currentRepackMaxTime:430.829s
+iter238		 Improve solution by repack 0.7956308787960226->0.7939384574039237 , unplacedBoxesSize:5
+currentRepackCostTime:265.982s , currentRepackMaxTime:430.829s
+iter379		 Improve solution by repack 0.7939384574039237->0.7915063155065842 , unplacedBoxesSize:5
+currentRepackCostTime:266.729s , currentRepackMaxTime:430.829s
+iter522		 Improve solution by repack 0.7915063155065842->0.7848202768073099 , unplacedBoxesSize:5
+currentRepackCostTime:267.481s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter4		 Improve solution by repack 0.9490829615694706->0.8633905536146197 , unplacedBoxesSize:7
+currentRepackCostTime:269.50600000000003s , currentRepackMaxTime:430.829s
+iter14		 Improve solution by repack 0.8633905536146197->0.8441222117710293 , unplacedBoxesSize:8
+currentRepackCostTime:269.555s , currentRepackMaxTime:430.829s
+iter17		 Improve solution by repack 0.8441222117710293->0.8392532249395325 , unplacedBoxesSize:8
+currentRepackCostTime:269.574s , currentRepackMaxTime:430.829s
+iter25		 Improve solution by repack 0.8392532249395325->0.8299650631550658 , unplacedBoxesSize:5
+currentRepackCostTime:269.633s , currentRepackMaxTime:430.829s
+iter34		 Improve solution by repack 0.8299650631550658->0.8051216070948669 , unplacedBoxesSize:5
+currentRepackCostTime:269.671s , currentRepackMaxTime:430.829s
+iter47		 Improve solution by repack 0.8051216070948669->0.8009342246707873 , unplacedBoxesSize:6
+currentRepackCostTime:269.734s , currentRepackMaxTime:430.829s
+iter50		 Improve solution by repack 0.8009342246707873->0.7948021365224403 , unplacedBoxesSize:6
+currentRepackCostTime:269.752s , currentRepackMaxTime:430.829s
+iter120		 Improve solution by repack 0.7948021365224403->0.7883384842784197 , unplacedBoxesSize:5
+currentRepackCostTime:270.214s , currentRepackMaxTime:430.829s
+iter121		 Improve solution by repack 0.7883384842784197->0.7747950819672131 , unplacedBoxesSize:5
+currentRepackCostTime:270.22s , currentRepackMaxTime:430.829s
+iter127		 Improve solution by repack 0.7747950819672131->0.7734399355012094 , unplacedBoxesSize:5
+currentRepackCostTime:270.245s , currentRepackMaxTime:430.829s
+iter165		 Improve solution by repack 0.7734399355012094->0.7708163128191347 , unplacedBoxesSize:4
+currentRepackCostTime:270.449s , currentRepackMaxTime:430.829s
+iter231		 Improve solution by repack 0.7708163128191347->0.7686757592045149 , unplacedBoxesSize:5
+currentRepackCostTime:270.755s , currentRepackMaxTime:430.829s
+iter269		 Improve solution by repack 0.7686757592045149->0.765583848427842 , unplacedBoxesSize:5
+currentRepackCostTime:270.969s , currentRepackMaxTime:430.829s
+iter275		 Improve solution by repack 0.765583848427842->0.7623925020155872 , unplacedBoxesSize:5
+currentRepackCostTime:271.00100000000003s , currentRepackMaxTime:430.829s
+iter316		 Improve solution by repack 0.7623925020155872->0.7575235151840903 , unplacedBoxesSize:5
+currentRepackCostTime:271.221s , currentRepackMaxTime:430.829s
+iter325		 Improve solution by repack 0.7575235151840903->0.752784869658694 , unplacedBoxesSize:5
+currentRepackCostTime:271.274s , currentRepackMaxTime:430.829s
+iter348		 Improve solution by repack 0.752784869658694->0.7503527277613545 , unplacedBoxesSize:5
+currentRepackCostTime:271.391s , currentRepackMaxTime:430.829s
+iter366		 Improve solution by repack 0.7503527277613545->0.74366668906208 , unplacedBoxesSize:5
+currentRepackCostTime:271.50100000000003s , currentRepackMaxTime:430.829s
+iter578		 Improve solution by repack 0.74366668906208->0.7436045417898415 , unplacedBoxesSize:4
+currentRepackCostTime:272.68s , currentRepackMaxTime:430.829s
+iter695		 Improve solution by repack 0.7436045417898415->0.7391648750335932 , unplacedBoxesSize:4
+currentRepackCostTime:273.23s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter3		 Improve solution by repack 0.9511334318731524->0.9481335662456328 , unplacedBoxesSize:9
+currentRepackCostTime:275.676s , currentRepackMaxTime:430.829s
+iter5		 Improve solution by repack 0.9481335662456328->0.9420404461166354 , unplacedBoxesSize:7
+currentRepackCostTime:275.695s , currentRepackMaxTime:430.829s
+iter8		 Improve solution by repack 0.9420404461166354->0.8068140284869659 , unplacedBoxesSize:5
+currentRepackCostTime:275.712s , currentRepackMaxTime:430.829s
+iter17		 Improve solution by repack 0.8068140284869659->0.7972063961300726 , unplacedBoxesSize:5
+currentRepackCostTime:275.75600000000003s , currentRepackMaxTime:430.829s
+iter80		 Improve solution by repack 0.7972063961300726->0.796613813490997 , unplacedBoxesSize:4
+currentRepackCostTime:276.083s , currentRepackMaxTime:430.829s
+iter361		 Improve solution by repack 0.796613813490997->0.7965929857565172 , unplacedBoxesSize:4
+currentRepackCostTime:277.385s , currentRepackMaxTime:430.829s
+iter609		 Improve solution by repack 0.7965929857565172->0.7870061811341038 , unplacedBoxesSize:4
+currentRepackCostTime:278.629s , currentRepackMaxTime:430.829s
+iter657		 Improve solution by repack 0.7870061811341038->0.7857652512765386 , unplacedBoxesSize:5
+currentRepackCostTime:278.894s , currentRepackMaxTime:430.829s
+iter667		 Improve solution by repack 0.7857652512765386->0.7656006449879065 , unplacedBoxesSize:5
+currentRepackCostTime:278.954s , currentRepackMaxTime:430.829s
+iter744		 Improve solution by repack 0.7656006449879065->0.7463853802741198 , unplacedBoxesSize:5
+currentRepackCostTime:279.461s , currentRepackMaxTime:430.829s
+iter765		 Improve solution by repack 0.7463853802741198->0.7328419779629132 , unplacedBoxesSize:5
+currentRepackCostTime:279.65500000000003s , currentRepackMaxTime:430.829s
+iter857		 Improve solution by repack 0.7328419779629132->0.7278036818059661 , unplacedBoxesSize:4
+currentRepackCostTime:280.30400000000003s , currentRepackMaxTime:430.829s
+iter864		 Improve solution by repack 0.7278036818059661->0.7271707874227358 , unplacedBoxesSize:4
+currentRepackCostTime:280.344s , currentRepackMaxTime:430.829s
+iter905		 Improve solution by repack 0.7271707874227358->0.7226417629669443 , unplacedBoxesSize:4
+currentRepackCostTime:280.562s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter1		 Improve solution by repack 0.9538988175221714->0.940370868046224 , unplacedBoxesSize:9
+currentRepackCostTime:283.759s , currentRepackMaxTime:430.829s
+iter2		 Improve solution by repack 0.940370868046224->0.7803224939532385 , unplacedBoxesSize:8
+currentRepackCostTime:283.765s , currentRepackMaxTime:430.829s
+iter127		 Improve solution by repack 0.7803224939532385->0.777037758667025 , unplacedBoxesSize:7
+currentRepackCostTime:284.726s , currentRepackMaxTime:430.829s
+iter152		 Improve solution by repack 0.777037758667025->0.7687130475678581 , unplacedBoxesSize:8
+currentRepackCostTime:284.885s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter1		 Improve solution by repack 0.9581423004568664->0.8126404192421393 , unplacedBoxesSize:5
+currentRepackCostTime:288.044s , currentRepackMaxTime:430.829s
+iter7		 Improve solution by repack 0.8126404192421393->0.7687130475678581 , unplacedBoxesSize:8
+currentRepackCostTime:288.076s , currentRepackMaxTime:430.829s
+iter172		 Improve solution by repack 0.7687130475678581->0.7549942891695781 , unplacedBoxesSize:7
+currentRepackCostTime:289.23900000000003s , currentRepackMaxTime:430.829s
+iter268		 Improve solution by repack 0.7549942891695781->0.7504619054017737 , unplacedBoxesSize:6
+currentRepackCostTime:289.88100000000003s , currentRepackMaxTime:430.829s
+iter363		 Improve solution by repack 0.7504619054017737->0.7464266998118785 , unplacedBoxesSize:7
+currentRepackCostTime:290.449s , currentRepackMaxTime:430.829s
+iter585		 Improve solution by repack 0.7464266998118785->0.7444494087610857 , unplacedBoxesSize:7
+currentRepackCostTime:291.962s , currentRepackMaxTime:430.829s
+iter685		 Improve solution by repack 0.7444494087610857->0.743070075248589 , unplacedBoxesSize:7
+currentRepackCostTime:292.587s , currentRepackMaxTime:430.829s
+iter702		 Improve solution by repack 0.743070075248589->0.7426152244020424 , unplacedBoxesSize:7
+currentRepackCostTime:292.694s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter2		 Improve solution by repack 0.9648656275194839->0.9570599301263102 , unplacedBoxesSize:6
+currentRepackCostTime:296.113s , currentRepackMaxTime:430.829s
+iter5		 Improve solution by repack 0.9570599301263102->0.794893509809191 , unplacedBoxesSize:5
+currentRepackCostTime:296.132s , currentRepackMaxTime:430.829s
+iter26		 Improve solution by repack 0.794893509809191->0.7941595001343724 , unplacedBoxesSize:8
+currentRepackCostTime:296.25100000000003s , currentRepackMaxTime:430.829s
+iter73		 Improve solution by repack 0.7941595001343724->0.79252082773448 , unplacedBoxesSize:9
+currentRepackCostTime:296.592s , currentRepackMaxTime:430.829s
+iter97		 Improve solution by repack 0.79252082773448->0.7923985487772105 , unplacedBoxesSize:8
+currentRepackCostTime:296.794s , currentRepackMaxTime:430.829s
+iter110		 Improve solution by repack 0.7923985487772105->0.7841097823165816 , unplacedBoxesSize:8
+currentRepackCostTime:296.97s , currentRepackMaxTime:430.829s
+iter122		 Improve solution by repack 0.7841097823165816->0.7809184359043267 , unplacedBoxesSize:8
+currentRepackCostTime:297.045s , currentRepackMaxTime:430.829s
+iter162		 Improve solution by repack 0.7809184359043267->0.7748864552539639 , unplacedBoxesSize:5
+currentRepackCostTime:297.29200000000003s , currentRepackMaxTime:430.829s
+iter254		 Improve solution by repack 0.7748864552539639->0.7506228164471916 , unplacedBoxesSize:4
+currentRepackCostTime:297.788s , currentRepackMaxTime:430.829s
+iter262		 Improve solution by repack 0.7506228164471916->0.7468113410373556 , unplacedBoxesSize:4
+currentRepackCostTime:297.832s , currentRepackMaxTime:430.829s
+iter272		 Improve solution by repack 0.7468113410373556->0.7443744961031981 , unplacedBoxesSize:4
+currentRepackCostTime:297.874s , currentRepackMaxTime:430.829s
+iter429		 Improve solution by repack 0.7443744961031981->0.7396358505778017 , unplacedBoxesSize:4
+currentRepackCostTime:298.683s , currentRepackMaxTime:430.829s
+iter476		 Improve solution by repack 0.7396358505778017->0.7362899758129534 , unplacedBoxesSize:3
+currentRepackCostTime:298.88800000000003s , currentRepackMaxTime:430.829s
+iter499		 Improve solution by repack 0.7362899758129534->0.7356570814297233 , unplacedBoxesSize:3
+currentRepackCostTime:298.986s , currentRepackMaxTime:430.829s
+iter562		 Improve solution by repack 0.7356570814297233->0.7267965600644988 , unplacedBoxesSize:3
+currentRepackCostTime:299.261s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter2		 Improve solution by repack 0.9692797635044343->0.8017696855683956 , unplacedBoxesSize:5
+currentRepackCostTime:300.795s , currentRepackMaxTime:430.829s
+iter8		 Improve solution by repack 0.8017696855683956->0.7981940338618652 , unplacedBoxesSize:8
+currentRepackCostTime:300.822s , currentRepackMaxTime:430.829s
+iter16		 Improve solution by repack 0.7981940338618652->0.7967125772641763 , unplacedBoxesSize:8
+currentRepackCostTime:300.878s , currentRepackMaxTime:430.829s
+iter24		 Improve solution by repack 0.7967125772641763->0.7892024993281377 , unplacedBoxesSize:6
+currentRepackCostTime:300.935s , currentRepackMaxTime:430.829s
+iter33		 Improve solution by repack 0.7892024993281377->0.7775275463585057 , unplacedBoxesSize:7
+currentRepackCostTime:300.98900000000003s , currentRepackMaxTime:430.829s
+iter40		 Improve solution by repack 0.7775275463585057->0.7767804353668369 , unplacedBoxesSize:7
+currentRepackCostTime:301.035s , currentRepackMaxTime:430.829s
+iter45		 Improve solution by repack 0.7767804353668369->0.7679199140016124 , unplacedBoxesSize:7
+currentRepackCostTime:301.076s , currentRepackMaxTime:430.829s
+iter124		 Improve solution by repack 0.7679199140016124->0.7476662859446385 , unplacedBoxesSize:7
+currentRepackCostTime:301.636s , currentRepackMaxTime:430.829s
+iter125		 Improve solution by repack 0.7476662859446385->0.7376615829078206 , unplacedBoxesSize:7
+currentRepackCostTime:301.649s , currentRepackMaxTime:430.829s
+iter160		 Improve solution by repack 0.7376615829078206->0.7326353802741198 , unplacedBoxesSize:7
+currentRepackCostTime:301.895s , currentRepackMaxTime:430.829s
+iter261		 Improve solution by repack 0.7326353802741198->0.7268587073367375 , unplacedBoxesSize:6
+currentRepackCostTime:302.565s , currentRepackMaxTime:430.829s
+iter276		 Improve solution by repack 0.7268587073367375->0.722879938188659 , unplacedBoxesSize:5
+currentRepackCostTime:302.654s , currentRepackMaxTime:430.829s
+iter289		 Improve solution by repack 0.722879938188659->0.7218499731255038 , unplacedBoxesSize:6
+currentRepackCostTime:302.717s , currentRepackMaxTime:430.829s
+iter333		 Improve solution by repack 0.7218499731255038->0.7070804219295889 , unplacedBoxesSize:6
+currentRepackCostTime:302.972s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter5		 Improve solution by repack 0.9709943563558183->0.759266662187584 , unplacedBoxesSize:8
+currentRepackCostTime:306.621s , currentRepackMaxTime:430.829s
+iter7		 Improve solution by repack 0.759266662187584->0.7560753157753292 , unplacedBoxesSize:8
+currentRepackCostTime:306.633s , currentRepackMaxTime:430.829s
+iter16		 Improve solution by repack 0.7560753157753292->0.7536431738779897 , unplacedBoxesSize:8
+currentRepackCostTime:306.72s , currentRepackMaxTime:430.829s
+iter117		 Improve solution by repack 0.7536431738779897->0.7390032921257726 , unplacedBoxesSize:7
+currentRepackCostTime:307.462s , currentRepackMaxTime:430.829s
+iter126		 Improve solution by repack 0.7390032921257726->0.7311250335931202 , unplacedBoxesSize:5
+currentRepackCostTime:307.517s , currentRepackMaxTime:430.829s
+iter128		 Improve solution by repack 0.7311250335931202->0.7297866836871808 , unplacedBoxesSize:7
+currentRepackCostTime:307.528s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter1		 Improve solution by repack 0.9861384708411718->0.9676132088148347 , unplacedBoxesSize:9
+currentRepackCostTime:310.721s , currentRepackMaxTime:430.829s
+iter7		 Improve solution by repack 0.9676132088148347->0.9628745632894383 , unplacedBoxesSize:9
+currentRepackCostTime:310.765s , currentRepackMaxTime:430.829s
+iter18		 Improve solution by repack 0.9628745632894383->0.9527076054823972 , unplacedBoxesSize:9
+currentRepackCostTime:310.854s , currentRepackMaxTime:430.829s
+iter20		 Improve solution by repack 0.9527076054823972->0.94779427573233 , unplacedBoxesSize:9
+currentRepackCostTime:310.866s , currentRepackMaxTime:430.829s
+iter30		 Improve solution by repack 0.94779427573233->0.9446029293200752 , unplacedBoxesSize:9
+currentRepackCostTime:310.932s , currentRepackMaxTime:430.829s
+iter48		 Improve solution by repack 0.9446029293200752->0.782810400429992 , unplacedBoxesSize:8
+currentRepackCostTime:311.048s , currentRepackMaxTime:430.829s
+iter50		 Improve solution by repack 0.782810400429992->0.7794329481322225 , unplacedBoxesSize:8
+currentRepackCostTime:311.067s , currentRepackMaxTime:430.829s
+iter55		 Improve solution by repack 0.7794329481322225->0.7757534936844933 , unplacedBoxesSize:8
+currentRepackCostTime:311.093s , currentRepackMaxTime:430.829s
+iter62		 Improve solution by repack 0.7757534936844933->0.771014848159097 , unplacedBoxesSize:8
+currentRepackCostTime:311.148s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+Completed repack sweep without reducing board count. No-reduction sweeps: 2/3
+Selecting boards with low utilization for repacking...
+iter291		 Improve solution by repack 0.771014848159097->0.7662762026337006 , unplacedBoxesSize:8
+currentRepackCostTime:317.208s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter6		 Improve solution by repack 0.8952586670249932->0.7875295619457134 , unplacedBoxesSize:8
+currentRepackCostTime:319.536s , currentRepackMaxTime:430.829s
+iter18		 Improve solution by repack 0.7875295619457134->0.7834097016930933 , unplacedBoxesSize:8
+currentRepackCostTime:319.613s , currentRepackMaxTime:430.829s
+iter36		 Improve solution by repack 0.7834097016930933->0.770710158559527 , unplacedBoxesSize:8
+currentRepackCostTime:319.742s , currentRepackMaxTime:430.829s
+iter41		 Improve solution by repack 0.770710158559527->0.7702674012362268 , unplacedBoxesSize:8
+currentRepackCostTime:319.791s , currentRepackMaxTime:430.829s
+iter45		 Improve solution by repack 0.7702674012362268->0.7556275194840096 , unplacedBoxesSize:7
+currentRepackCostTime:319.824s , currentRepackMaxTime:430.829s
+iter50		 Improve solution by repack 0.7556275194840096->0.7512960225745768 , unplacedBoxesSize:7
+currentRepackCostTime:319.849s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter4		 Improve solution by repack 0.9099045955388336->0.7512960225745768 , unplacedBoxesSize:7
+currentRepackCostTime:323.432s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter4		 Improve solution by repack 0.9346828809459823->0.8145767266863746 , unplacedBoxesSize:8
+currentRepackCostTime:327.307s , currentRepackMaxTime:430.829s
+iter5		 Improve solution by repack 0.8145767266863746->0.8081940338618652 , unplacedBoxesSize:8
+currentRepackCostTime:327.31s , currentRepackMaxTime:430.829s
+iter9		 Improve solution by repack 0.8081940338618652->0.7896338349905939 , unplacedBoxesSize:8
+currentRepackCostTime:327.34000000000003s , currentRepackMaxTime:430.829s
+iter21		 Improve solution by repack 0.7896338349905939->0.7865419242139211 , unplacedBoxesSize:8
+currentRepackCostTime:327.435s , currentRepackMaxTime:430.829s
+iter22		 Improve solution by repack 0.7865419242139211->0.7784815909701693 , unplacedBoxesSize:8
+currentRepackCostTime:327.442s , currentRepackMaxTime:430.829s
+iter38		 Improve solution by repack 0.7784815909701693->0.7736126041386724 , unplacedBoxesSize:8
+currentRepackCostTime:327.545s , currentRepackMaxTime:430.829s
+iter71		 Improve solution by repack 0.7736126041386724->0.768873958613276 , unplacedBoxesSize:8
+currentRepackCostTime:327.764s , currentRepackMaxTime:430.829s
+iter94		 Improve solution by repack 0.768873958613276->0.7662762026337006 , unplacedBoxesSize:8
+currentRepackCostTime:327.914s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter1		 Improve solution by repack 0.9303332437516796->0.9119457135178715 , unplacedBoxesSize:7
+currentRepackCostTime:331.716s , currentRepackMaxTime:430.829s
+iter3		 Improve solution by repack 0.9119457135178715->0.8950100779360387 , unplacedBoxesSize:4
+currentRepackCostTime:331.731s , currentRepackMaxTime:430.829s
+iter21		 Improve solution by repack 0.8950100779360387->0.8126404192421393 , unplacedBoxesSize:5
+currentRepackCostTime:331.825s , currentRepackMaxTime:430.829s
+iter46		 Improve solution by repack 0.8126404192421393->0.8070908357968288 , unplacedBoxesSize:5
+currentRepackCostTime:331.968s , currentRepackMaxTime:430.829s
+iter95		 Improve solution by repack 0.8070908357968288->0.7980492475141091 , unplacedBoxesSize:6
+currentRepackCostTime:332.24s , currentRepackMaxTime:430.829s
+iter103		 Improve solution by repack 0.7980492475141091->0.7865224402042461 , unplacedBoxesSize:2
+currentRepackCostTime:332.28700000000003s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter3		 Improve solution by repack 0.9107615560333244->0.8989972453641495 , unplacedBoxesSize:4
+currentRepackCostTime:334.46s , currentRepackMaxTime:430.829s
+iter5		 Improve solution by repack 0.8989972453641495->0.8267303816178446 , unplacedBoxesSize:3
+currentRepackCostTime:334.472s , currentRepackMaxTime:430.829s
+iter157		 Improve solution by repack 0.8267303816178446->0.7865224402042461 , unplacedBoxesSize:2
+currentRepackCostTime:335.212s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter1		 Improve solution by repack 0.9257054555227089->0.9227492609513571 , unplacedBoxesSize:4
+currentRepackCostTime:337.14300000000003s , currentRepackMaxTime:430.829s
+iter2		 Improve solution by repack 0.9227492609513571->0.7865224402042461 , unplacedBoxesSize:2
+currentRepackCostTime:337.144s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter1		 Improve solution by repack 0.9227492609513571->0.9155126310131685 , unplacedBoxesSize:3
+currentRepackCostTime:339.75100000000003s , currentRepackMaxTime:430.829s
+iter26		 Improve solution by repack 0.9155126310131685->0.9138265923138942 , unplacedBoxesSize:7
+currentRepackCostTime:339.87600000000003s , currentRepackMaxTime:430.829s
+iter28		 Improve solution by repack 0.9138265923138942->0.8267303816178446 , unplacedBoxesSize:3
+currentRepackCostTime:339.885s , currentRepackMaxTime:430.829s
+iter79		 Improve solution by repack 0.8267303816178446->0.8149076189196452 , unplacedBoxesSize:5
+currentRepackCostTime:340.125s , currentRepackMaxTime:430.829s
+iter91		 Improve solution by repack 0.8149076189196452->0.8100164606288632 , unplacedBoxesSize:5
+currentRepackCostTime:340.172s , currentRepackMaxTime:430.829s
+iter132		 Improve solution by repack 0.8100164606288632->0.7992092179521635 , unplacedBoxesSize:5
+currentRepackCostTime:340.395s , currentRepackMaxTime:430.829s
+iter163		 Improve solution by repack 0.7992092179521635->0.797946116635313 , unplacedBoxesSize:5
+currentRepackCostTime:340.541s , currentRepackMaxTime:430.829s
+iter188		 Improve solution by repack 0.797946116635313->0.7939673474872345 , unplacedBoxesSize:4
+currentRepackCostTime:340.693s , currentRepackMaxTime:430.829s
+iter206		 Improve solution by repack 0.7939673474872345->0.7915352055898951 , unplacedBoxesSize:4
+currentRepackCostTime:340.795s , currentRepackMaxTime:430.829s
+iter288		 Improve solution by repack 0.7915352055898951->0.7826746842246708 , unplacedBoxesSize:4
+currentRepackCostTime:341.192s , currentRepackMaxTime:430.829s
+iter367		 Improve solution by repack 0.7826746842246708->0.7779024455791453 , unplacedBoxesSize:4
+currentRepackCostTime:341.581s , currentRepackMaxTime:430.829s
+iter398		 Improve solution by repack 0.7779024455791453->0.7572749260951357 , unplacedBoxesSize:4
+currentRepackCostTime:341.713s , currentRepackMaxTime:430.829s
+iter403		 Improve solution by repack 0.7572749260951357->0.7529434291857028 , unplacedBoxesSize:4
+currentRepackCostTime:341.738s , currentRepackMaxTime:430.829s
+iter424		 Improve solution by repack 0.7529434291857028->0.7468113410373556 , unplacedBoxesSize:4
+currentRepackCostTime:341.837s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter2		 Improve solution by repack 0.9331335662456328->0.9314995968825585 , unplacedBoxesSize:6
+currentRepackCostTime:344.289s , currentRepackMaxTime:430.829s
+iter7		 Improve solution by repack 0.9314995968825585->0.8370572426766999 , unplacedBoxesSize:5
+currentRepackCostTime:344.308s , currentRepackMaxTime:430.829s
+iter27		 Improve solution by repack 0.8370572426766999->0.8285494490728299 , unplacedBoxesSize:4
+currentRepackCostTime:344.42900000000003s , currentRepackMaxTime:430.829s
+iter31		 Improve solution by repack 0.8285494490728299->0.7972722386455254 , unplacedBoxesSize:6
+currentRepackCostTime:344.446s , currentRepackMaxTime:430.829s
+iter33		 Improve solution by repack 0.7972722386455254->0.7852317925288901 , unplacedBoxesSize:5
+currentRepackCostTime:344.467s , currentRepackMaxTime:430.829s
+iter43		 Improve solution by repack 0.7852317925288901->0.7644793066380005 , unplacedBoxesSize:4
+currentRepackCostTime:344.529s , currentRepackMaxTime:430.829s
+iter45		 Improve solution by repack 0.7644793066380005->0.7548716742811072 , unplacedBoxesSize:4
+currentRepackCostTime:344.541s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter4		 Improve solution by repack 0.9198313625369524->0.9146808653587745 , unplacedBoxesSize:6
+currentRepackCostTime:347.31600000000003s , currentRepackMaxTime:430.829s
+iter8		 Improve solution by repack 0.9146808653587745->0.9119850174684225 , unplacedBoxesSize:6
+currentRepackCostTime:347.336s , currentRepackMaxTime:430.829s
+iter10		 Improve solution by repack 0.9119850174684225->0.8071499596882558 , unplacedBoxesSize:2
+currentRepackCostTime:347.347s , currentRepackMaxTime:430.829s
+iter79		 Improve solution by repack 0.8071499596882558->0.7865224402042461 , unplacedBoxesSize:2
+currentRepackCostTime:347.65500000000003s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter1		 Improve solution by repack 0.8911821418973395->0.8884513571620531 , unplacedBoxesSize:9
+currentRepackCostTime:349.874s , currentRepackMaxTime:430.829s
+iter24		 Improve solution by repack 0.8884513571620531->0.8782175490459554 , unplacedBoxesSize:8
+currentRepackCostTime:350.045s , currentRepackMaxTime:430.829s
+iter39		 Improve solution by repack 0.8782175490459554->0.7865224402042461 , unplacedBoxesSize:2
+currentRepackCostTime:350.152s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter1		 Improve solution by repack 0.9497635044342918->0.9487758667024992 , unplacedBoxesSize:5
+currentRepackCostTime:352.56100000000004s , currentRepackMaxTime:430.829s
+iter2		 Improve solution by repack 0.9487758667024992->0.9154662725073904 , unplacedBoxesSize:4
+currentRepackCostTime:352.56600000000003s , currentRepackMaxTime:430.829s
+iter5		 Improve solution by repack 0.9154662725073904->0.8999274388605213 , unplacedBoxesSize:3
+currentRepackCostTime:352.581s , currentRepackMaxTime:430.829s
+iter17		 Improve solution by repack 0.8999274388605213->0.8337113679118516 , unplacedBoxesSize:4
+currentRepackCostTime:352.63100000000003s , currentRepackMaxTime:430.829s
+iter29		 Improve solution by repack 0.8337113679118516->0.8072749260951357 , unplacedBoxesSize:3
+currentRepackCostTime:352.677s , currentRepackMaxTime:430.829s
+iter47		 Improve solution by repack 0.8072749260951357->0.8049099704380542 , unplacedBoxesSize:3
+currentRepackCostTime:352.786s , currentRepackMaxTime:430.829s
+iter48		 Improve solution by repack 0.8049099704380542->0.7865224402042461 , unplacedBoxesSize:2
+currentRepackCostTime:352.795s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter5		 Improve solution by repack 0.9526068261220103->0.9403554152109648 , unplacedBoxesSize:10
+currentRepackCostTime:355.261s , currentRepackMaxTime:430.829s
+iter6		 Improve solution by repack 0.9403554152109648->0.9234459822628326 , unplacedBoxesSize:9
+currentRepackCostTime:355.266s , currentRepackMaxTime:430.829s
+iter7		 Improve solution by repack 0.9234459822628326->0.9047258801397473 , unplacedBoxesSize:9
+currentRepackCostTime:355.27500000000003s , currentRepackMaxTime:430.829s
+iter12		 Improve solution by repack 0.9047258801397473->0.8678426498253158 , unplacedBoxesSize:9
+currentRepackCostTime:355.30400000000003s , currentRepackMaxTime:430.829s
+iter14		 Improve solution by repack 0.8678426498253158->0.8407927976350443 , unplacedBoxesSize:6
+currentRepackCostTime:355.314s , currentRepackMaxTime:430.829s
+iter21		 Improve solution by repack 0.8407927976350443->0.836353130878796 , unplacedBoxesSize:6
+currentRepackCostTime:355.346s , currentRepackMaxTime:430.829s
+iter43		 Improve solution by repack 0.836353130878796->0.8306819403386186 , unplacedBoxesSize:5
+currentRepackCostTime:355.494s , currentRepackMaxTime:430.829s
+iter54		 Improve solution by repack 0.8306819403386186->0.7865224402042461 , unplacedBoxesSize:2
+currentRepackCostTime:355.553s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter1		 Improve solution by repack 0.9358257188927708->0.7865224402042461 , unplacedBoxesSize:2
+currentRepackCostTime:357.863s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter2		 Improve solution by repack 0.9344551195915077->0.8908613276001075 , unplacedBoxesSize:8
+currentRepackCostTime:360.42s , currentRepackMaxTime:430.829s
+iter11		 Improve solution by repack 0.8908613276001075->0.8904985219027143 , unplacedBoxesSize:6
+currentRepackCostTime:360.49s , currentRepackMaxTime:430.829s
+iter16		 Improve solution by repack 0.8904985219027143->0.8715634238108035 , unplacedBoxesSize:6
+currentRepackCostTime:360.514s , currentRepackMaxTime:430.829s
+iter19		 Improve solution by repack 0.8715634238108035->0.8668247782854072 , unplacedBoxesSize:6
+currentRepackCostTime:360.536s , currentRepackMaxTime:430.829s
+iter26		 Improve solution by repack 0.8668247782854072->0.8651323568933083 , unplacedBoxesSize:6
+currentRepackCostTime:360.57300000000004s , currentRepackMaxTime:430.829s
+iter32		 Improve solution by repack 0.8651323568933083->0.859504165546896 , unplacedBoxesSize:6
+currentRepackCostTime:360.604s , currentRepackMaxTime:430.829s
+iter71		 Improve solution by repack 0.859504165546896->0.8546351787153991 , unplacedBoxesSize:6
+currentRepackCostTime:360.808s , currentRepackMaxTime:430.829s
+iter72		 Improve solution by repack 0.8546351787153991->0.8498965331900027 , unplacedBoxesSize:6
+currentRepackCostTime:360.814s , currentRepackMaxTime:430.829s
+iter102		 Improve solution by repack 0.8498965331900027->0.8465506584251545 , unplacedBoxesSize:5
+currentRepackCostTime:360.97700000000003s , currentRepackMaxTime:430.829s
+iter119		 Improve solution by repack 0.8465506584251545->0.8417958882020962 , unplacedBoxesSize:5
+currentRepackCostTime:361.059s , currentRepackMaxTime:430.829s
+iter173		 Improve solution by repack 0.8417958882020962->0.8384500134372481 , unplacedBoxesSize:4
+currentRepackCostTime:361.318s , currentRepackMaxTime:430.829s
+iter178		 Improve solution by repack 0.8384500134372481->0.8071499596882558 , unplacedBoxesSize:2
+currentRepackCostTime:361.342s , currentRepackMaxTime:430.829s
+iter200		 Improve solution by repack 0.8071499596882558->0.7865224402042461 , unplacedBoxesSize:2
+currentRepackCostTime:361.439s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter2		 Improve solution by repack 0.9405814969094329->0.9260450819672131 , unplacedBoxesSize:9
+currentRepackCostTime:363.159s , currentRepackMaxTime:430.829s
+iter7		 Improve solution by repack 0.9260450819672131->0.9250181402848697 , unplacedBoxesSize:9
+currentRepackCostTime:363.196s , currentRepackMaxTime:430.829s
+iter8		 Improve solution by repack 0.9250181402848697->0.9149952969631819 , unplacedBoxesSize:10
+currentRepackCostTime:363.206s , currentRepackMaxTime:430.829s
+iter22		 Improve solution by repack 0.9149952969631819->0.8560286213383499 , unplacedBoxesSize:6
+currentRepackCostTime:363.342s , currentRepackMaxTime:430.829s
+iter24		 Improve solution by repack 0.8560286213383499->0.8424852190271432 , unplacedBoxesSize:6
+currentRepackCostTime:363.353s , currentRepackMaxTime:430.829s
+iter38		 Improve solution by repack 0.8424852190271432->0.836353130878796 , unplacedBoxesSize:6
+currentRepackCostTime:363.42900000000003s , currentRepackMaxTime:430.829s
+iter41		 Improve solution by repack 0.836353130878796->0.8218214189733943 , unplacedBoxesSize:5
+currentRepackCostTime:363.45s , currentRepackMaxTime:430.829s
+iter137		 Improve solution by repack 0.8218214189733943->0.8178426498253158 , unplacedBoxesSize:4
+currentRepackCostTime:363.955s , currentRepackMaxTime:430.829s
+iter147		 Improve solution by repack 0.8178426498253158->0.8089821284600913 , unplacedBoxesSize:4
+currentRepackCostTime:364.002s , currentRepackMaxTime:430.829s
+iter188		 Improve solution by repack 0.8089821284600913->0.7865224402042461 , unplacedBoxesSize:2
+currentRepackCostTime:364.17900000000003s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter1		 Improve solution by repack 0.9322816447191615->0.9222319269013706 , unplacedBoxesSize:9
+currentRepackCostTime:365.98s , currentRepackMaxTime:430.829s
+iter2		 Improve solution by repack 0.9222319269013706->0.8790876108572964 , unplacedBoxesSize:8
+currentRepackCostTime:365.986s , currentRepackMaxTime:430.829s
+iter5		 Improve solution by repack 0.8790876108572964->0.8687080085998387 , unplacedBoxesSize:3
+currentRepackCostTime:366.005s , currentRepackMaxTime:430.829s
+iter54		 Improve solution by repack 0.8687080085998387->0.8613262563826929 , unplacedBoxesSize:3
+currentRepackCostTime:366.229s , currentRepackMaxTime:430.829s
+iter93		 Improve solution by repack 0.8613262563826929->0.8577452297769417 , unplacedBoxesSize:3
+currentRepackCostTime:366.415s , currentRepackMaxTime:430.829s
+iter286		 Improve solution by repack 0.8577452297769417->0.8560286213383499 , unplacedBoxesSize:6
+currentRepackCostTime:367.35s , currentRepackMaxTime:430.829s
+iter302		 Improve solution by repack 0.8560286213383499->0.8465506584251545 , unplacedBoxesSize:5
+currentRepackCostTime:367.449s , currentRepackMaxTime:430.829s
+iter305		 Improve solution by repack 0.8465506584251545->0.8067528890083311 , unplacedBoxesSize:5
+currentRepackCostTime:367.466s , currentRepackMaxTime:430.829s
+iter309		 Improve solution by repack 0.8067528890083311->0.8021620532115022 , unplacedBoxesSize:5
+currentRepackCostTime:367.486s , currentRepackMaxTime:430.829s
+iter315		 Improve solution by repack 0.8021620532115022->0.7865224402042461 , unplacedBoxesSize:2
+currentRepackCostTime:367.52s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter21		 Improve solution by repack 0.9073313625369523->0.8604568664337543 , unplacedBoxesSize:6
+currentRepackCostTime:370.141s , currentRepackMaxTime:430.829s
+iter34		 Improve solution by repack 0.8604568664337543->0.8515889545821016 , unplacedBoxesSize:6
+currentRepackCostTime:370.218s , currentRepackMaxTime:430.829s
+iter45		 Improve solution by repack 0.8515889545821016->0.8496902714324107 , unplacedBoxesSize:6
+currentRepackCostTime:370.28000000000003s , currentRepackMaxTime:430.829s
+iter60		 Improve solution by repack 0.8496902714324107->0.8461092448266595 , unplacedBoxesSize:6
+currentRepackCostTime:370.362s , currentRepackMaxTime:430.829s
+iter70		 Improve solution by repack 0.8461092448266595->0.8351289975812953 , unplacedBoxesSize:5
+currentRepackCostTime:370.425s , currentRepackMaxTime:430.829s
+iter72		 Improve solution by repack 0.8351289975812953->0.8289969094329481 , unplacedBoxesSize:5
+currentRepackCostTime:370.434s , currentRepackMaxTime:430.829s
+iter90		 Improve solution by repack 0.8289969094329481->0.7865224402042461 , unplacedBoxesSize:2
+currentRepackCostTime:370.533s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter1		 Improve solution by repack 0.9477115829078204->0.8704004299919377 , unplacedBoxesSize:3
+currentRepackCostTime:372.66700000000003s , currentRepackMaxTime:430.829s
+iter3		 Improve solution by repack 0.8704004299919377->0.7865224402042461 , unplacedBoxesSize:2
+currentRepackCostTime:372.678s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter2		 Improve solution by repack 0.9533270626175759->0.9433210158559527 , unplacedBoxesSize:9
+currentRepackCostTime:375.159s , currentRepackMaxTime:430.829s
+iter19		 Improve solution by repack 0.9433210158559527->0.910139075517334 , unplacedBoxesSize:6
+currentRepackCostTime:375.274s , currentRepackMaxTime:430.829s
+iter27		 Improve solution by repack 0.910139075517334->0.9041742811072293 , unplacedBoxesSize:6
+currentRepackCostTime:375.313s , currentRepackMaxTime:430.829s
+iter31		 Improve solution by repack 0.9041742811072293->0.900828406342381 , unplacedBoxesSize:5
+currentRepackCostTime:375.33s , currentRepackMaxTime:430.829s
+iter37		 Improve solution by repack 0.900828406342381->0.8913349905939264 , unplacedBoxesSize:5
+currentRepackCostTime:375.359s , currentRepackMaxTime:430.829s
+iter47		 Improve solution by repack 0.8913349905939264->0.8687080085998387 , unplacedBoxesSize:3
+currentRepackCostTime:375.406s , currentRepackMaxTime:430.829s
+iter105		 Improve solution by repack 0.8687080085998387->0.8613262563826929 , unplacedBoxesSize:3
+currentRepackCostTime:375.669s , currentRepackMaxTime:430.829s
+iter182		 Improve solution by repack 0.8613262563826929->0.8612422735823703 , unplacedBoxesSize:5
+currentRepackCostTime:376.051s , currentRepackMaxTime:430.829s
+iter349		 Improve solution by repack 0.8612422735823703->0.8384876377317926 , unplacedBoxesSize:5
+currentRepackCostTime:376.91s , currentRepackMaxTime:430.829s
+iter351		 Improve solution by repack 0.8384876377317926->0.8195794141359849 , unplacedBoxesSize:3
+currentRepackCostTime:376.919s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter1		 Improve solution by repack 0.9649311341037355->0.9154850846546627 , unplacedBoxesSize:8
+currentRepackCostTime:379.58s , currentRepackMaxTime:430.829s
+iter6		 Improve solution by repack 0.9154850846546627->0.9137342112335394 , unplacedBoxesSize:7
+currentRepackCostTime:379.62s , currentRepackMaxTime:430.829s
+iter13		 Improve solution by repack 0.9137342112335394->0.9119746036011825 , unplacedBoxesSize:9
+currentRepackCostTime:379.672s , currentRepackMaxTime:430.829s
+iter20		 Improve solution by repack 0.9119746036011825->0.8569551195915077 , unplacedBoxesSize:6
+currentRepackCostTime:379.712s , currentRepackMaxTime:430.829s
+iter43		 Improve solution by repack 0.8569551195915077->0.8558425154528352 , unplacedBoxesSize:5
+currentRepackCostTime:379.858s , currentRepackMaxTime:430.829s
+iter75		 Improve solution by repack 0.8558425154528352->0.8520310400429991 , unplacedBoxesSize:5
+currentRepackCostTime:380.029s , currentRepackMaxTime:430.829s
+iter166		 Improve solution by repack 0.8520310400429991->0.8424234076861058 , unplacedBoxesSize:5
+currentRepackCostTime:380.51800000000003s , currentRepackMaxTime:430.829s
+iter193		 Improve solution by repack 0.8424234076861058->0.8400268744961031 , unplacedBoxesSize:6
+currentRepackCostTime:380.675s , currentRepackMaxTime:430.829s
+iter194		 Improve solution by repack 0.8400268744961031->0.8222964256920183 , unplacedBoxesSize:5
+currentRepackCostTime:380.684s , currentRepackMaxTime:430.829s
+iter196		 Improve solution by repack 0.8222964256920183->0.8195794141359849 , unplacedBoxesSize:3
+currentRepackCostTime:380.693s , currentRepackMaxTime:430.829s
+iter470		 Improve solution by repack 0.8195794141359849->0.8072749260951357 , unplacedBoxesSize:3
+currentRepackCostTime:382.022s , currentRepackMaxTime:430.829s
+iter490		 Improve solution by repack 0.8072749260951357->0.7865224402042461 , unplacedBoxesSize:2
+currentRepackCostTime:382.135s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter1		 Improve solution by repack 0.9596466003762428->0.8839438323031443 , unplacedBoxesSize:3
+currentRepackCostTime:383.885s , currentRepackMaxTime:430.829s
+iter11		 Improve solution by repack 0.8839438323031443->0.8810017468422467 , unplacedBoxesSize:5
+currentRepackCostTime:383.934s , currentRepackMaxTime:430.829s
+iter19		 Improve solution by repack 0.8810017468422467->0.875319806503628 , unplacedBoxesSize:5
+currentRepackCostTime:383.974s , currentRepackMaxTime:430.829s
+iter24		 Improve solution by repack 0.875319806503628->0.8071499596882558 , unplacedBoxesSize:2
+currentRepackCostTime:384.00100000000003s , currentRepackMaxTime:430.829s
+iter44		 Improve solution by repack 0.8071499596882558->0.7865224402042461 , unplacedBoxesSize:2
+currentRepackCostTime:384.087s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter1		 Improve solution by repack 0.9776414270357432->0.9715509943563558 , unplacedBoxesSize:9
+currentRepackCostTime:386.452s , currentRepackMaxTime:430.829s
+iter3		 Improve solution by repack 0.9715509943563558->0.8503715399086267 , unplacedBoxesSize:6
+currentRepackCostTime:386.46500000000003s , currentRepackMaxTime:430.829s
+iter27		 Improve solution by repack 0.8503715399086267->0.8150799516259071 , unplacedBoxesSize:6
+currentRepackCostTime:386.617s , currentRepackMaxTime:430.829s
+iter41		 Improve solution by repack 0.8150799516259071->0.8003191346412255 , unplacedBoxesSize:6
+currentRepackCostTime:386.69100000000003s , currentRepackMaxTime:430.829s
+iter89		 Improve solution by repack 0.8003191346412255->0.7979649287825853 , unplacedBoxesSize:6
+currentRepackCostTime:387.004s , currentRepackMaxTime:430.829s
+iter91		 Improve solution by repack 0.7979649287825853->0.7808525933888739 , unplacedBoxesSize:5
+currentRepackCostTime:387.016s , currentRepackMaxTime:430.829s
+iter95		 Improve solution by repack 0.7808525933888739->0.7587368986831498 , unplacedBoxesSize:4
+currentRepackCostTime:387.04s , currentRepackMaxTime:430.829s
+iter97		 Improve solution by repack 0.7587368986831498->0.749243482934695 , unplacedBoxesSize:4
+currentRepackCostTime:387.055s , currentRepackMaxTime:430.829s
+iter130		 Improve solution by repack 0.749243482934695->0.7468113410373556 , unplacedBoxesSize:4
+currentRepackCostTime:387.218s , currentRepackMaxTime:430.829s
+iter199		 Improve solution by repack 0.7468113410373556->0.7356570814297233 , unplacedBoxesSize:3
+currentRepackCostTime:387.633s , currentRepackMaxTime:430.829s
+iter314		 Improve solution by repack 0.7356570814297233->0.7311280569739318 , unplacedBoxesSize:3
+currentRepackCostTime:388.16700000000003s , currentRepackMaxTime:430.829s
+iter550		 Improve solution by repack 0.7311280569739318->0.7267965600644988 , unplacedBoxesSize:3
+currentRepackCostTime:389.346s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter6		 Improve solution by repack 0.9788880677237303->0.9465452835259339 , unplacedBoxesSize:9
+currentRepackCostTime:391.144s , currentRepackMaxTime:430.829s
+iter10		 Improve solution by repack 0.9465452835259339->0.7929279763504434 , unplacedBoxesSize:5
+currentRepackCostTime:391.164s , currentRepackMaxTime:430.829s
+iter15		 Improve solution by repack 0.7929279763504434->0.788189330825047 , unplacedBoxesSize:5
+currentRepackCostTime:391.197s , currentRepackMaxTime:430.829s
+iter34		 Improve solution by repack 0.788189330825047->0.7834506852996507 , unplacedBoxesSize:5
+currentRepackCostTime:391.31s , currentRepackMaxTime:430.829s
+iter223		 Improve solution by repack 0.7834506852996507->0.7761754232733137 , unplacedBoxesSize:5
+currentRepackCostTime:392.321s , currentRepackMaxTime:430.829s
+iter225		 Improve solution by repack 0.7761754232733137->0.7596103198065036 , unplacedBoxesSize:4
+currentRepackCostTime:392.32800000000003s , currentRepackMaxTime:430.829s
+iter242		 Improve solution by repack 0.7596103198065036->0.7548716742811072 , unplacedBoxesSize:4
+currentRepackCostTime:392.432s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+iter1		 Improve solution by repack 0.9839193093254501->0.9793200752485891 , unplacedBoxesSize:9
+currentRepackCostTime:394.238s , currentRepackMaxTime:430.829s
+iter5		 Improve solution by repack 0.9793200752485891->0.9269893845740393 , unplacedBoxesSize:9
+currentRepackCostTime:394.26800000000003s , currentRepackMaxTime:430.829s
+iter12		 Improve solution by repack 0.9269893845740393->0.9261173071754905 , unplacedBoxesSize:8
+currentRepackCostTime:394.305s , currentRepackMaxTime:430.829s
+iter15		 Improve solution by repack 0.9261173071754905->0.7901222789572695 , unplacedBoxesSize:5
+currentRepackCostTime:394.32300000000004s , currentRepackMaxTime:430.829s
+iter31		 Improve solution by repack 0.7901222789572695->0.7641356490190809 , unplacedBoxesSize:5
+currentRepackCostTime:394.408s , currentRepackMaxTime:430.829s
+iter33		 Improve solution by repack 0.7641356490190809->0.7548716742811072 , unplacedBoxesSize:4
+currentRepackCostTime:394.425s , currentRepackMaxTime:430.829s
+iter70		 Improve solution by repack 0.7548716742811072->0.7413282719699006 , unplacedBoxesSize:4
+currentRepackCostTime:394.628s , currentRepackMaxTime:430.829s
+iter80		 Improve solution by repack 0.7413282719699006->0.7396358505778017 , unplacedBoxesSize:4
+currentRepackCostTime:394.69100000000003s , currentRepackMaxTime:430.829s
+iter102		 Improve solution by repack 0.7396358505778017->0.7356570814297233 , unplacedBoxesSize:3
+currentRepackCostTime:394.801s , currentRepackMaxTime:430.829s
+iter332		 Improve solution by repack 0.7356570814297233->0.7341749529696319 , unplacedBoxesSize:4
+currentRepackCostTime:395.919s , currentRepackMaxTime:430.829s
+iter508		 Improve solution by repack 0.7341749529696319->0.7296439129266326 , unplacedBoxesSize:4
+currentRepackCostTime:396.788s , currentRepackMaxTime:430.829s
+iter512		 Improve solution by repack 0.7296439129266326->0.7249052674012363 , unplacedBoxesSize:4
+currentRepackCostTime:396.805s , currentRepackMaxTime:430.829s
+Selecting boards with low utilization for repacking...
+Completed repack sweep without reducing board count. No-reduction sweeps: 3/3
+Global repack result: 26 -> 25 boards.
+Start nesting on the 1th large board, remaining blocks count: 48
+Utilization of the 1th large board: 97.1298710024187, Time taken for this board: 0.113s
+-------------------------------------------------------------------
+Start nesting on the 2th large board, remaining blocks count: 47
+Utilization of the 2th large board: 96.24378527277614, Time taken for this board: 0.22s
+-------------------------------------------------------------------
+Start nesting on the 3th large board, remaining blocks count: 45
+Utilization of the 3th large board: 95.61015184090299, Time taken for this board: 0.318s
+-------------------------------------------------------------------
+Start nesting on the 4th large board, remaining blocks count: 43
+Utilization of the 4th large board: 93.46183821553345, Time taken for this board: 0.423s
+-------------------------------------------------------------------
+Start nesting on the 5th large board, remaining blocks count: 41
+Utilization of the 5th large board: 95.85178715399087, Time taken for this board: 0.525s
+-------------------------------------------------------------------
+Start nesting on the 6th large board, remaining blocks count: 36
+Utilization of the 6th large board: 97.90970169309327, Time taken for this board: 0.651s
+-------------------------------------------------------------------
+Start nesting on the 7th large board, remaining blocks count: 25
+Utilization of the 7th large board: 97.32444235420586, Time taken for this board: 0.6920000000000001s
+-------------------------------------------------------------------
+Start nesting on the 8th large board, remaining blocks count: 20
+Utilization of the 8th large board: 94.44571351787154, Time taken for this board: 0.71s
+-------------------------------------------------------------------
+Start nesting on the 9th large board, remaining blocks count: 14
+Utilization of the 9th large board: 91.34019752754635, Time taken for this board: 0.714s
+-------------------------------------------------------------------
+Start nesting on the 10th large board, remaining blocks count: 8
+Utilization of the 10th large board: 44.302203708680466, Time taken for this board: 0.714s
+-------------------------------------------------------------------
+Start global repack optimization for 10 boards, time=194.687s.
+Start improving solution by repacking.
+Selecting boards with low utilization for repacking...
+iter21		 Improve solution by repack 0.4430220370868046->0.4390174012362268 , unplacedBoxesSize:6
+currentRepackCostTime:0.14300000000000002s , currentRepackMaxTime:194.687s
+iter24		 Improve solution by repack 0.4390174012362268->0.4333724133297501 , unplacedBoxesSize:5
+currentRepackCostTime:0.176s , currentRepackMaxTime:194.687s
+iter28		 Improve solution by repack 0.4333724133297501->0.40384540446116635 , unplacedBoxesSize:8
+currentRepackCostTime:0.20500000000000002s , currentRepackMaxTime:194.687s
+iter50		 Improve solution by repack 0.40384540446116635->0.3913988175221715 , unplacedBoxesSize:5
+currentRepackCostTime:0.452s , currentRepackMaxTime:194.687s
+Selecting boards with low utilization for repacking...
+iter3		 Improve solution by repack 0.9346183821553347->0.3913988175221715 , unplacedBoxesSize:5
+currentRepackCostTime:1.203s , currentRepackMaxTime:194.687s
+Selecting boards with low utilization for repacking...
+iter2		 Improve solution by repack 0.9444571351787154->0.928328406342381 , unplacedBoxesSize:7
+currentRepackCostTime:1.981s , currentRepackMaxTime:194.687s
+iter8		 Improve solution by repack 0.928328406342381->0.43116064230045686 , unplacedBoxesSize:4
+currentRepackCostTime:2.025s , currentRepackMaxTime:194.687s
+iter19		 Improve solution by repack 0.43116064230045686->0.4190392367643107 , unplacedBoxesSize:2
+currentRepackCostTime:2.112s , currentRepackMaxTime:194.687s
+Selecting boards with low utilization for repacking...
+iter1		 Improve solution by repack 0.9410907686105886->0.9352885649019081 , unplacedBoxesSize:10
+currentRepackCostTime:2.581s , currentRepackMaxTime:194.687s
+iter4		 Improve solution by repack 0.9352885649019081->0.9306208008599839 , unplacedBoxesSize:9
+currentRepackCostTime:2.613s , currentRepackMaxTime:194.687s
+iter5		 Improve solution by repack 0.9306208008599839->0.9144920720236496 , unplacedBoxesSize:7
+currentRepackCostTime:2.62s , currentRepackMaxTime:194.687s
+iter10		 Improve solution by repack 0.9144920720236496->0.5131705186777747 , unplacedBoxesSize:6
+currentRepackCostTime:2.6630000000000003s , currentRepackMaxTime:194.687s
+iter18		 Improve solution by repack 0.5131705186777747->0.4759217952163397 , unplacedBoxesSize:2
+currentRepackCostTime:2.714s , currentRepackMaxTime:194.687s
+iter25		 Improve solution by repack 0.4759217952163397->0.4431389411448535 , unplacedBoxesSize:4
+currentRepackCostTime:2.746s , currentRepackMaxTime:194.687s
+iter34		 Improve solution by repack 0.4431389411448535->0.44155872077398545 , unplacedBoxesSize:4
+currentRepackCostTime:2.81s , currentRepackMaxTime:194.687s
+iter35		 Improve solution by repack 0.44155872077398545->0.4115647675356087 , unplacedBoxesSize:4
+currentRepackCostTime:2.818s , currentRepackMaxTime:194.687s
+iter42		 Improve solution by repack 0.4115647675356087->0.40261220102123085 , unplacedBoxesSize:4
+currentRepackCostTime:2.8770000000000002s , currentRepackMaxTime:194.687s
+iter46		 Improve solution by repack 0.40261220102123085->0.4022870196183822 , unplacedBoxesSize:6
+currentRepackCostTime:2.912s , currentRepackMaxTime:194.687s
+iter55		 Improve solution by repack 0.4022870196183822->0.39672534264982534 , unplacedBoxesSize:3
+currentRepackCostTime:3.0060000000000002s , currentRepackMaxTime:194.687s
+Selecting boards with low utilization for repacking...
+iter1		 Improve solution by repack 0.9467209755442085->0.9314256920182747 , unplacedBoxesSize:6
+currentRepackCostTime:3.555s , currentRepackMaxTime:194.687s
+iter6		 Improve solution by repack 0.9314256920182747->0.39672534264982534 , unplacedBoxesSize:3
+currentRepackCostTime:3.583s , currentRepackMaxTime:194.687s
+Selecting boards with low utilization for repacking...
+iter3		 Improve solution by repack 0.951852324643913->0.4215049717817791 , unplacedBoxesSize:5
+currentRepackCostTime:4.2090000000000005s , currentRepackMaxTime:194.687s
+iter21		 Improve solution by repack 0.4215049717817791->0.39672534264982534 , unplacedBoxesSize:3
+currentRepackCostTime:4.339s , currentRepackMaxTime:194.687s
+Selecting boards with low utilization for repacking...
+iter1		 Improve solution by repack 0.951852324643913->0.9412409298575652 , unplacedBoxesSize:8
+currentRepackCostTime:4.798s , currentRepackMaxTime:194.687s
+iter2		 Improve solution by repack 0.9412409298575652->0.44015520021499593 , unplacedBoxesSize:2
+currentRepackCostTime:4.801s , currentRepackMaxTime:194.687s
+iter39		 Improve solution by repack 0.44015520021499593->0.39672534264982534 , unplacedBoxesSize:3
+currentRepackCostTime:5.0440000000000005s , currentRepackMaxTime:194.687s
+Selecting boards with low utilization for repacking...
+iter1		 Improve solution by repack 0.9561015184090298->0.4281967213114754 , unplacedBoxesSize:5
+currentRepackCostTime:5.445s , currentRepackMaxTime:194.687s
+iter6		 Improve solution by repack 0.4281967213114754->0.39830287557108307 , unplacedBoxesSize:4
+currentRepackCostTime:5.489s , currentRepackMaxTime:194.687s
+iter34		 Improve solution by repack 0.39830287557108307->0.38692488578339157 , unplacedBoxesSize:5
+currentRepackCostTime:5.679s , currentRepackMaxTime:194.687s
+iter36		 Improve solution by repack 0.38692488578339157->0.36920720236495563 , unplacedBoxesSize:4
+currentRepackCostTime:5.691s , currentRepackMaxTime:194.687s
+Selecting boards with low utilization for repacking...
+iter2		 Improve solution by repack 0.9561015184090298->0.9314256920182747 , unplacedBoxesSize:6
+currentRepackCostTime:6.109s , currentRepackMaxTime:194.687s
+iter4		 Improve solution by repack 0.9314256920182747->0.406409903251814 , unplacedBoxesSize:5
+currentRepackCostTime:6.1240000000000006s , currentRepackMaxTime:194.687s
+iter13		 Improve solution by repack 0.406409903251814->0.36920720236495563 , unplacedBoxesSize:4
+currentRepackCostTime:6.211s , currentRepackMaxTime:194.687s
+Selecting boards with low utilization for repacking...
+iter6		 Improve solution by repack 0.9686498925020155->0.4446963181940339 , unplacedBoxesSize:6
+currentRepackCostTime:6.8660000000000005s , currentRepackMaxTime:194.687s
+iter20		 Improve solution by repack 0.4446963181940339->0.41588551464660034 , unplacedBoxesSize:6
+currentRepackCostTime:6.994s , currentRepackMaxTime:194.687s
+iter27		 Improve solution by repack 0.41588551464660034->0.3695542192958882 , unplacedBoxesSize:5
+currentRepackCostTime:7.072s , currentRepackMaxTime:194.687s
+Selecting boards with low utilization for repacking...
+Completed repack sweep without reducing board count. No-reduction sweeps: 1/3
+Selecting boards with low utilization for repacking...
+Selecting boards with low utilization for repacking...
+iter3		 Improve solution by repack 0.9314256920182747->0.3695542192958882 , unplacedBoxesSize:5
+currentRepackCostTime:8.002s , currentRepackMaxTime:194.687s
+Selecting boards with low utilization for repacking...
+iter8		 Improve solution by repack 0.9561015184090298->0.3695542192958882 , unplacedBoxesSize:5
+currentRepackCostTime:8.806000000000001s , currentRepackMaxTime:194.687s
+Selecting boards with low utilization for repacking...
+iter1		 Improve solution by repack 0.959987234614351->0.9561015184090298 , unplacedBoxesSize:6
+currentRepackCostTime:9.529s , currentRepackMaxTime:194.687s
+iter4		 Improve solution by repack 0.9561015184090298->0.3695542192958882 , unplacedBoxesSize:5
+currentRepackCostTime:9.553s , currentRepackMaxTime:194.687s
+Selecting boards with low utilization for repacking...
+iter1		 Improve solution by repack 0.9624378527277613->0.4239068798710024 , unplacedBoxesSize:5
+currentRepackCostTime:10.307s , currentRepackMaxTime:194.687s
+iter4		 Improve solution by repack 0.4239068798710024->0.4025178043536684 , unplacedBoxesSize:5
+currentRepackCostTime:10.324s , currentRepackMaxTime:194.687s
+iter5		 Improve solution by repack 0.4025178043536684->0.39684426229508196 , unplacedBoxesSize:6
+currentRepackCostTime:10.326s , currentRepackMaxTime:194.687s
+iter29		 Improve solution by repack 0.39684426229508196->0.39109513571620536 , unplacedBoxesSize:7
+currentRepackCostTime:10.564s , currentRepackMaxTime:194.687s
+iter36		 Improve solution by repack 0.39109513571620536->0.3693590432679387 , unplacedBoxesSize:6
+currentRepackCostTime:10.645s , currentRepackMaxTime:194.687s
+iter45		 Improve solution by repack 0.3693590432679387->0.36267300456866436 , unplacedBoxesSize:6
+currentRepackCostTime:10.736s , currentRepackMaxTime:194.687s
+Selecting boards with low utilization for repacking...
+iter1		 Improve solution by repack 0.9654948266595001->0.4062459688255845 , unplacedBoxesSize:5
+currentRepackCostTime:11.200000000000001s , currentRepackMaxTime:194.687s
+iter5		 Improve solution by repack 0.4062459688255845->0.3840866030636926 , unplacedBoxesSize:5
+currentRepackCostTime:11.236s , currentRepackMaxTime:194.687s
+iter6		 Improve solution by repack 0.3840866030636926->0.3829632491265789 , unplacedBoxesSize:5
+currentRepackCostTime:11.245000000000001s , currentRepackMaxTime:194.687s
+Selecting boards with low utilization for repacking...
+iter1		 Improve solution by repack 0.9527949475947326->0.3840866030636926 , unplacedBoxesSize:5
+currentRepackCostTime:11.991s , currentRepackMaxTime:194.687s
+iter8		 Improve solution by repack 0.3840866030636926->0.3829632491265789 , unplacedBoxesSize:5
+currentRepackCostTime:12.040000000000001s , currentRepackMaxTime:194.687s
+Selecting boards with low utilization for repacking...
+iter1		 Improve solution by repack 0.9712987100241871->0.9645307041117979 , unplacedBoxesSize:9
+currentRepackCostTime:12.731s , currentRepackMaxTime:194.687s
+iter6		 Improve solution by repack 0.9645307041117979->0.4089250201558721 , unplacedBoxesSize:4
+currentRepackCostTime:12.792s , currentRepackMaxTime:194.687s
+Selecting boards with low utilization for repacking...
+iter3		 Improve solution by repack 0.9645307041117979->0.4712207739854878 , unplacedBoxesSize:5
+currentRepackCostTime:13.445s , currentRepackMaxTime:194.687s
+iter13		 Improve solution by repack 0.4712207739854878->0.45631886589626447 , unplacedBoxesSize:5
+currentRepackCostTime:13.533s , currentRepackMaxTime:194.687s
+iter15		 Improve solution by repack 0.45631886589626447->0.4555532786885246 , unplacedBoxesSize:6
+currentRepackCostTime:13.56s , currentRepackMaxTime:194.687s
+iter20		 Improve solution by repack 0.4555532786885246->0.4411213383499059 , unplacedBoxesSize:5
+currentRepackCostTime:13.608s , currentRepackMaxTime:194.687s
+iter23		 Improve solution by repack 0.4411213383499059->0.44015520021499593 , unplacedBoxesSize:2
+currentRepackCostTime:13.626s , currentRepackMaxTime:194.687s
+iter66		 Improve solution by repack 0.44015520021499593->0.4284137328675087 , unplacedBoxesSize:4
+currentRepackCostTime:13.888s , currentRepackMaxTime:194.687s
+iter74		 Improve solution by repack 0.4284137328675087->0.42796392098898145 , unplacedBoxesSize:5
+currentRepackCostTime:13.937000000000001s , currentRepackMaxTime:194.687s
+iter99		 Improve solution by repack 0.42796392098898145->0.4214693630744424 , unplacedBoxesSize:4
+currentRepackCostTime:14.132s , currentRepackMaxTime:194.687s
+Selecting boards with low utilization for repacking...
+iter1		 Improve solution by repack 0.9753628056973932->0.9745988981456597 , unplacedBoxesSize:8
+currentRepackCostTime:14.717s , currentRepackMaxTime:194.687s
+iter8		 Improve solution by repack 0.9745988981456597->0.4771375302338081 , unplacedBoxesSize:3
+currentRepackCostTime:14.779s , currentRepackMaxTime:194.687s
+iter33		 Improve solution by repack 0.4771375302338081->0.47456261757592044 , unplacedBoxesSize:6
+currentRepackCostTime:14.946s , currentRepackMaxTime:194.687s
+iter37		 Improve solution by repack 0.47456261757592044->0.44766124697661924 , unplacedBoxesSize:5
+currentRepackCostTime:14.981s , currentRepackMaxTime:194.687s
+iter53		 Improve solution by repack 0.44766124697661924->0.4451988712711637 , unplacedBoxesSize:4
+currentRepackCostTime:15.114s , currentRepackMaxTime:194.687s
+iter59		 Improve solution by repack 0.4451988712711637->0.44051128728836336 , unplacedBoxesSize:5
+currentRepackCostTime:15.167s , currentRepackMaxTime:194.687s
+iter61		 Improve solution by repack 0.44051128728836336->0.42167024993281377 , unplacedBoxesSize:4
+currentRepackCostTime:15.182s , currentRepackMaxTime:194.687s
+iter68		 Improve solution by repack 0.42167024993281377->0.41044006987368986 , unplacedBoxesSize:5
+currentRepackCostTime:15.228s , currentRepackMaxTime:194.687s
+iter69		 Improve solution by repack 0.41044006987368986->0.40949408761085726 , unplacedBoxesSize:5
+currentRepackCostTime:15.238s , currentRepackMaxTime:194.687s
+iter70		 Improve solution by repack 0.40949408761085726->0.4083707336737436 , unplacedBoxesSize:5
+currentRepackCostTime:15.24s , currentRepackMaxTime:194.687s
+iter76		 Improve solution by repack 0.4083707336737436->0.38259271701155606 , unplacedBoxesSize:4
+currentRepackCostTime:15.279s , currentRepackMaxTime:194.687s
+Selecting boards with low utilization for repacking...
+Completed repack sweep without reducing board count. No-reduction sweeps: 2/3
+Selecting boards with low utilization for repacking...
+Selecting boards with low utilization for repacking...
+iter5		 Improve solution by repack 0.9419295888202096->0.38259271701155606 , unplacedBoxesSize:4
+currentRepackCostTime:16.071s , currentRepackMaxTime:194.687s
+Selecting boards with low utilization for repacking...
+iter2		 Improve solution by repack 0.9582991803278689->0.940806234883096 , unplacedBoxesSize:6
+currentRepackCostTime:16.707s , currentRepackMaxTime:194.687s
+iter5		 Improve solution by repack 0.940806234883096->0.38259271701155606 , unplacedBoxesSize:4
+currentRepackCostTime:16.732s , currentRepackMaxTime:194.687s
+Selecting boards with low utilization for repacking...
+iter2		 Improve solution by repack 0.9580727626981994->0.38557948132222525 , unplacedBoxesSize:5
+currentRepackCostTime:17.371s , currentRepackMaxTime:194.687s
+iter7		 Improve solution by repack 0.38557948132222525->0.3839199811878527 , unplacedBoxesSize:6
+currentRepackCostTime:17.411s , currentRepackMaxTime:194.687s
+iter17		 Improve solution by repack 0.3839199811878527->0.3788934426229508 , unplacedBoxesSize:5
+currentRepackCostTime:17.492s , currentRepackMaxTime:194.687s
+Selecting boards with low utilization for repacking...
+iter1		 Improve solution by repack 0.9580727626981994->0.9402385111529159 , unplacedBoxesSize:5
+currentRepackCostTime:18.11s , currentRepackMaxTime:194.687s
+iter2		 Improve solution by repack 0.9402385111529159->0.43346916151572157 , unplacedBoxesSize:2
+currentRepackCostTime:18.119s , currentRepackMaxTime:194.687s
+iter27		 Improve solution by repack 0.43346916151572157->0.4200382961569471 , unplacedBoxesSize:5
+currentRepackCostTime:18.269000000000002s , currentRepackMaxTime:194.687s
+iter36		 Improve solution by repack 0.4200382961569471->0.4086623219564633 , unplacedBoxesSize:6
+currentRepackCostTime:18.334s , currentRepackMaxTime:194.687s
+iter37		 Improve solution by repack 0.4086623219564633->0.4076017871539908 , unplacedBoxesSize:6
+currentRepackCostTime:18.349s , currentRepackMaxTime:194.687s
+iter43		 Improve solution by repack 0.4076017871539908->0.3765375571083042 , unplacedBoxesSize:6
+currentRepackCostTime:18.412s , currentRepackMaxTime:194.687s
+iter46		 Improve solution by repack 0.3765375571083042->0.36706664875033596 , unplacedBoxesSize:6
+currentRepackCostTime:18.436s , currentRepackMaxTime:194.687s
+iter47		 Improve solution by repack 0.36706664875033596->0.35299751410911046 , unplacedBoxesSize:4
+currentRepackCostTime:18.444s , currentRepackMaxTime:194.687s
+Selecting boards with low utilization for repacking...
+iter5		 Improve solution by repack 0.9439989250201558->0.35299751410911046 , unplacedBoxesSize:4
+currentRepackCostTime:19.152s , currentRepackMaxTime:194.687s
+Selecting boards with low utilization for repacking...
+iter4		 Improve solution by repack 0.964441682343456->0.35299751410911046 , unplacedBoxesSize:4
+currentRepackCostTime:19.816s , currentRepackMaxTime:194.687s
+Selecting boards with low utilization for repacking...
+iter2		 Improve solution by repack 0.9668073098629401->0.9606483472184897 , unplacedBoxesSize:8
+currentRepackCostTime:20.5s , currentRepackMaxTime:194.687s
+iter4		 Improve solution by repack 0.9606483472184897->0.43274086267132494 , unplacedBoxesSize:4
+currentRepackCostTime:20.508s , currentRepackMaxTime:194.687s
+iter40		 Improve solution by repack 0.43274086267132494->0.3910118247782854 , unplacedBoxesSize:7
+currentRepackCostTime:20.774s , currentRepackMaxTime:194.687s
+iter41		 Improve solution by repack 0.3910118247782854->0.38988847084117173 , unplacedBoxesSize:7
+currentRepackCostTime:20.778s , currentRepackMaxTime:194.687s
+iter49		 Improve solution by repack 0.38988847084117173->0.36411045417898413 , unplacedBoxesSize:6
+currentRepackCostTime:20.845s , currentRepackMaxTime:194.687s
+Selecting boards with low utilization for repacking...
+iter2		 Improve solution by repack 0.9687530233808116->0.40265217683418436 , unplacedBoxesSize:5
+currentRepackCostTime:21.686s , currentRepackMaxTime:194.687s
+iter6		 Improve solution by repack 0.40265217683418436->0.3885867374361731 , unplacedBoxesSize:5
+currentRepackCostTime:21.729s , currentRepackMaxTime:194.687s
+iter17		 Improve solution by repack 0.3885867374361731->0.38259574039236766 , unplacedBoxesSize:5
+currentRepackCostTime:21.817s , currentRepackMaxTime:194.687s
+iter23		 Improve solution by repack 0.38259574039236766->0.3805264041924214 , unplacedBoxesSize:5
+currentRepackCostTime:21.871000000000002s , currentRepackMaxTime:194.687s
+iter36		 Improve solution by repack 0.3805264041924214->0.3750866702499328 , unplacedBoxesSize:3
+currentRepackCostTime:21.956s , currentRepackMaxTime:194.687s
+iter55		 Improve solution by repack 0.3750866702499328->0.366038027411986 , unplacedBoxesSize:4
+currentRepackCostTime:22.105s , currentRepackMaxTime:194.687s
+Selecting boards with low utilization for repacking...
+iter1		 Improve solution by repack 0.9457749932813759->0.366038027411986 , unplacedBoxesSize:4
+currentRepackCostTime:22.675s , currentRepackMaxTime:194.687s
+Selecting boards with low utilization for repacking...
+Completed repack sweep without reducing board count. No-reduction sweeps: 3/3
+Global repack result: 10 -> 10 boards.
