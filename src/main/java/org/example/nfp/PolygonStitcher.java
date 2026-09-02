@@ -18,6 +18,11 @@ public class PolygonStitcher {
     // 修改理由：仅有极小的正收益也会让小矩形不断向外叠加，形成尺寸变大的无效 Block。
     public static final double MIN_OUTER_FILL_RATE_GAIN = 0.005;
 
+    // 综合评分的两个可调权重。修改这两个值即可测试轮廓紧凑性和填充率提升的侧重点。
+    // Sbox 原始单位是面积，Sarea 是无量纲填充率增量，因此实际计算前会先归一化 Sbox。
+    public static final double SBOX_WEIGHT = 0.5;
+    public static final double SAREA_WEIGHT = 0.5;
+
     public static final class StitchingCandidate {
         public final String sourceType;
         public final int edgeStartIndex;
@@ -30,8 +35,17 @@ public class PolygonStitcher {
         public final double boxABArea;
         // 拼接后填充率 = (A 实际面积 + B 实际面积) / 拼接后外接矩形面积。
         public final double combinedFillRate;
-        // 相对于主块 A 当前填充率的提升量，是本次 NFP 拼接的新评分。
+        // Sarea = 拼接后填充率 - 主块 A 当前填充率，表示本次拼接的填充率提升量。
         public final double fillRateGain;
+        // Sarea 的显式命名别名，便于评分公式和结果诊断直接对应数学定义；保留 fillRateGain 兼容旧代码。
+        public final double sArea;
+        // Sbox = A 外接矩形面积 + B 外接矩形面积 - AB 组合外接矩形面积。
+        // 保留原始面积值，便于输出、诊断和兼容已有 score2 逻辑。
+        public final double sBox;
+        // 与 sBox 对应的无量纲轮廓紧凑性指标，用于和 Sarea 进行加权。
+        public final double normalizedSBox;
+        // Score = SBOX_WEIGHT * normalizedSBox + SAREA_WEIGHT * Sarea。
+        public final double combinedScore;
         // 新工件是否完全位于当前主块外接框内。该指标用于识别开放凹槽和内部空洞中的插入。
         public final boolean cavityInsertion;
         // 拼接后外接矩形相对于主块外接矩形增加的面积；外扩候选需要额外受到该指标约束。
@@ -79,6 +93,12 @@ public class PolygonStitcher {
             this.boxABArea = boxABArea;
             this.combinedFillRate = combinedFillRate;
             this.fillRateGain = fillRateGain;
+            this.sArea = fillRateGain;
+            this.sBox = score2;
+            this.normalizedSBox = normalizeSBox(score2, boxAArea, boxBArea);
+            // 修改理由：Sbox 和 Sarea 量纲不同，先将 Sbox 转换为相对面积节省比例，
+            // 确保默认权重 0.5/0.5 能真正同时影响两项指标，而不是被面积数值完全支配。
+            this.combinedScore = calculateCombinedScore(normalizedSBox, fillRateGain);
             this.cavityInsertion = cavityInsertion;
             this.boxExpansionArea = boxExpansionArea;
             this.minBoundaryDistance = minBoundaryDistance;
@@ -334,6 +354,25 @@ public class PolygonStitcher {
         double width = Math.max(0, box.maxX - box.minX);
         double height = Math.max(0, box.maxY - box.minY);
         return width * height;
+    }
+
+    /**
+     * 将原始 Sbox 转换为相对外接矩形节省比例。
+     *
+     * 原始 Sbox 的单位是平方毫米，而 Sarea 是填充率增量；使用两者前必须消除
+     * 量纲差异。分母取 A、B 两个独立外接矩形面积之和，数值通常位于可比较范围内。
+     */
+    private static double normalizeSBox(double sBox, double boxAArea, double boxBArea) {
+        double independentBoxArea = boxAArea + boxBArea;
+        if (independentBoxArea <= Geometry.EPS) {
+            return 0.0;
+        }
+        return sBox / independentBoxArea;
+    }
+
+    /** 根据当前可调权重计算 NFP 候选的综合评分。 */
+    private static double calculateCombinedScore(double normalizedSBox, double sArea) {
+        return SBOX_WEIGHT * normalizedSBox + SAREA_WEIGHT * sArea;
     }
 
     /** 计算多个固定工件合并后的轴对齐外接框，供凹腔候选判定复用。 */
@@ -706,8 +745,9 @@ public class PolygonStitcher {
     /**
      * 比较两个 NFP 候选。
      *
-     * 修改理由：旧排序只按填充率，可能让外边界扩展候选压过真正的凹腔候选。
-     * 现在先比较候选类型，再比较外接框收益，最后比较填充率，确保“填凹腔”优先于“向外摊开”。
+     * 修改理由：旧排序先比较凹腔类型和 score2，不能直接反映“外接矩形减少量”和
+     * “填充率提升量”的综合效果。现在先比较 Score，再用候选类型和原有几何指标作为
+     * 平局规则；硬过滤条件仍在本方法之前执行，不会因为评分改变而放行非法拼接。
      */
     private static boolean isBetterCandidate(StitchingCandidate candidate,
                                               StitchingCandidate currentBest) {
@@ -722,9 +762,12 @@ public class PolygonStitcher {
 
     /**
      * 与 isBetterCandidate 相同的排序方向，供有效候选和跨旋转候选稳定排序。
-     * 凹腔候选优先；外边界候选先比较 score2 和外接框扩张，再比较填充率。
+     * 综合 Score 是第一评价指标，其余字段只用于区分 Score 接近的候选。
      */
     private static int compareCandidates(StitchingCandidate left, StitchingCandidate right) {
+        if (Math.abs(left.combinedScore - right.combinedScore) > SCORE_EPS) {
+            return Double.compare(right.combinedScore, left.combinedScore);
+        }
         if (left.cavityInsertion != right.cavityInsertion) {
             return left.cavityInsertion ? -1 : 1;
         }

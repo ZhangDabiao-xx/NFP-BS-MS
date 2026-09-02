@@ -1,0 +1,18 @@
+Container length: 24400
+Container width: 12200
+Boxes Volume: 2.840434E8
+Container Volume: 297680000
+Utilization: 95.41904058048912
+
+Packed Boxes: 8
+format: x y length width
+16050 0  8350 4340
+4820 8820  19580 3380
+4820 5440  19580 3380
+16680 4340  7720 880
+7700 0  8350 4340
+7260 4340  9420 880
+420 0  7280 3830
+480 3850  4340 8350
+
+numOfBlemishes: 0

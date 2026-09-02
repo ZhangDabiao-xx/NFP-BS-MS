@@ -25,9 +25,9 @@ public class Block {
     public final double sourceBoxAreaSum;
     public final double boxArea;
     // 组合块填充率 = 块内工件实际面积之和 / 组合块外接矩形面积。
-    // NFP 拼接是否继续扩展以及候选排序均以该指标为准。
+    // 该指标仍用于 98% 终止条件和最终块质量判断；单步 NFP 候选排序改用综合 Score。
     public final double fillRate;
-    // score2 同时用于结果输出和外边界候选的紧凑性判断，帮助排除会摊大 Block 的拼接。
+    // score2 即原始 Sbox，继续用于结果输出和外边界候选的紧凑性判断，帮助排除会摊大 Block 的拼接。
     public final double score2;
 
     private Block(List<ItemPlacement> placements, List<Integer> rotate) {
@@ -115,6 +115,19 @@ public class Block {
 
     public int memberCount() {
         return placements.size();
+    }
+
+    /**
+     * 返回最后一次工件拼接使用的综合评分。
+     *
+     * 根节点 Beam 的同一层状态通常代表相同拼接深度，因此可以使用最后一步的
+     * A-B Score 作为该层的第一排序指标。单件 Block 没有拼接评分，返回 0。
+     */
+    public double lastStitchScore() {
+        if (placements.size() < 2) {
+            return 0.0;
+        }
+        return placements.get(placements.size() - 1).candidateCombinedScore;
     }
 
     /**
@@ -258,6 +271,10 @@ public class Block {
         // 保存最终采用的 NFP 来源和 score2，便于追踪每个子物品进入组合块时的面积收益。
         public final String sourceType;
         public final double candidateScore2;
+        // 保存本次拼接的 Sarea，便于复核填充率提升量是否参与综合评分。
+        public final double candidateSArea;
+        // 保存本次拼接的综合 Score，供根级 Beam 延续 NFP 候选排序结果。
+        public final double candidateCombinedScore;
         // 记录候选的接触质量，便于结果文件和可视化定位低质量拼接。
         public final double candidateContactLength;
         public final double candidateMinBoundaryDistance;
@@ -271,6 +288,8 @@ public class Block {
                               List<Point> placedPoints,
                               String sourceType,
                               double candidateScore2,
+                              double candidateSArea,
+                              double candidateCombinedScore,
                               double candidateContactLength,
                               double candidateMinBoundaryDistance,
                               double candidateCombinedFillRate,
@@ -281,6 +300,8 @@ public class Block {
             this.placedPoints = Collections.unmodifiableList(copyPolygon(placedPoints));
             this.sourceType = sourceType;
             this.candidateScore2 = candidateScore2;
+            this.candidateSArea = candidateSArea;
+            this.candidateCombinedScore = candidateCombinedScore;
             this.candidateContactLength = candidateContactLength;
             this.candidateMinBoundaryDistance = candidateMinBoundaryDistance;
             this.candidateCombinedFillRate = candidateCombinedFillRate;
@@ -289,12 +310,14 @@ public class Block {
 
         private static ItemPlacement fromItem(PolygonItem item) {
             return new ItemPlacement(item, 0, new Point(0, 0), item.points,
-                    "SINGLE", 0, 0, 0, item.fillRate, false);
+                    // 单件工件没有 NFP 拼接评分，新增的 Sarea 和综合 Score 等字段均使用 0。
+                    "SINGLE", 0, 0, 0, 0, 0, item.fillRate, false);
         }
 
         private static ItemPlacement fromCandidate(PolygonItem item, PolygonStitcher.StitchingCandidate candidate) {
             return new ItemPlacement(item, candidate.movingRotationDegrees, candidate.translation, candidate.translatedPolygonB,
-                    candidate.sourceType, candidate.score2, candidate.contactLength,
+                    candidate.sourceType, candidate.sBox, candidate.sArea, candidate.combinedScore,
+                    candidate.contactLength,
                     candidate.minBoundaryDistance, candidate.combinedFillRate,
                     candidate.cavityInsertion);
         }
@@ -306,6 +329,8 @@ public class Block {
                     Geometry.translatePolygon(placedPoints, offset),
                     sourceType,
                     candidateScore2,
+                    candidateSArea,
+                    candidateCombinedScore,
                     candidateContactLength,
                     candidateMinBoundaryDistance,
                     candidateCombinedFillRate,

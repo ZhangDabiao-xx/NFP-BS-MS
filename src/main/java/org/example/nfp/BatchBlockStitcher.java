@@ -23,7 +23,7 @@ import java.util.Set;
 public class BatchBlockStitcher {
 
     private static final Path INPUT_DIRECTORY = Path.of("data", "inputData");
-    private static final Path OUTPUT_DIRECTORY = Path.of("data", "NFPresult14");
+    private static final Path OUTPUT_DIRECTORY = Path.of("data", "NFPresult15");
     private static final Gson GSON = new Gson();
 
     // 组合块外接矩形长边超过板材长度时无法进入第二阶段排样，因此这类候选不保留。
@@ -516,10 +516,15 @@ public class BatchBlockStitcher {
     /**
      * 比较不同根工件生成的候选块。
      *
-     * 填充率是主要质量指标；填充率相同时优先选择 score2 更高、成员更多的块，
-     * 最后用外接框面积和 ID 作为稳定平局规则，保证每轮结果可复现。
+     * 最近一次 NFP 拼接的综合 Score 是主要质量指标；Score 接近时再比较凹腔插入、
+     * 最终填充率、score2、成员数和外接框面积，保证新评分优先且结果稳定可复现。
      */
     private static int compareCandidateBlocks(Block left, Block right) {
+        if (Math.abs(left.lastStitchScore() - right.lastStitchScore()) > PolygonStitcher.SCORE_EPS) {
+            // 修改理由：NFP 候选层已经以 A-B 综合 Score 排序；根级候选再次竞争时也要
+            // 优先延续该评分，否则上层只按最终 fillRate 排序会抵消 NFP 层的新评分。
+            return Double.compare(right.lastStitchScore(), left.lastStitchScore());
+        }
         int leftCavityInsertionCount = countCavityInsertions(left);
         int rightCavityInsertionCount = countCavityInsertions(right);
         if (leftCavityInsertionCount != rightCavityInsertionCount) {
@@ -779,11 +784,17 @@ public class BatchBlockStitcher {
     /**
      * 比较同一个根 A 的拼接方案。
      *
-     * 主指标是当前组合块填充率；填充率相同时优先成员更多的方案，
-     * 再使用累计 score2 和块 ID 稳定排序。这里不再使用所有 Block 的总体填充率，
+     * 最近一步 A-B 拼接的综合 Score 是主指标；Score 接近时再比较凹腔插入次数、
+     * 当前组合块填充率、成员数和累计 score2。这里不再使用所有 Block 的总体填充率，
      * 避免无关工件的状态影响 A 根分支的竞争结果。
      */
     private static int compareRootStates(RootBeamState left, RootBeamState right) {
+        if (Math.abs(left.block.lastStitchScore() - right.block.lastStitchScore())
+                > PolygonStitcher.SCORE_EPS) {
+            // 修改理由：同一层根 Beam 中的状态都是由最近一次 A-B 拼接产生的，
+            // 先比较最近一步综合 Score，才能真正实现“每层优先保留高质量拼接”。
+            return Double.compare(right.block.lastStitchScore(), left.block.lastStitchScore());
+        }
         int leftCavityInsertionCount = countCavityInsertions(left.block);
         int rightCavityInsertionCount = countCavityInsertions(right.block);
         if (leftCavityInsertionCount != rightCavityInsertionCount) {
@@ -1177,6 +1188,15 @@ public class BatchBlockStitcher {
         writer.write("    sourceType=" + placement.sourceType);
         writer.newLine();
         writer.write(String.format(Locale.ROOT, "    candidateScore2=%.6f", placement.candidateScore2));
+        writer.newLine();
+        // 显式输出 Sbox 别名；candidateScore2 保留用于兼容历史结果读取程序。
+        writer.write(String.format(Locale.ROOT, "    candidateSBox=%.6f", placement.candidateScore2));
+        writer.newLine();
+        // 输出 Sarea 和综合 Score，便于检查权重变化是否真正影响了最终候选位置。
+        writer.write(String.format(Locale.ROOT, "    candidateSArea=%.6f", placement.candidateSArea));
+        writer.newLine();
+        writer.write(String.format(Locale.ROOT, "    candidateCombinedScore=%.6f",
+                placement.candidateCombinedScore));
         writer.newLine();
         writer.write(String.format(Locale.ROOT, "    candidateContactLength=%.6f", placement.candidateContactLength));
         writer.newLine();
