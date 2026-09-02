@@ -39,10 +39,10 @@ import java.util.regex.Pattern;
  */
 public class NFPToBeamSearchBridge {
 
-    private static final Path DEFAULT_OUTPUT_DIR = Path.of("data", "NFPresult13");
+    private static final Path DEFAULT_OUTPUT_DIR = Path.of("data", "NFPresult14");
     private static final Path DEFAULT_INPUT_DIR  = Path.of("data", "inputData");
-    private static final Path DEFAULT_BRIDGE_DIR = Path.of("data", "materialData12");
-    private static final Path DEFAULT_RESULT_DIR = Path.of("data", "packResult18");
+    private static final Path DEFAULT_BRIDGE_DIR = Path.of("data", "materialData13");
+    private static final Path DEFAULT_RESULT_DIR = Path.of("data", "packResult19");
 
     // ---------- 数据模型 ----------
 

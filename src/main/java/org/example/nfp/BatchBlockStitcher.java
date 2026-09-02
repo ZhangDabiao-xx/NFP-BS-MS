@@ -23,7 +23,7 @@ import java.util.Set;
 public class BatchBlockStitcher {
 
     private static final Path INPUT_DIRECTORY = Path.of("data", "inputData");
-    private static final Path OUTPUT_DIRECTORY = Path.of("data", "NFPresult13");
+    private static final Path OUTPUT_DIRECTORY = Path.of("data", "NFPresult14");
     private static final Gson GSON = new Gson();
 
     // 组合块外接矩形长边超过板材长度时无法进入第二阶段排样，因此这类候选不保留。
@@ -47,8 +47,8 @@ public class BatchBlockStitcher {
     // 修改理由：Cabinet1 中多个填充率约 0.858 的大件组合虽然几何相接，
     // 但会消耗大件并扩大包络框，既没有填凹腔，也会降低后续矩形排样的可用性。
     // 新规则只在分支无法继续扩展时执行；中间的 A+B 即使只有 0.80，
-    // 也必须先保留给下一层尝试 A+B+C。最终达到 0.96 的互补组合可以保留。
-    // 真实凹腔插入不受此限制。
+    // 也必须先保留给下一层尝试 A+B+C。最终达到 0.90 的互补组合可以保留。
+    // 纯真实凹腔插入不受此限制；如果同一块同时发生大件外扩，仍需满足该阈值。
     private static final double MIN_LARGE_OUTER_COMBINED_FILL_RATE = 0.90;
     // 机会成本只作为普通候选的调节项，不能抵消关键凹腔的直接填充收益。
     private static final double OPPORTUNITY_COST_WEIGHT = 0.35;
@@ -199,9 +199,16 @@ public class BatchBlockStitcher {
             List<CandidateBlock> candidateBlocks = buildAllRootCandidates(
                     availableItems, beamWidth, rootCandidateCount, nfpCache);
             List<CandidateBlock> scoredCandidates = calculateOpportunityCosts(candidateBlocks);
+
+            // 先从关键凹腔候选中预留小件，再过滤会抢占这些小件的普通候选。
+            // 修改理由：机会成本只能软性调整排序，不能阻止普通高填充块提前消耗
+            // 后续大凹腔真正需要的小件；这里增加显式资源约束，但不改变候选几何。
+            Set<String> reservedSmallItemIds = reserveCriticalSmallItems(scoredCandidates);
+            List<CandidateBlock> selectableCandidates = filterReservedSmallItemConsumers(
+                    scoredCandidates, reservedSmallItemIds);
             int globalPlanWidth = Math.max(rootCandidateCount,
                     beamWidth * GLOBAL_PLAN_BEAM_MULTIPLIER);
-            GlobalPlanState bestPlan = selectGlobalCandidatePlan(scoredCandidates, globalPlanWidth);
+            GlobalPlanState bestPlan = selectGlobalCandidatePlan(selectableCandidates, globalPlanWidth);
 
             if (bestPlan == null || bestPlan.selectedCandidates.isEmpty()) {
                 // 当前剩余工件已经无法形成新的有效拼接块，剩余工件保持单件输出，
@@ -263,11 +270,11 @@ public class BatchBlockStitcher {
      * 计算候选块对关键凹腔资源的机会成本。
      *
      * 功能说明：先统计每个小件被关键凹腔候选使用时的最大收益，再给普通候选块
-     * 计算资源占用代价。该代价不会直接否决普通块，只会在全局候选质量接近时，
-     * 让算法倾向于保留对大凹腔更有价值的小件。
+     * 计算资源占用代价。机会成本仍作为软评分使用，小件是否允许被普通候选使用，
+     * 由随后执行的 reserveCriticalSmallItems() 硬约束负责。
      *
      * 修改理由：仅比较候选块自身的 fillRate 会让 1.0 的小件互补块无条件压过
-     * 大凹腔方案；增加机会成本后，局部高填充不再是唯一质量指标。
+     * 大凹腔方案；同时把机会成本和小件预留分开，避免用一个权重同时承担两种职责。
      */
     private static List<CandidateBlock> calculateOpportunityCosts(List<CandidateBlock> candidates) {
         Map<String, Double> criticalItemValues = new HashMap<>();
@@ -276,7 +283,8 @@ public class BatchBlockStitcher {
             if (!candidate.criticalCavity) {
                 continue;
             }
-            for (String itemId : candidate.addedItemIds()) {
+            // 机会成本只针对实际新增的小件；大件资源由候选块之间的 item conflict 处理。
+            for (String itemId : candidate.addedSmallItemIds()) {
                 criticalItemValues.merge(itemId, candidate.criticalGain, Math::max);
                 criticalItemDemand.merge(itemId, 1, Integer::sum);
             }
@@ -286,7 +294,7 @@ public class BatchBlockStitcher {
         for (CandidateBlock candidate : candidates) {
             double opportunityCost = 0.0;
             if (!candidate.criticalCavity) {
-                for (String itemId : candidate.addedItemIds()) {
+                for (String itemId : candidate.addedSmallItemIds()) {
                     Double criticalValue = criticalItemValues.get(itemId);
                     Integer demand = criticalItemDemand.get(itemId);
                     if (criticalValue != null && demand != null) {
@@ -299,6 +307,90 @@ public class BatchBlockStitcher {
             result.add(candidate.withOpportunityCost(opportunityCost));
         }
         return result;
+    }
+
+    /**
+     * 为当前轮次选择需要优先保护的小件资源。
+     *
+     * 功能说明：关键凹腔候选按收益从高到低尝试选择；互相冲突的候选不能同时
+     * 预留，避免把同一个大件或同一个小件重复计算。被选中候选中的 smallItem
+     * 会暂时保留给关键凹腔，直到本轮全局方案确定。
+     *
+     * 修改理由：原有机会成本只改变排序，无法阻止普通高填充组合消耗关键小件。
+     * 这里采用轻量级的贪心资源预留，不引入新的整数规划求解器，也不改变 NFP 几何计算。
+     */
+    private static Set<String> reserveCriticalSmallItems(List<CandidateBlock> candidates) {
+        List<CandidateBlock> criticalCandidates = new ArrayList<>();
+        for (CandidateBlock candidate : candidates) {
+            if (candidate.criticalCavity && !candidate.smallItemIds().isEmpty()) {
+                criticalCandidates.add(candidate);
+            }
+        }
+
+        criticalCandidates.sort(BatchBlockStitcher::compareCriticalReservationCandidates);
+
+        Set<String> reservedSmallItemIds = new HashSet<>();
+        Set<String> reservedCandidateItemIds = new HashSet<>();
+        for (CandidateBlock candidate : criticalCandidates) {
+            // 只预留互不冲突的关键凹腔方案，保证预留资源至少对应一组可同时尝试的方案。
+            if (hasItemConflict(candidate.itemIds, reservedCandidateItemIds)) {
+                continue;
+            }
+
+            reservedCandidateItemIds.addAll(candidate.itemIds);
+            reservedSmallItemIds.addAll(candidate.smallItemIds());
+        }
+        return reservedSmallItemIds;
+    }
+
+    /** 比较关键凹腔预留方案，优先保护凹腔收益高且小件消耗少的候选。 */
+    private static int compareCriticalReservationCandidates(CandidateBlock left,
+                                                             CandidateBlock right) {
+        if (Math.abs(left.criticalGain - right.criticalGain) > PolygonStitcher.SCORE_EPS) {
+            return Double.compare(right.criticalGain, left.criticalGain);
+        }
+
+        if (left.smallItemIds().size() != right.smallItemIds().size()) {
+            return Integer.compare(left.smallItemIds().size(), right.smallItemIds().size());
+        }
+
+        if (Math.abs(left.block.fillRate - right.block.fillRate) > PolygonStitcher.SCORE_EPS) {
+            return Double.compare(right.block.fillRate, left.block.fillRate);
+        }
+        return left.block.id.compareTo(right.block.id);
+    }
+
+    /**
+     * 过滤会抢占关键凹腔预留小件的普通候选。
+     *
+     * 关键凹腔候选本身允许使用预留小件；其它候选若不使用预留资源则正常参与全局
+     * Beam。预留集合为空时直接返回原候选列表，保持没有关键凹腔时的原有行为。
+     */
+    private static List<CandidateBlock> filterReservedSmallItemConsumers(
+            List<CandidateBlock> candidates,
+            Set<String> reservedSmallItemIds) {
+        if (reservedSmallItemIds.isEmpty()) {
+            return candidates;
+        }
+
+        List<CandidateBlock> result = new ArrayList<>();
+        for (CandidateBlock candidate : candidates) {
+            if (candidate.criticalCavity
+                    || !containsAny(candidate.smallItemIds(), reservedSmallItemIds)) {
+                result.add(candidate);
+            }
+        }
+        return result;
+    }
+
+    /** 判断两个小件 ID 集合是否有交集，避免使用复杂的集合链式表达式。 */
+    private static boolean containsAny(Set<String> first, Set<String> second) {
+        for (String itemId : first) {
+            if (second.contains(itemId)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -385,6 +477,12 @@ public class BatchBlockStitcher {
             // 修改理由：两个方案的关键收益接近时，优先保留真实进入凹腔的拼接次数，
             // 使全局资源分配继续偏向“凹腔 + 小件”，而不是只追求外接框填充率。
             return Integer.compare(right.totalCavityInsertionCount, left.totalCavityInsertionCount);
+        }
+        if (left.nonCriticalSmallItemCount != right.nonCriticalSmallItemCount) {
+            // 修改理由：关键凹腔收益相同或接近时，优先保留消耗普通小件更少的方案，
+            // 给尚未进入本轮候选的凹腔留下更多可用资源。关键凹腔候选使用的小件
+            // 不计入该指标，因为它们已经属于被保护的目标资源。
+            return Integer.compare(left.nonCriticalSmallItemCount, right.nonCriticalSmallItemCount);
         }
         if (Math.abs(left.effectiveGain - right.effectiveGain) > PolygonStitcher.SCORE_EPS) {
             return Double.compare(right.effectiveGain, left.effectiveGain);
@@ -592,24 +690,90 @@ public class BatchBlockStitcher {
         return itemIds;
     }
 
-    /** 保留当前根 A 搜索层中质量最高的不同拼接方案。 */
+    /**
+     * 收集组合块中实际使用的 smallItem ID。
+     *
+     * 功能说明：资源预留需要同时识别“新增小件”和“以小件作为根节点”的候选，
+     * 因此这里遍历整个 Block，而不是只从根工件之外收集 ID。
+     */
+    private static Set<String> collectSmallItemIds(Block block) {
+        Set<String> smallItemIds = new HashSet<>();
+        for (Block.ItemPlacement placement : block.placements) {
+            if (placement.item.smallItem) {
+                smallItemIds.add(placement.item.id);
+            }
+        }
+        return smallItemIds;
+    }
+
+    /**
+     * 保留当前根 A 搜索层中质量最高的不同拼接方案。
+     *
+     * 修改理由：若完全按当前填充率排序，A+B 这种暂时填充率较低、但仍有后续
+     * 扩展机会的大件方案，可能被“当前填充率较高但已经消耗小件”的方案挤出 Beam。
+     * 因此为可继续扩展的大件外扩状态保留少量固定名额，避免提前丢失 A+B+C 路径。
+     */
     private static List<RootBeamState> selectBestRootStates(List<RootBeamState> states,
                                                             int beamWidth) {
-        states.sort(BatchBlockStitcher::compareRootStates);
+        int normalizedBeamWidth = Math.max(1, beamWidth);
+        List<RootBeamState> orderedStates = new ArrayList<>(states);
+        orderedStates.sort(BatchBlockStitcher::compareRootStates);
         List<RootBeamState> selectedStates = new ArrayList<>();
         Set<String> signatures = new HashSet<>();
 
-        for (RootBeamState state : states) {
+        // 只为宽度大于 1 的 Beam 预留名额；宽度为 1 时保持原有单分支行为。
+        int pendingQuota = normalizedBeamWidth <= 1
+                ? 0
+                : Math.max(1, normalizedBeamWidth / 3);
+        int pendingCount = 0;
+
+        for (RootBeamState state : orderedStates) {
+            if (!isLargeOuterPendingState(state) || pendingCount >= pendingQuota) {
+                continue;
+            }
+
             String signature = rootStateSignature(state);
             if (!signatures.add(signature)) {
                 continue;
             }
             selectedStates.add(state);
-            if (selectedStates.size() >= beamWidth) {
+            pendingCount++;
+        }
+
+        for (RootBeamState state : orderedStates) {
+            String signature = rootStateSignature(state);
+            if (!signatures.add(signature)) {
+                continue;
+            }
+            selectedStates.add(state);
+            if (selectedStates.size() >= normalizedBeamWidth) {
                 break;
             }
         }
         return selectedStates;
+    }
+
+    /**
+     * 判断根 Beam 状态是否属于“低填充但仍可继续扩展”的大件外扩分支。
+     *
+     * 功能说明：该状态不代表最终可输出的组合块，只代表一个需要继续向下搜索的
+     * 中间节点。这里不要求当前填充率达到 0.90，避免把未来可能形成高质量闭合的
+     * 大件组合提前截断。
+     */
+    private static boolean isLargeOuterPendingState(RootBeamState state) {
+        if (state == null
+                || state.block.memberCount() < 2
+                || state.block.fillRate >= MIN_LARGE_OUTER_COMBINED_FILL_RATE) {
+            return false;
+        }
+
+        for (int i = 1; i < state.block.placements.size(); i++) {
+            Block.ItemPlacement placement = state.block.placements.get(i);
+            if (!placement.item.smallItem && !placement.candidateCavityInsertion) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -906,13 +1070,18 @@ public class BatchBlockStitcher {
             return false;
         }
 
-        for (Block.ItemPlacement placement : block.placements) {
-            if (placement.item.smallItem || placement.candidateCavityInsertion) {
-                // 含小件或真实凹腔插入的块不属于“大件普通外扩”规则的处理范围。
-                return false;
+        boolean hasLargeOuterExpansion = false;
+        for (int i = 1; i < block.placements.size(); i++) {
+            Block.ItemPlacement placement = block.placements.get(i);
+            if (!placement.item.smallItem && !placement.candidateCavityInsertion) {
+                hasLargeOuterExpansion = true;
             }
         }
-        return true;
+
+        // 纯凹腔插入块可以保留较低填充率，因为它没有扩大大件组合的外接框；
+        // 但只要存在大件普通外扩，终止块就必须达到 0.90，否则不能借助一个小件
+        // 绕过低质量大件过滤。中间节点不会调用此方法，仍可继续尝试 A+B+C。
+        return hasLargeOuterExpansion;
     }
 
     /** 以全部固定工件的几何坐标构造 NFP 缓存键，确保不同内部孔洞的 Block 不会错误复用结果。 */
@@ -1126,6 +1295,7 @@ public class BatchBlockStitcher {
         private final double criticalGain;
         private final double fillRateGain;
         private final int cavityInsertionCount;
+        private final Set<String> smallItemIds;
         private final double opportunityCost;
 
         private CandidateBlock(PolygonItem rootItem,
@@ -1143,6 +1313,8 @@ public class BatchBlockStitcher {
             this.criticalGain = criticalGain;
             this.fillRateGain = fillRateGain;
             this.cavityInsertionCount = cavityInsertionCount;
+            // 候选创建时缓存 smallItem 集合，避免资源预留和过滤阶段重复遍历 Block。
+            this.smallItemIds = Set.copyOf(collectSmallItemIds(block));
             this.opportunityCost = opportunityCost;
         }
 
@@ -1165,11 +1337,25 @@ public class BatchBlockStitcher {
                     criticalGain, fillRateGain, cavityInsertionCount, value);
         }
 
-        /** 返回候选块除根工件之外实际新增的工件 ID。 */
-        private Set<String> addedItemIds() {
-            Set<String> addedItemIds = new HashSet<>(itemIds);
-            addedItemIds.remove(rootItem.id);
-            return addedItemIds;
+        /** 返回候选块中所有 smallItem 的 ID，用于判断是否抢占预留小件。 */
+        private Set<String> smallItemIds() {
+            return smallItemIds;
+        }
+
+        /**
+         * 返回候选块中除根工件之外新增的 smallItem ID。
+         *
+         * 机会成本只针对新增小件计算，避免把根工件本身重复计入资源消耗；
+         * 预留过滤则使用 smallItemIds()，因此仍能识别 smallItem 根节点候选。
+         */
+        private Set<String> addedSmallItemIds() {
+            Set<String> addedSmallItemIds = new HashSet<>();
+            for (Block.ItemPlacement placement : block.placements) {
+                if (placement.item.smallItem && !placement.item.id.equals(rootItem.id)) {
+                    addedSmallItemIds.add(placement.item.id);
+                }
+            }
+            return addedSmallItemIds;
         }
 
         /** 全局方案比较使用的普通收益，机会成本只调节普通候选，不否决关键凹腔。 */
@@ -1182,7 +1368,8 @@ public class BatchBlockStitcher {
      * 外层全局候选集合 Beam 的状态。
      *
      * 状态中的 usedItemIds 保证同一件工件不会同时进入两个 Block；关键凹腔收益、
-     * 机会成本和普通填充收益分别保存，避免把不同含义的指标压成一个难以解释的分数。
+     * 机会成本、普通小件消耗和普通填充收益分别保存，避免把不同含义的指标压成
+     * 一个难以解释的分数。
      */
     private static final class GlobalPlanState {
         private final List<CandidateBlock> selectedCandidates;
@@ -1190,6 +1377,7 @@ public class BatchBlockStitcher {
         private final double criticalGain;
         private final int criticalRootCount;
         private final int totalCavityInsertionCount;
+        private final int nonCriticalSmallItemCount;
         private final double effectiveGain;
         private final double opportunityCost;
         private final double totalFillRateGain;
@@ -1200,6 +1388,7 @@ public class BatchBlockStitcher {
                                 double criticalGain,
                                 int criticalRootCount,
                                 int totalCavityInsertionCount,
+                                int nonCriticalSmallItemCount,
                                 double effectiveGain,
                                 double opportunityCost,
                                 double totalFillRateGain,
@@ -1209,6 +1398,7 @@ public class BatchBlockStitcher {
             this.criticalGain = criticalGain;
             this.criticalRootCount = criticalRootCount;
             this.totalCavityInsertionCount = totalCavityInsertionCount;
+            this.nonCriticalSmallItemCount = nonCriticalSmallItemCount;
             this.effectiveGain = effectiveGain;
             this.opportunityCost = opportunityCost;
             this.totalFillRateGain = totalFillRateGain;
@@ -1217,7 +1407,7 @@ public class BatchBlockStitcher {
 
         private static GlobalPlanState empty() {
             return new GlobalPlanState(new ArrayList<>(), new HashSet<>(),
-                    0.0, 0, 0, 0.0, 0.0, 0.0, 0.0);
+                    0.0, 0, 0, 0, 0.0, 0.0, 0.0, 0.0);
         }
 
         /** 将一个不冲突的候选块加入当前全局方案。 */
@@ -1232,6 +1422,9 @@ public class BatchBlockStitcher {
                     criticalGain + candidate.criticalGain,
                     criticalRootCount + (candidate.criticalCavity ? 1 : 0),
                     totalCavityInsertionCount + candidate.cavityInsertionCount,
+                    nonCriticalSmallItemCount + (candidate.criticalCavity
+                            ? 0
+                            : candidate.smallItemIds().size()),
                     effectiveGain + candidate.effectiveGain(),
                     opportunityCost + candidate.opportunityCost,
                     totalFillRateGain + candidate.fillRateGain,
