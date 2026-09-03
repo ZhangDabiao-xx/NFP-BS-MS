@@ -1,5 +1,0 @@
-E:\code\NFPKSum\data\inputData2\Others1\workpiece
-Total number of nestable workpieces in this batch: 81
-Number of sheets used in this batch: 7
-Average utilization rate of this batch: 91.3383039375936%
-Running time: 4.561s
