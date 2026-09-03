@@ -23,7 +23,7 @@ import java.util.Set;
 public class BatchBlockStitcher {
 
     private static final Path INPUT_DIRECTORY = Path.of("data", "inputData");
-    private static final Path OUTPUT_DIRECTORY = Path.of("data", "NFPresult15");
+    private static final Path OUTPUT_DIRECTORY = Path.of("data", "NFPresult16");
     private static final Gson GSON = new Gson();
 
     // 组合块外接矩形长边超过板材长度时无法进入第二阶段排样，因此这类候选不保留。
@@ -576,21 +576,83 @@ public class BatchBlockStitcher {
             int candidateLimit,
             Map<String, PolygonStitcher.StitchingResult> nfpCache) {
         Block rootBlock = Block.fromSingle(rootItem);
-        RootBeamState initialState = RootBeamState.fromRoot(rootBlock);
 
         // 小矩形只作为被插入物品，不作为根节点继续扩展，保持原有业务规则。
         if (!canActAsBaseBlock(rootBlock)) {
             return List.of(rootBlock);
         }
 
+        // 记录已经确认“与 A 组合后没有有效终止块，也不能继续向下扩展”的首层物品。
+        // 该集合是本次根搜索的局部惩罚表，不会影响其他根工件，也不会永久修改全局物品池。
+        Set<String> penalizedFirstItemIds = new HashSet<>();
+
+        while (true) {
+            RootSearchResult searchResult = runRootBeamSearch(
+                    rootItem,
+                    remainingItems,
+                    beamWidth,
+                    candidateLimit,
+                    penalizedFirstItemIds,
+                    nfpCache);
+
+            if (!searchResult.validCompletedStates.isEmpty()) {
+                List<RootBeamState> topStates = selectBestRootStates(
+                        searchResult.validCompletedStates,
+                        candidateLimit);
+                List<Block> result = new ArrayList<>(topStates.size());
+                for (RootBeamState state : topStates) {
+                    result.add(state.block);
+                }
+                return result;
+            }
+
+            // 本轮没有得到可输出的多件终止块时，只惩罚本轮真正进入 Beam 的首层分支。
+            // 未进入 Beam 的候选不会被误判，下一轮会从剩余候选中重新选出新的前 beamWidth 个分支。
+            Set<String> newlyFailedFirstItemIds = new HashSet<>(searchResult.exploredFirstItemIds);
+            newlyFailedFirstItemIds.removeAll(penalizedFirstItemIds);
+            if (newlyFailedFirstItemIds.isEmpty()) {
+                // 所有候选都已尝试，或根节点根本没有可行的首层拼接；此时 A 才能作为单件块输出。
+                return List.of(rootBlock);
+            }
+
+            // 修改理由：原逻辑在首层 Beam 全部变成低质量终止节点时直接回退到 A，
+            // 没有给下一批候选机会。现在把失败首层物品暂时排除，再从剩余物品重新搜索。
+            penalizedFirstItemIds.addAll(newlyFailedFirstItemIds);
+        }
+    }
+
+    /**
+     * 执行一次以 A 为根的 Beam 搜索，并返回终止节点及本轮实际探索到的首层物品。
+     *
+     * 功能说明：将“搜索”和“失败首层分支收集”拆开，便于外层在一批 AB、AC、AD
+     * 等分支全部无效时施加局部惩罚，然后继续尝试下一批候选。只有进入当前 Beam
+     * 的首层物品才会记录为失败，避免把尚未搜索的候选提前淘汰。
+     */
+    private static RootSearchResult runRootBeamSearch(
+            PolygonItem rootItem,
+            List<PolygonItem> remainingItems,
+            int beamWidth,
+            int candidateLimit,
+            Set<String> penalizedFirstItemIds,
+            Map<String, PolygonStitcher.StitchingResult> nfpCache) {
+        Block rootBlock = Block.fromSingle(rootItem);
+        RootBeamState initialState = RootBeamState.fromRoot(rootBlock);
+
         List<RootBeamState> beam = new ArrayList<>();
         beam.add(initialState);
         List<RootBeamState> completedStates = new ArrayList<>();
+        Set<String> exploredFirstItemIds = new HashSet<>();
 
         while (!beam.isEmpty()) {
             List<RootBeamState> nextBeamCandidates = new ArrayList<>();
 
             for (RootBeamState state : beam) {
+                if (state.firstAddedItemId != null) {
+                    // 该状态已经实际进入搜索，若整轮没有任何有效终止结果，
+                    // 它的首层物品才有资格接受惩罚并在下一轮暂时排除。
+                    exploredFirstItemIds.add(state.firstAddedItemId);
+                }
+
                 if (!canActAsBaseBlock(state.block)) {
                     // 达到 98%、尺寸上限或其他根节点限制后，当前节点成为终止方案。
                     completedStates.add(state);
@@ -598,7 +660,11 @@ public class BatchBlockStitcher {
                 }
 
                 List<RootBeamState> children = buildRootChildren(
-                        state, remainingItems, Math.max(beamWidth, candidateLimit), nfpCache);
+                        state,
+                        remainingItems,
+                        Math.max(beamWidth, candidateLimit),
+                        penalizedFirstItemIds,
+                        nfpCache);
                 if (children.isEmpty()) {
                     // 当前根块没有任何合法且能提升填充率的后继，保存它供最终比较。
                     completedStates.add(state);
@@ -623,7 +689,7 @@ public class BatchBlockStitcher {
             completedStates.addAll(beam);
         }
         if (completedStates.isEmpty()) {
-            return List.of(rootBlock);
+            return new RootSearchResult(List.of(), exploredFirstItemIds);
         }
 
         // 修改原因：大件外扩质量必须在“无法继续扩展”的终止节点上判断，
@@ -635,17 +701,7 @@ public class BatchBlockStitcher {
                 validCompletedStates.add(state);
             }
         }
-        if (validCompletedStates.isEmpty()) {
-            // 所有终止组合都是低质量大件外扩时，不输出无效组合，保留根工件单独处理。
-            return List.of(rootBlock);
-        }
-
-        List<RootBeamState> topStates = selectBestRootStates(validCompletedStates, candidateLimit);
-        List<Block> result = new ArrayList<>(topStates.size());
-        for (RootBeamState state : topStates) {
-            result.add(state.block);
-        }
-        return result;
+        return new RootSearchResult(validCompletedStates, exploredFirstItemIds);
     }
 
     /**
@@ -658,10 +714,17 @@ public class BatchBlockStitcher {
             RootBeamState state,
             List<PolygonItem> remainingItems,
             int candidateLimit,
+            Set<String> penalizedFirstItemIds,
             Map<String, PolygonStitcher.StitchingResult> nfpCache) {
         List<RootBeamState> children = new ArrayList<>();
         for (PolygonItem item : remainingItems) {
             if (state.usedItemIds.contains(item.id)) {
+                continue;
+            }
+
+            // 只在 A 的第一层应用失败惩罚。后续层仍允许使用普通候选，
+            // 否则会把“B 作为其他分支中的深层工件”错误地全局禁止。
+            if (isPenalizedFirstBranch(state, item, penalizedFirstItemIds)) {
                 continue;
             }
 
@@ -673,6 +736,20 @@ public class BatchBlockStitcher {
             }
         }
         return children;
+    }
+
+    /**
+     * 判断当前首层候选是否已经被本根搜索判定为失败分支。
+     *
+     * 惩罚只对“根 A 的直接后继”生效；如果当前状态已经包含首层物品，
+     * 则该物品只能通过 usedItemIds 规则判断，不能套用 A 的失败记录。
+     */
+    private static boolean isPenalizedFirstBranch(
+            RootBeamState state,
+            PolygonItem item,
+            Set<String> penalizedFirstItemIds) {
+        return state.firstAddedItemId == null
+                && penalizedFirstItemIds.contains(item.id);
     }
 
     /** 从输入的单件 Block 中提取仍待处理的原始工件。 */
@@ -1463,20 +1540,45 @@ public class BatchBlockStitcher {
     }
 
     /**
+     * 一次根 Beam 搜索的结果。
+     *
+     * validCompletedStates 是经过终止质量检查、可作为组合块输出的状态；
+     * exploredFirstItemIds 是本轮实际进入 Beam 的 A+B 首层物品。
+     * 当 validCompletedStates 为空时，调用方只惩罚 exploredFirstItemIds，
+     * 让尚未进入 Beam 的候选在下一轮继续竞争。
+     */
+    private static final class RootSearchResult {
+        private final List<RootBeamState> validCompletedStates;
+        private final Set<String> exploredFirstItemIds;
+
+        private RootSearchResult(List<RootBeamState> validCompletedStates,
+                                 Set<String> exploredFirstItemIds) {
+            this.validCompletedStates = List.copyOf(validCompletedStates);
+            this.exploredFirstItemIds = Set.copyOf(exploredFirstItemIds);
+        }
+    }
+
+    /**
      * 以一个根工件 A 为中心的 Beam 节点。
      *
      * block 保存当前 A 根拼接出的完整几何；usedItemIds 保存该分支已经消耗的工件，
-     * 用于防止同一个工件在同一条拼接路径中重复加入。不同根节点之间不会共享该状态；
-     * 根级候选即使最终因工件冲突被淘汰，也不会修改其它根的状态，外层会让未提交成员回池。
+     * 用于防止同一个工件在同一条拼接路径中重复加入。firstAddedItemId 记录 A 的直接
+     * 后继工件，用于在一批首层分支全部失败时只惩罚对应的 B、C、D，而不影响更深层搜索。
+     * 不同根节点之间不会共享该状态；根级候选即使最终因工件冲突被淘汰，也不会修改其它
+     * 根的状态，外层会让未提交成员回池。
      */
     private static final class RootBeamState {
         private final Block block;
         private final Set<String> usedItemIds;
+        private final String firstAddedItemId;
 
-        private RootBeamState(Block block, Set<String> usedItemIds) {
+        private RootBeamState(Block block,
+                              Set<String> usedItemIds,
+                              String firstAddedItemId) {
             this.block = block;
             // 每个节点拥有自己的集合副本，避免后续分支互相修改已使用工件集合。
             this.usedItemIds = new HashSet<>(usedItemIds);
+            this.firstAddedItemId = firstAddedItemId;
         }
 
         private static RootBeamState fromRoot(Block rootBlock) {
@@ -1484,14 +1586,19 @@ public class BatchBlockStitcher {
             for (Block.ItemPlacement placement : rootBlock.placements) {
                 rootItemIds.add(placement.item.id);
             }
-            return new RootBeamState(rootBlock, rootItemIds);
+            // 根节点还没有首层后继，使用 null 表示当前节点正处于 A 本身。
+            return new RootBeamState(rootBlock, rootItemIds, null);
         }
 
         /** 创建加入一个新工件后的子节点，并保留父节点的使用集合。 */
         private RootBeamState withAddedItem(PolygonItem item, Block childBlock) {
             Set<String> nextUsedItemIds = new HashSet<>(usedItemIds);
             nextUsedItemIds.add(item.id);
-            return new RootBeamState(childBlock, nextUsedItemIds);
+            // 首次加入的物品是该分支的 A+B 中的 B；后续加入物品继续继承该值。
+            String nextFirstAddedItemId = firstAddedItemId == null
+                    ? item.id
+                    : firstAddedItemId;
+            return new RootBeamState(childBlock, nextUsedItemIds, nextFirstAddedItemId);
         }
     }
 
