@@ -12,14 +12,15 @@ import java.util.Properties;
 /**
  * 一次端到端求解期间共享的 Q-learning 会话。
  *
- * <p>会话为优先件、填充和普通件阶段维护独立控制器，并在 TRAIN 模式结束时
- * 保存 Q 表。OFF 模式不会创建文件，也不会改变原启发式流程。</p>
+ * <p>会话为 NFP 拼接、优先件、填充和普通件阶段维护独立控制器，并在 TRAIN
+ * 模式结束时保存 Q 表。OFF 模式不会创建文件，也不会改变原启发式流程。</p>
  */
 public final class QLearningSession implements AutoCloseable {
 
     private static final String TABLE_FILE_NAME = "packing-q-tables.properties";
     private static final String TRACE_FILE_NAME = "packing-q-trace.csv";
     private static final int PACKING_ACTION_COUNT = 7;
+    private static final int NFP_ACTION_COUNT = 6;
 
     private final QLearningConfig config;
     private final Path storageDirectory;
@@ -52,7 +53,7 @@ public final class QLearningSession implements AutoCloseable {
         Map<SearchPhase, TabularQController> controllers = new EnumMap<>(SearchPhase.class);
         for (SearchPhase phase : SearchPhase.values()) {
             controllers.put(phase, new TabularQController(
-                    PACKING_ACTION_COUNT,
+                    actionCountFor(phase),
                     effectiveConfig,
                     effectiveConfig.seed() + 1_000_003L * (phase.ordinal() + 1L)));
         }
@@ -86,7 +87,7 @@ public final class QLearningSession implements AutoCloseable {
     /**
      * 返回指定阶段的 Q 控制器。
      *
-     * @param phase 当前优先级排样阶段
+     * @param phase 当前 NFP 拼接或优先级排样阶段
      * @return 与阶段一一对应的独立 Q 表控制器
      */
     public TabularQController controller(SearchPhase phase) {
@@ -185,5 +186,15 @@ public final class QLearningSession implements AutoCloseable {
         try (OutputStream outputStream = Files.newOutputStream(tableFile)) {
             properties.store(outputStream, "Q-learning packing tables");
         }
+    }
+
+    /**
+     * 返回指定搜索阶段可用的 Q-learning 动作数量。
+     *
+     * @param phase 当前 NFP 拼接或矩形排样阶段。
+     * @return 与该阶段动作枚举数量一致的正整数。
+     */
+    private static int actionCountFor(SearchPhase phase) {
+        return phase == SearchPhase.NFP_STITCH ? NFP_ACTION_COUNT : PACKING_ACTION_COUNT;
     }
 }

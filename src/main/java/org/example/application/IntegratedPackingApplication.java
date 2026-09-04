@@ -102,7 +102,10 @@ public final class IntegratedPackingApplication {
         try (QLearningSession qLearningSession = QLearningSession.open(
                 qLearningConfig,
                 qLearningDirectory)) {
-            List<Path> nfpResultFiles = BatchBlockStitcher.stitchCases(casePath, nfpResultDirectory);
+            List<Path> nfpResultFiles = BatchBlockStitcher.stitchCases(
+                    casePath,
+                    nfpResultDirectory,
+                    qLearningSession);
             Path bridgeRootDirectory = packingResultDirectory.resolve(BRIDGE_DIRECTORY_NAME);
 
             for (Path nfpResultFile : nfpResultFiles) {

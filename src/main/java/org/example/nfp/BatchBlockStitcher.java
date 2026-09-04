@@ -5,6 +5,8 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import org.example.qlearning.QLearningSession;
+import org.example.qlearning.nfp.QNfpPolicy;
 
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -60,7 +62,22 @@ public class BatchBlockStitcher {
      * @throws IOException 当输入路径不可读、不是 JSON 案例，或结果文件无法写入时抛出
      */
     public static List<Path> stitchCases(Path casePath, Path outputDirectory) throws IOException {
-        return stitchCases(casePath, outputDirectory, DEFAULT_BEAM_WIDTH);
+        return stitchCases(casePath, outputDirectory, DEFAULT_BEAM_WIDTH, null);
+    }
+
+    /**
+     * 对一个案例 JSON 文件或目录执行 NFP 拼接，并可选地使用 Q-learning 排序合法候选。
+     *
+     * @param casePath 案例输入；可以是单个 {@code .json} 文件，也可以是存放案例文件的目录。
+     * @param outputDirectory NFP 拼接文本结果的输出目录；每个案例生成一个同名 {@code .txt} 文件。
+     * @param qLearningSession 当前端到端求解共享的 Q-learning 会话；关闭或 {@code null} 时保持旧排序。
+     * @return 已写入的 NFP 拼接结果文件，顺序与案例文件名的字典序一致。
+     * @throws IOException 当输入路径不可读、不是 JSON 案例，或结果文件无法写入时抛出。
+     */
+    public static List<Path> stitchCases(Path casePath,
+                                         Path outputDirectory,
+                                         QLearningSession qLearningSession) throws IOException {
+        return stitchCases(casePath, outputDirectory, DEFAULT_BEAM_WIDTH, qLearningSession);
     }
 
     /**
@@ -75,6 +92,23 @@ public class BatchBlockStitcher {
     public static List<Path> stitchCases(Path casePath,
                                          Path outputDirectory,
                                          int beamWidth) throws IOException {
+        return stitchCases(casePath, outputDirectory, beamWidth, null);
+    }
+
+    /**
+     * 对一个案例 JSON 文件或目录执行 NFP 拼接，并允许调用方指定 Beam 宽度和 Q-learning 会话。
+     *
+     * @param casePath 案例输入；可以是单个 {@code .json} 文件，也可以是存放案例文件的目录。
+     * @param outputDirectory NFP 拼接文本结果的输出目录。
+     * @param beamWidth 每轮 NFP 集束搜索保留的状态数量，必须为正数。
+     * @param qLearningSession 当前端到端求解共享的 Q-learning 会话；关闭或 {@code null} 时保持旧排序。
+     * @return 已写入的 NFP 拼接结果文件。
+     * @throws IOException 当输入或输出路径不可用时抛出。
+     */
+    public static List<Path> stitchCases(Path casePath,
+                                         Path outputDirectory,
+                                         int beamWidth,
+                                         QLearningSession qLearningSession) throws IOException {
         if (casePath == null || !Files.exists(casePath)) {
             throw new IOException("案例路径不存在: " + casePath);
         }
@@ -87,7 +121,7 @@ public class BatchBlockStitcher {
             if (!casePath.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".json")) {
                 throw new IOException("案例文件必须是 .json: " + casePath);
             }
-            return List.of(stitchCase(casePath, outputDirectory, beamWidth));
+            return List.of(stitchCase(casePath, outputDirectory, beamWidth, qLearningSession));
         }
         if (!Files.isDirectory(casePath)) {
             throw new IOException("案例路径既不是文件也不是目录: " + casePath);
@@ -103,7 +137,7 @@ public class BatchBlockStitcher {
 
         List<Path> outputFiles = new ArrayList<>();
         for (Path inputFile : inputFiles) {
-            outputFiles.add(stitchCase(inputFile, outputDirectory, beamWidth));
+            outputFiles.add(stitchCase(inputFile, outputDirectory, beamWidth, qLearningSession));
         }
         return outputFiles;
     }
@@ -120,6 +154,23 @@ public class BatchBlockStitcher {
     public static Path stitchCase(Path inputFile,
                                   Path outputDirectory,
                                   int beamWidth) throws IOException {
+        return stitchCase(inputFile, outputDirectory, beamWidth, null);
+    }
+
+    /**
+     * 对单个 JSON 案例执行 NFP 拼接，并在合法候选的根 Beam 筛选层使用可选 Q-learning 策略。
+     *
+     * @param inputFile 单个案例的 JSON 文件。
+     * @param outputDirectory NFP 拼接文本结果目录。
+     * @param beamWidth 每轮 NFP 集束搜索保留的状态数量，必须为正数。
+     * @param qLearningSession 当前端到端求解共享的 Q-learning 会话；关闭或 {@code null} 时保持旧排序。
+     * @return 写出的 NFP 拼接结果文件路径。
+     * @throws IOException 当案例读取或结果写入失败时抛出。
+     */
+    public static Path stitchCase(Path inputFile,
+                                  Path outputDirectory,
+                                  int beamWidth,
+                                  QLearningSession qLearningSession) throws IOException {
         if (inputFile == null || !Files.isRegularFile(inputFile)) {
             throw new IOException("案例文件不存在: " + inputFile);
         }
@@ -129,9 +180,12 @@ public class BatchBlockStitcher {
 
         Files.createDirectories(outputDirectory);
         List<PolygonItem> items = readItems(inputFile);
+        QNfpPolicy qNfpPolicy = qLearningSession != null && qLearningSession.isEnabled()
+                ? new QNfpPolicy(qLearningSession)
+                : null;
         // 仅统计第一阶段组块搜索耗时，避免文件写入时间干扰每个案例的求解时间判断。
         long solveStartNanos = System.nanoTime();
-        List<Block> blocks = buildBlocks(items, beamWidth);
+        List<Block> blocks = buildBlocks(items, beamWidth, qNfpPolicy);
         long solveElapsedNanos = System.nanoTime() - solveStartNanos;
         Path outputFile = outputDirectory.resolve(replaceExtension(inputFile.getFileName().toString(), ".txt"));
         writeBlocks(outputFile, blocks);
@@ -182,10 +236,24 @@ public class BatchBlockStitcher {
      * 与“AB、AC、AD 中保留前 w 个，后续 ACG 淘汰 AB”的要求一致。
      */
     public static List<Block> buildBlocks(List<PolygonItem> items) {
-        return buildBlocks(items, DEFAULT_BEAM_WIDTH);
+        return buildBlocks(items, DEFAULT_BEAM_WIDTH, null);
     }
 
     public static List<Block> buildBlocks(List<PolygonItem> items, int beamWidth) {
+        return buildBlocks(items, beamWidth, null);
+    }
+
+    /**
+     * 按当前规则完成第一阶段组块，并可选地在合法根 Beam 候选之间应用 Q-learning 排序。
+     *
+     * @param items 已读取并完成基础几何预处理的工件列表。
+     * @param beamWidth 每轮根 Beam 保留的状态数量。
+     * @param qNfpPolicy NFP 合法候选排序策略；为 {@code null} 时使用原有固定比较器。
+     * @return 输出给第二阶段矩形排样的单件或组合块列表。
+     */
+    private static List<Block> buildBlocks(List<PolygonItem> items,
+                                           int beamWidth,
+                                           QNfpPolicy qNfpPolicy) {
         int normalizedBeamWidth = Math.max(1, beamWidth);
         List<Block> finalBlocks = new ArrayList<>();
         List<Block> activeBlocks = new ArrayList<>();
@@ -200,7 +268,7 @@ public class BatchBlockStitcher {
             }
         }
 
-        finalBlocks.addAll(stitchByBeamSearch(activeBlocks, normalizedBeamWidth));
+        finalBlocks.addAll(stitchByBeamSearch(activeBlocks, normalizedBeamWidth, qNfpPolicy));
         return finalBlocks;
     }
 
@@ -234,8 +302,15 @@ public class BatchBlockStitcher {
      * 无法再尝试已经被前一个 Block 占用的工件；即使允许回池，每个根只保留一个候选
      * 也会让大凹腔方案在局部填充率竞争中被小件高填充组合压掉。新的外层策略同时
      * 保留根级替代方案，并在全局状态中优先保护关键凹腔的填充收益。
+     *
+     * @param initialBlocks 需要参与 NFP 拼接的初始单件块。
+     * @param beamWidth 每轮根 Beam 保留的状态数量。
+     * @param qNfpPolicy NFP 合法候选排序策略；为 {@code null} 时使用原有固定比较器。
+     * @return 完成拼接或回退为单件后的结果块。
      */
-    private static List<Block> stitchByBeamSearch(List<Block> initialBlocks, int beamWidth) {
+    private static List<Block> stitchByBeamSearch(List<Block> initialBlocks,
+                                                   int beamWidth,
+                                                   QNfpPolicy qNfpPolicy) {
         List<PolygonItem> availableItems = collectItems(initialBlocks);
         List<Block> result = new ArrayList<>();
 
@@ -248,7 +323,7 @@ public class BatchBlockStitcher {
             // 因为候选工件已出现在其他候选块中就提前排除它。
             int rootCandidateCount = Math.max(MIN_ROOT_CANDIDATE_COUNT, beamWidth);
             List<CandidateBlock> candidateBlocks = buildAllRootCandidates(
-                    availableItems, beamWidth, rootCandidateCount, nfpCache);
+                    availableItems, beamWidth, rootCandidateCount, nfpCache, qNfpPolicy);
             List<CandidateBlock> scoredCandidates = calculateOpportunityCosts(candidateBlocks);
 
             // 先从关键凹腔候选中预留小件，再过滤会抢占这些小件的普通候选。
@@ -292,12 +367,20 @@ public class BatchBlockStitcher {
      * 修改理由：原方法每个根只返回一个最佳块。若该块消耗了本应填入大凹腔的小件，
      * 全局冲突处理就没有该根的替代方案可选；现在保留 Top-K，后续全局 Beam 可以
      * 同时比较“凹腔 + 多个小件”和“小件互补高填充块”。
+     *
+     * @param availableItems 当前轮仍可参与拼接的工件。
+     * @param beamWidth 每个根内部的 Beam 宽度。
+     * @param candidateLimit 每个根最终保留的候选块数量。
+     * @param nfpCache NFP 几何计算缓存。
+     * @param qNfpPolicy NFP 合法候选排序策略；为 {@code null} 时使用原有固定比较器。
+     * @return 所有根工件生成的、尚未提交的候选块集合。
      */
     private static List<CandidateBlock> buildAllRootCandidates(
             List<PolygonItem> availableItems,
             int beamWidth,
             int candidateLimit,
-            Map<String, PolygonStitcher.StitchingResult> nfpCache) {
+            Map<String, PolygonStitcher.StitchingResult> nfpCache,
+            QNfpPolicy qNfpPolicy) {
         List<CandidateBlock> candidateBlocks = new ArrayList<>();
         for (PolygonItem rootItem : availableItems) {
             if (isSmallRectangleItem(rootItem)) {
@@ -306,7 +389,7 @@ public class BatchBlockStitcher {
             }
 
             List<Block> rootCandidates = searchTopBlocksFromRoot(
-                    rootItem, availableItems, beamWidth, candidateLimit, nfpCache);
+                    rootItem, availableItems, beamWidth, candidateLimit, nfpCache, qNfpPolicy);
             for (Block rootCandidate : rootCandidates) {
                 if (rootCandidate.memberCount() > 1) {
                     // 单件结果不是竞争候选；它会在没有可行拼接时由外层统一输出。
@@ -619,13 +702,22 @@ public class BatchBlockStitcher {
      * 修改理由：旧方法把不同根节点和无关 Block 的合并放进同一个状态，无法保证
      * ACG 与 AB 在同一个根节点下竞争。这里保留原有 NFP、旋转、重叠、连通性和
      * 尺寸检查，同时让同一工件对的多个位置也进入根级 Beam 竞争。
+     *
+     * @param rootItem 当前 NFP 根工件。
+     * @param remainingItems 当前轮可作为后继加入根块的工件。
+     * @param beamWidth 每层根 Beam 保留的状态数量。
+     * @param candidateLimit 当前根最终保留的候选块数量。
+     * @param nfpCache NFP 几何计算缓存。
+     * @param qNfpPolicy NFP 合法候选排序策略；为 {@code null} 时使用原有固定比较器。
+     * @return 当前根工件可输出的 Top-K 单件或组合块。
      */
     private static List<Block> searchTopBlocksFromRoot(
             PolygonItem rootItem,
             List<PolygonItem> remainingItems,
             int beamWidth,
             int candidateLimit,
-            Map<String, PolygonStitcher.StitchingResult> nfpCache) {
+            Map<String, PolygonStitcher.StitchingResult> nfpCache,
+            QNfpPolicy qNfpPolicy) {
         Block rootBlock = Block.fromSingle(rootItem);
 
         // 小矩形只作为被插入物品，不作为根节点继续扩展，保持原有业务规则。
@@ -644,12 +736,14 @@ public class BatchBlockStitcher {
                     beamWidth,
                     candidateLimit,
                     penalizedFirstItemIds,
-                    nfpCache);
+                    nfpCache,
+                    qNfpPolicy);
 
             if (!searchResult.validCompletedStates.isEmpty()) {
                 List<RootBeamState> topStates = selectBestRootStates(
                         searchResult.validCompletedStates,
-                        candidateLimit);
+                        candidateLimit,
+                        qNfpPolicy);
                 List<Block> result = new ArrayList<>(topStates.size());
                 for (RootBeamState state : topStates) {
                     result.add(state.block);
@@ -678,6 +772,15 @@ public class BatchBlockStitcher {
      * 功能说明：将“搜索”和“失败首层分支收集”拆开，便于外层在一批 AB、AC、AD
      * 等分支全部无效时施加局部惩罚，然后继续尝试下一批候选。只有进入当前 Beam
      * 的首层物品才会记录为失败，避免把尚未搜索的候选提前淘汰。
+     *
+     * @param rootItem 当前 NFP 根工件。
+     * @param remainingItems 当前轮可作为后继加入根块的工件。
+     * @param beamWidth 每层根 Beam 保留的状态数量。
+     * @param candidateLimit 当前根最终保留的候选块数量。
+     * @param penalizedFirstItemIds 当前根已确认失败、应暂时跳过的首层工件 ID。
+     * @param nfpCache NFP 几何计算缓存。
+     * @param qNfpPolicy NFP 合法候选排序策略；为 {@code null} 时使用原有固定比较器。
+     * @return 已完成状态和实际探索首层工件组成的根搜索结果。
      */
     private static RootSearchResult runRootBeamSearch(
             PolygonItem rootItem,
@@ -685,7 +788,8 @@ public class BatchBlockStitcher {
             int beamWidth,
             int candidateLimit,
             Set<String> penalizedFirstItemIds,
-            Map<String, PolygonStitcher.StitchingResult> nfpCache) {
+            Map<String, PolygonStitcher.StitchingResult> nfpCache,
+            QNfpPolicy qNfpPolicy) {
         Block rootBlock = Block.fromSingle(rootItem);
         RootBeamState initialState = RootBeamState.fromRoot(rootBlock);
 
@@ -731,7 +835,10 @@ public class BatchBlockStitcher {
 
             // 在同一层的全部后继中统一排序，只保留足够产生 Top-K 终止方案的根 A 分支。
             // 修改理由：若根内只保留一个分支，外层即使使用全局 Beam 也看不到该根的替代方案。
-            beam = selectBestRootStates(nextBeamCandidates, Math.max(beamWidth, candidateLimit));
+            beam = selectBestRootStates(
+                    nextBeamCandidates,
+                    Math.max(beamWidth, candidateLimit),
+                    qNfpPolicy);
         }
 
         // 正常情况下每条路径最终都会进入 completedStates；这里保留防御性回退，
@@ -845,12 +952,33 @@ public class BatchBlockStitcher {
      * 修改理由：若完全按当前填充率排序，A+B 这种暂时填充率较低、但仍有后续
      * 扩展机会的大件方案，可能被“当前填充率较高但已经消耗小件”的方案挤出 Beam。
      * 因此为可继续扩展的大件外扩状态保留少量固定名额，避免提前丢失 A+B+C 路径。
+     *
+     * @param states 当前层中已经通过 NFP 几何校验的根 Beam 状态。
+     * @param beamWidth 当前层最多保留的根 Beam 状态数量。
+     * @param qNfpPolicy NFP 合法候选排序策略；为 {@code null} 时使用原有固定比较器。
+     * @return 去重并保留必要大件外扩名额后的下一层根 Beam 状态。
      */
     private static List<RootBeamState> selectBestRootStates(List<RootBeamState> states,
-                                                            int beamWidth) {
+                                                            int beamWidth,
+                                                            QNfpPolicy qNfpPolicy) {
         int normalizedBeamWidth = Math.max(1, beamWidth);
         List<RootBeamState> orderedStates = new ArrayList<>(states);
-        orderedStates.sort(BatchBlockStitcher::compareRootStates);
+        QNfpPolicy.Decision qDecision = null;
+        if (qNfpPolicy == null) {
+            // Q-learning 关闭时严格保留已有比较器和候选筛选顺序。
+            orderedStates.sort(BatchBlockStitcher::compareRootStates);
+        } else {
+            List<Block> legalCandidateBlocks = new ArrayList<>(orderedStates.size());
+            for (RootBeamState state : orderedStates) {
+                legalCandidateBlocks.add(state.block);
+            }
+            qDecision = qNfpPolicy.select(legalCandidateBlocks, normalizedBeamWidth);
+            QNfpPolicy.Decision finalDecision = qDecision;
+            orderedStates.sort((left, right) -> {
+                int comparison = finalDecision.comparator().compare(left.block, right.block);
+                return comparison != 0 ? comparison : compareRootStates(left, right);
+            });
+        }
         List<RootBeamState> selectedStates = new ArrayList<>();
         Set<String> signatures = new HashSet<>();
 
@@ -882,6 +1010,14 @@ public class BatchBlockStitcher {
             if (selectedStates.size() >= normalizedBeamWidth) {
                 break;
             }
+        }
+
+        if (qDecision != null) {
+            List<Block> selectedBlocks = new ArrayList<>(selectedStates.size());
+            for (RootBeamState selectedState : selectedStates) {
+                selectedBlocks.add(selectedState.block);
+            }
+            qNfpPolicy.observe(qDecision, selectedBlocks);
         }
         return selectedStates;
     }
