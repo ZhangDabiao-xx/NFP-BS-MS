@@ -23,7 +23,7 @@ public final class IntegratedPackingApplication {
     private static final Path DEFAULT_CASE_PATH = Path.of("data", "inputData");
     private static final String NFP_RESULT_DIRECTORY_NAME = "NFPJoint2";
     private static final String PACKING_RESULT_DIRECTORY_NAME = "Result2";
-    private static final String BRIDGE_DIRECTORY_NAME = "bridge";
+    private static final String BRIDGE_DIRECTORY_NAME = "material";
 
     private IntegratedPackingApplication() {
     }
