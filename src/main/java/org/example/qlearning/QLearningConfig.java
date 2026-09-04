@@ -7,6 +7,8 @@ import java.util.Locale;
  *
  * <p>参数可用 JVM 系统属性覆盖，例如
  * {@code -Dqlearning.mode=train -Dqlearning.seed=20260904}。
+ * Q 表存储目录由统一入口的 {@code -Dqlearning.modelDirectory=<path>} 控制，
+ * 默认使用 {@code data/qlearningModel}，不依赖排样结果目录。
  * 主程序仍只需要案例路径，不增加命令行位置参数。</p>
  */
 public final class QLearningConfig {

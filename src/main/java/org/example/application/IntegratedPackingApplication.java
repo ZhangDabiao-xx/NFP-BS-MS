@@ -4,6 +4,7 @@ import org.example.beamsearch.application.NFPToBeamSearchBridge;
 import org.example.nfp.BatchBlockStitcher;
 import org.example.qlearning.QLearningConfig;
 import org.example.qlearning.QLearningSession;
+import org.example.qlearning.QMode;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -23,9 +24,16 @@ public final class IntegratedPackingApplication {
 
     /** 未传入命令行参数时使用的默认案例目录；需要时只修改这一处路径即可。 */
     private static final Path DEFAULT_CASE_PATH = Path.of("data", "inputData2");
-    private static final String NFP_RESULT_DIRECTORY_NAME = "NFPJoint3_train";
-    private static final String PACKING_RESULT_DIRECTORY_NAME = "Result3_train";
+    private static final String NFP_RESULT_DIRECTORY_NAME = "NFPJoint3_evaluate";
+    private static final String PACKING_RESULT_DIRECTORY_NAME = "Result3_evaluate";
     private static final String BRIDGE_DIRECTORY_NAME = "material";
+    /**
+     * 默认 Q-learning 模型目录，与任一次排样结果目录相互独立。
+     * 训练得到的 Q 表与轨迹均写入此处，评估时也从此处读取 Q 表。
+     */
+    private static final Path DEFAULT_Q_LEARNING_MODEL_DIRECTORY = Path.of("data", "qlearningModel");
+    /** 可通过 JVM 参数 {@code -Dqlearning.modelDirectory=<path>} 覆盖默认模型目录。 */
+    private static final String Q_LEARNING_MODEL_DIRECTORY_PROPERTY = "qlearning.modelDirectory";
 
     private IntegratedPackingApplication() {
     }
@@ -37,8 +45,8 @@ public final class IntegratedPackingApplication {
      * @throws IOException 当案例、NFP 结果或排样结果无法读写时抛出
      */
     public static void main(String[] args) throws IOException {
-        int temp = 0;
-        while (true) {
+        //int temp = 0;
+        //while (true) {
             if (args.length > 1) {
                 printUsage();
                 return;
@@ -46,11 +54,11 @@ public final class IntegratedPackingApplication {
 
             Path casePath = args.length == 1 ? Path.of(args[0]) : DEFAULT_CASE_PATH;
             run(casePath);
-            temp++;
+            /*temp++;
             if (temp > 3) {
                 break;
-            }
-        }
+            }*/
+        //}
     }
 
     /**
@@ -85,8 +93,11 @@ public final class IntegratedPackingApplication {
         Files.createDirectories(packingResultDirectory);
 
         QLearningConfig qLearningConfig = QLearningConfig.fromSystemProperties();
-        Path qLearningDirectory = packingResultDirectory.resolve("qlearning");
+        Path qLearningDirectory = resolveQLearningModelDirectory();
         System.out.println("Q-learning 模式: " + qLearningConfig.mode());
+        if (qLearningConfig.mode() != QMode.OFF) {
+            System.out.println("Q-learning 模型目录: " + qLearningDirectory.toAbsolutePath());
+        }
 
         try (QLearningSession qLearningSession = QLearningSession.open(
                 qLearningConfig,
@@ -156,6 +167,23 @@ public final class IntegratedPackingApplication {
         return new OutputDirectories(
                 outputParentDirectory.resolve(NFP_RESULT_DIRECTORY_NAME),
                 outputParentDirectory.resolve(PACKING_RESULT_DIRECTORY_NAME));
+    }
+
+    /**
+     * 解析 Q-learning 模型的独立存储目录。
+     *
+     * <p>模型目录不依赖任何排样结果目录，因此训练、基线和评估
+     * 可分别写入不同结果目录，却始终共享同一份已训练 Q 表。调用方可用
+     * {@code -Dqlearning.modelDirectory=<path>} 建立多组独立实验模型。</p>
+     *
+     * @return 由 JVM 属性指定的模型目录；属性未设置或为空时返回默认目录。
+     */
+    private static Path resolveQLearningModelDirectory() {
+        String configuredDirectory = System.getProperty(Q_LEARNING_MODEL_DIRECTORY_PROPERTY);
+        if (configuredDirectory == null || configuredDirectory.isBlank()) {
+            return DEFAULT_Q_LEARNING_MODEL_DIRECTORY;
+        }
+        return Path.of(configuredDirectory.trim());
     }
 
     /**
