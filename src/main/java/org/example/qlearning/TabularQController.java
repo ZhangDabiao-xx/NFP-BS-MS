@@ -100,6 +100,38 @@ public final class TabularQController {
     }
 
     /**
+     * 使用完整案例的终局奖励对一次已执行动作进行额外强化。
+     *
+     * <p>该更新不估计下一状态价值，而是把案例最终的板材数量、利用率和时间质量
+     * 直接作为终止目标。{@code eligibility} 用于让离案例末尾更近的动作获得更大的
+     * 学习步长，从而避免一次长搜索被同一终局奖励过度覆盖。</p>
+     *
+     * @param stateKey 执行动作时的离散状态编号。
+     * @param actionIndex 已执行动作在 Q 表中的索引。
+     * @param terminalReward 由完整案例结果计算出的归一化终局奖励。
+     * @param eligibility 当前动作获得终局强化的资格权重，建议位于 {@code [0, 1]}。
+     */
+    public void reinforceTerminal(int stateKey,
+                                  int actionIndex,
+                                  double terminalReward,
+                                  double eligibility) {
+        if (config.mode() != QMode.TRAIN || !Double.isFinite(terminalReward)) {
+            return;
+        }
+        if (actionIndex < 0 || actionIndex >= actionCount) {
+            throw new IllegalArgumentException("动作索引越界: " + actionIndex);
+        }
+        double effectiveEligibility = clamp(eligibility, 0.0, 1.0);
+        if (effectiveEligibility <= 0.0) {
+            return;
+        }
+        double[] currentQValues = qValues(stateKey);
+        currentQValues[actionIndex] += config.alpha() * effectiveEligibility
+                * (terminalReward - currentQValues[actionIndex]);
+        visitCounts.computeIfAbsent(stateKey, ignored -> new int[actionCount])[actionIndex]++;
+    }
+
+    /**
      * 返回当前状态指定动作的 Q 值；未访问状态的 Q 值为零。
      *
      * @param stateKey 已离散化的状态编号

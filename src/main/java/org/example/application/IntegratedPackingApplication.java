@@ -110,6 +110,7 @@ public final class IntegratedPackingApplication {
 
             for (Path nfpResultFile : nfpResultFiles) {
                 Path caseJsonFile = resolveCaseJsonFile(casePath, nfpResultFile);
+                qLearningSession.activateEpisode(caseName(caseJsonFile));
                 Path casePackingDirectory = NFPToBeamSearchBridge.packCase(
                         nfpResultFile,
                         caseJsonFile,
@@ -145,6 +146,18 @@ public final class IntegratedPackingApplication {
             throw new IOException("找不到与 NFP 结果对应的案例 JSON: " + caseJsonFile);
         }
         return caseJsonFile;
+    }
+
+    /**
+     * 从案例文件路径取得用于关联 NFP 与排样 Q 决策的稳定案例名称。
+     *
+     * @param caseJsonFile 当前案例 JSON 文件路径。
+     * @return 不含扩展名的案例名称。
+     */
+    private static String caseName(Path caseJsonFile) {
+        String fileName = caseJsonFile.getFileName().toString();
+        int extensionIndex = fileName.lastIndexOf('.');
+        return extensionIndex < 0 ? fileName : fileName.substring(0, extensionIndex);
     }
 
     /**

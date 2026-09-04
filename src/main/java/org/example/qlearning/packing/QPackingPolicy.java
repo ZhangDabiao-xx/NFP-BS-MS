@@ -82,6 +82,7 @@ public final class QPackingPolicy {
      * @param successorStates 当前动作生成的全部可行子状态；空列表表示没有可行放置
      */
     public void observe(Decision decision, List<State> successorStates) {
+        session.recordDecision(phase, decision.stateKey(), decision.actionIndex());
         if (successorStates == null || successorStates.isEmpty()) {
             double reward = -0.50;
             controller.update(decision.stateKey(), decision.actionIndex(), reward,

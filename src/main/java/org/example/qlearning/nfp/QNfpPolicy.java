@@ -70,6 +70,7 @@ public final class QNfpPolicy {
      * @param selectedCandidates 当前动作实际保留、将进入下一层 NFP 搜索的候选块。
      */
     public void observe(Decision decision, List<Block> selectedCandidates) {
+        session.recordDecision(SearchPhase.NFP_STITCH, decision.stateKey(), decision.actionIndex());
         if (selectedCandidates == null || selectedCandidates.isEmpty()) {
             double reward = -0.50;
             controller.update(decision.stateKey(), decision.actionIndex(), reward,

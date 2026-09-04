@@ -1,11 +1,18 @@
 package org.example.qlearning;
 
+import org.example.beamsearch.common.ExecutionResult;
+import org.example.beamsearch.common.PlacedCuboid;
+import org.example.beamsearch.common.Solution;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.EnumMap;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 
@@ -21,11 +28,15 @@ public final class QLearningSession implements AutoCloseable {
     private static final String TRACE_FILE_NAME = "packing-q-trace.csv";
     private static final int PACKING_ACTION_COUNT = 7;
     private static final int NFP_ACTION_COUNT = 6;
+    /** 单个案例最多保留的终局强化动作数，防止超大案例占用无界内存。 */
+    private static final int MAX_TERMINAL_DECISIONS_PER_EPISODE = 20_000;
 
     private final QLearningConfig config;
     private final Path storageDirectory;
     private final Map<SearchPhase, TabularQController> controllers;
     private final QTraceWriter traceWriter;
+    private final Map<String, List<DecisionReference>> episodeDecisions = new HashMap<>();
+    private String activeEpisodeId;
 
     private QLearningSession(QLearningConfig config,
                              Path storageDirectory,
@@ -102,6 +113,74 @@ public final class QLearningSession implements AutoCloseable {
     /** @return 当前会话是否实际启用了 Q-learning。 */
     public boolean isEnabled() {
         return config.mode() != QMode.OFF;
+    }
+
+    /**
+     * 开始记录一个案例的 NFP 与排样 Q 决策，以便在取得最终排样结果后施加终局奖励。
+     *
+     * @param episodeId 当前案例的稳定标识；通常使用不含扩展名的案例文件名。
+     */
+    public void beginEpisode(String episodeId) {
+        if (!isEnabled()) {
+            return;
+        }
+        activeEpisodeId = normalizeEpisodeId(episodeId);
+        episodeDecisions.put(activeEpisodeId, new ArrayList<>());
+    }
+
+    /**
+     * 激活已经由 NFP 阶段创建的案例决策记录，供后续矩形排样继续追加决策。
+     *
+     * @param episodeId 当前案例的稳定标识；通常使用不含扩展名的案例文件名。
+     */
+    public void activateEpisode(String episodeId) {
+        if (!isEnabled()) {
+            return;
+        }
+        activeEpisodeId = normalizeEpisodeId(episodeId);
+        episodeDecisions.computeIfAbsent(activeEpisodeId, ignored -> new ArrayList<>());
+    }
+
+    /**
+     * 记录一项已执行的局部 Q 决策，等待案例结束时接受终局奖励强化。
+     *
+     * @param phase 执行动作所属的 NFP 拼接或排样阶段。
+     * @param stateKey 执行动作时的离散状态编号。
+     * @param actionIndex 已执行动作在对应阶段 Q 表中的索引。
+     */
+    public void recordDecision(SearchPhase phase, int stateKey, int actionIndex) {
+        if (config.mode() != QMode.TRAIN || activeEpisodeId == null) {
+            return;
+        }
+        List<DecisionReference> decisions = episodeDecisions.get(activeEpisodeId);
+        if (decisions != null && decisions.size() < MAX_TERMINAL_DECISIONS_PER_EPISODE) {
+            decisions.add(new DecisionReference(phase, stateKey, actionIndex));
+        }
+    }
+
+    /**
+     * 使用当前活动案例的最终排样结果，对其 NFP 和排样 Q 决策追加一次终局奖励强化。
+     *
+     * @param result 当前案例完整的优先级排样结果，包含 Sp、So、利用率和实际求解时间。
+     */
+    public void completeActiveEpisode(ExecutionResult result) {
+        if (config.mode() != QMode.TRAIN || activeEpisodeId == null) {
+            return;
+        }
+        List<DecisionReference> decisions = episodeDecisions.remove(activeEpisodeId);
+        activeEpisodeId = null;
+        if (decisions == null || decisions.isEmpty() || result == null) {
+            return;
+        }
+
+        double terminalReward = calculateTerminalReward(result);
+        for (int index = 0; index < decisions.size(); index++) {
+            DecisionReference decision = decisions.get(index);
+            // 早期决策仍能获得终局反馈，但更接近最终解的动作权重更高。
+            double eligibility = 0.25 + 0.75 * (index + 1.0) / decisions.size();
+            controller(decision.phase()).reinforceTerminal(
+                    decision.stateKey(), decision.actionIndex(), terminalReward, eligibility);
+        }
     }
 
     /**
@@ -186,6 +265,99 @@ public final class QLearningSession implements AutoCloseable {
         try (OutputStream outputStream = Files.newOutputStream(tableFile)) {
             properties.store(outputStream, "Q-learning packing tables");
         }
+    }
+
+    /**
+     * 把最终排样目标转换为有界终局奖励。
+     *
+     * <p>奖励按优先级目标设计：优先件板材效率权重最高，其次是总板材效率、平均
+     * 利用率，最后以较小权重惩罚超长求解时间。板材效率使用“材料面积下界 / 实际
+     * 板材数”归一化，因此不同规模案例可以共享同一份 Q 表。</p>
+     *
+     * @param result 当前案例完整排样结果。
+     * @return 位于 {@code [-1, 1]} 的终局奖励；越大代表最终目标质量越好。
+     */
+    private double calculateTerminalReward(ExecutionResult result) {
+        int priorityBoards = Math.max(0, result.priorityBoardCount);
+        int totalBoards = Math.max(0, result.priorityBoardCount + result.ordinaryBoardCount);
+        double totalMaterialArea = 0.0;
+        double priorityMaterialArea = 0.0;
+        double largestBoardArea = 0.0;
+
+        for (Solution solution : result.solutions) {
+            largestBoardArea = Math.max(largestBoardArea, solution.getContainerArea());
+            for (PlacedCuboid placedCuboid : solution.getPlacedCuboid()) {
+                double area = Math.max(0.0, placedCuboid.getVolume());
+                totalMaterialArea += area;
+                if (isPriorityColor(placedCuboid.box.color)) {
+                    priorityMaterialArea += area;
+                }
+            }
+        }
+
+        double safeBoardArea = Math.max(1.0, largestBoardArea);
+        int totalLowerBound = totalMaterialArea <= 0.0
+                ? 0
+                : Math.max(1, (int) Math.ceil(totalMaterialArea / safeBoardArea));
+        int priorityLowerBound = priorityMaterialArea <= 0.0
+                ? 0
+                : Math.max(1, (int) Math.ceil(priorityMaterialArea / safeBoardArea));
+        double priorityEfficiency = priorityLowerBound == 0
+                ? 1.0
+                : clamp((double) priorityLowerBound / Math.max(1, priorityBoards), 0.0, 1.0);
+        double totalEfficiency = totalLowerBound == 0
+                ? 1.0
+                : clamp((double) totalLowerBound / Math.max(1, totalBoards), 0.0, 1.0);
+        double utilization = clamp(result.avgUtilization / 100.0, 0.0, 1.0);
+        double timePenalty = clamp(result.totalSolveTimeMs / 600_000.0, 0.0, 1.0);
+
+        double quality = 0.55 * priorityEfficiency
+                + 0.30 * totalEfficiency
+                + 0.20 * utilization
+                - 0.05 * timePenalty;
+        return clamp(2.0 * quality - 1.0, -1.0, 1.0);
+    }
+
+    /**
+     * 判断结果工件颜色是否表示优先件。
+     *
+     * @param color 排样输入中保留的工件颜色字段。
+     * @return 颜色为 {@code "1"} 或布尔文本 {@code "true"} 时返回 {@code true}。
+     */
+    private boolean isPriorityColor(String color) {
+        return "1".equals(color) || "true".equalsIgnoreCase(color);
+    }
+
+    /**
+     * 将案例标识规范化为空值安全的内部键。
+     *
+     * @param episodeId 调用方提供的案例标识。
+     * @return 可作为会话 Map 键的非空案例标识。
+     */
+    private String normalizeEpisodeId(String episodeId) {
+        return episodeId == null || episodeId.isBlank() ? "unnamed-episode" : episodeId.trim();
+    }
+
+    /**
+     * 将数值截断到给定闭区间。
+     *
+     * @param value 待截断数值。
+     * @param lower 区间下界。
+     * @param upper 区间上界。
+     * @return 位于 {@code [lower, upper]} 的结果。
+     */
+    private double clamp(double value, double lower, double upper) {
+        return Math.max(lower, Math.min(upper, value));
+    }
+
+    /**
+     * 记录一次已发生、等待终局强化的 Q 动作。
+     *
+     * @param phase 动作所属阶段。
+     * @param stateKey 动作发生时的离散状态编号。
+     * @param actionIndex 动作在所属阶段 Q 表中的索引。
+     */
+    private record DecisionReference(SearchPhase phase, int stateKey, int actionIndex) {
     }
 
     /**

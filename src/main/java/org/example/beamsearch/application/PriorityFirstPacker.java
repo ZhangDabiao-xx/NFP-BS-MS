@@ -157,6 +157,7 @@ public final class PriorityFirstPacker {
                     ordinarySolveTimeMs,
                     ordinaryOptimizeTimeMs,
                     elapsedMillis(solveStartNanos));
+            completeEpisode(effectiveSession, ordinaryResult);
             return ordinaryResult;
         }
 
@@ -262,7 +263,21 @@ public final class PriorityFirstPacker {
                 ordinarySolveTimeMs,
                 ordinaryOptimizeTimeMs,
                 elapsedMillis(solveStartNanos));
+        completeEpisode(effectiveSession, finalResult);
         return finalResult;
+    }
+
+    /**
+     * 在一个案例完整排样结束后，将最终目标质量反馈给该案例内发生的 Q 决策。
+     *
+     * @param qLearningSession 当前案例共享的 Q-learning 会话。
+     * @param result 已完成并填写阶段耗时的最终排样结果。
+     */
+    private static void completeEpisode(QLearningSession qLearningSession,
+                                        ExecutionResult result) {
+        if (qLearningSession != null && qLearningSession.isEnabled()) {
+            qLearningSession.completeActiveEpisode(result);
+        }
     }
 
     /**

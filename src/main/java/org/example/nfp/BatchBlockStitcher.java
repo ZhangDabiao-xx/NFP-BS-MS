@@ -180,6 +180,9 @@ public class BatchBlockStitcher {
 
         Files.createDirectories(outputDirectory);
         List<PolygonItem> items = readItems(inputFile);
+        if (qLearningSession != null && qLearningSession.isEnabled()) {
+            qLearningSession.beginEpisode(replaceExtension(inputFile.getFileName().toString(), ""));
+        }
         QNfpPolicy qNfpPolicy = qLearningSession != null && qLearningSession.isEnabled()
                 ? new QNfpPolicy(qLearningSession)
                 : null;
