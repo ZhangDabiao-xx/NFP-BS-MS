@@ -20,9 +20,6 @@ import javax.imageio.ImageIO;
 
 public final class OutputDataVisualizer {
 
-    private static final Path DEFAULT_OUTPUT_DIRECTORY = Path.of("data", "NFPJoint1");
-    private static final Path DEFAULT_PICTURE_DIRECTORY = Path.of("data", "NFPPicture1");
-
     // 目标渲染尺寸越大，图片细节越清楚；过小时会自动放大。
     private static final double TARGET_RENDER_SIZE = 900.0;
     private static final double MAX_RENDER_SCALE = 4.0;
@@ -43,17 +40,43 @@ public final class OutputDataVisualizer {
     private OutputDataVisualizer() {
     }
 
+    /**
+     * 启动 NFP 拼接结果的独立可视化。
+     *
+     * @param args 必须依次为：单个 NFP {@code .txt} 结果文件或结果目录、PNG 输出目录
+     * @throws IOException 当 NFP 结果不可读或 PNG 文件无法写入时抛出
+     */
     public static void main(String[] args) throws IOException {
-        Path outputDirectory = args.length > 0 ? Path.of(args[0]) : DEFAULT_OUTPUT_DIRECTORY;
-        Path pictureDirectory = args.length > 1 ? Path.of(args[1]) : DEFAULT_PICTURE_DIRECTORY;
-        visualizeDirectory(outputDirectory, pictureDirectory);
+        if (args.length != 2) {
+            System.err.println("用法: OutputDataVisualizer <nfpResultFileOrDirectory> <visualOutputDirectory>");
+            return;
+        }
+        visualize(Path.of(args[0]), Path.of(args[1]));
     }
 
-    public static void visualizeDirectory(Path outputDirectory, Path pictureDirectory) throws IOException {
+    /**
+     * 将一个 NFP 拼接结果文件或结果目录渲染为独立 PNG 图像。
+     *
+     * @param nfpResultPath 单个 NFP {@code .txt} 结果文件，或包含多个结果文件的目录
+     * @param pictureDirectory PNG 图片输出目录；每个案例会创建一个同名子目录
+     * @throws IOException 当输入路径无效或图片写入失败时抛出
+     */
+    public static void visualize(Path nfpResultPath, Path pictureDirectory) throws IOException {
+        if (nfpResultPath == null || !Files.exists(nfpResultPath)) {
+            throw new IOException("NFP 拼接结果路径不存在: " + nfpResultPath);
+        }
         Files.createDirectories(pictureDirectory);
 
+        if (Files.isRegularFile(nfpResultPath)) {
+            visualizeFile(nfpResultPath, pictureDirectory);
+            return;
+        }
+        if (!Files.isDirectory(nfpResultPath)) {
+            throw new IOException("NFP 拼接结果路径既不是文件也不是目录: " + nfpResultPath);
+        }
+
         List<Path> outputFiles;
-        try (var stream = Files.list(outputDirectory)) {
+        try (var stream = Files.list(nfpResultPath)) {
             outputFiles = stream
                     .filter(path -> path.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".txt"))
                     .sorted(Comparator.comparing(path -> path.getFileName().toString()))
@@ -61,23 +84,34 @@ public final class OutputDataVisualizer {
         }
 
         for (Path outputFile : outputFiles) {
-            CaseData caseData = parseCaseFile(outputFile);
-            if (caseData.blocks.isEmpty()) {
-                continue;
-            }
-
-            Path caseDirectory = pictureDirectory.resolve(caseData.caseName);
-            Files.createDirectories(caseDirectory);
-
-            for (int i = 0; i < caseData.blocks.size(); i++) {
-                BlockRecord block = caseData.blocks.get(i);
-                String safeBlockId = sanitizeFileName(block.blockId == null ? "block" : block.blockId);
-                Path imageFile = caseDirectory.resolve(String.format(Locale.ROOT, "block_%04d_%s.png", i + 1, safeBlockId));
-                renderBlock(block, caseData.caseName, i + 1, imageFile);
-            }
-
-            System.out.printf("%s -> %s, blocks=%d%n", outputFile.getFileName(), caseDirectory, caseData.blocks.size());
+            visualizeFile(outputFile, pictureDirectory);
         }
+    }
+
+    /**
+     * 渲染一个案例的 NFP 拼接文本结果。
+     *
+     * @param outputFile 单案例 NFP 拼接 {@code .txt} 文件
+     * @param pictureDirectory PNG 图片输出根目录
+     * @throws IOException 当案例文本解析或图片写入失败时抛出
+     */
+    private static void visualizeFile(Path outputFile, Path pictureDirectory) throws IOException {
+        CaseData caseData = parseCaseFile(outputFile);
+        if (caseData.blocks.isEmpty()) {
+            return;
+        }
+
+        Path caseDirectory = pictureDirectory.resolve(caseData.caseName);
+        Files.createDirectories(caseDirectory);
+
+        for (int i = 0; i < caseData.blocks.size(); i++) {
+            BlockRecord block = caseData.blocks.get(i);
+            String safeBlockId = sanitizeFileName(block.blockId == null ? "block" : block.blockId);
+            Path imageFile = caseDirectory.resolve(String.format(Locale.ROOT, "block_%04d_%s.png", i + 1, safeBlockId));
+            renderBlock(block, caseData.caseName, i + 1, imageFile);
+        }
+
+        System.out.printf("%s -> %s, blocks=%d%n", outputFile.getFileName(), caseDirectory, caseData.blocks.size());
     }
 
     private static CaseData parseCaseFile(Path outputFile) throws IOException {

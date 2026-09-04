@@ -22,8 +22,6 @@ import java.util.Set;
 
 public class BatchBlockStitcher {
 
-    private static final Path INPUT_DIRECTORY = Path.of("data", "inputData");
-    private static final Path OUTPUT_DIRECTORY = Path.of("data", "NFPJoint1");
     private static final Gson GSON = new Gson();
 
     // 组合块外接矩形长边超过板材长度时无法进入第二阶段排样，因此这类候选不保留。
@@ -53,44 +51,97 @@ public class BatchBlockStitcher {
     // 机会成本只作为普通候选的调节项，不能抵消关键凹腔的直接填充收益。
     private static final double OPPORTUNITY_COST_WEIGHT = 0.35;
 
-    public static void main(String[] args) throws IOException {
-        Path inputDirectory = args.length > 0 ? Path.of(args[0]) : INPUT_DIRECTORY;
-        Path outputDirectory = args.length > 1 ? Path.of(args[1]) : OUTPUT_DIRECTORY;
-        int beamWidth = args.length > 2
-                ? parsePositiveInt(args[2], DEFAULT_BEAM_WIDTH)
-                : DEFAULT_BEAM_WIDTH;
-        processDirectory(inputDirectory, outputDirectory, beamWidth);
+    /**
+     * 对一个案例 JSON 文件或包含多个案例 JSON 文件的目录执行 NFP 拼接。
+     *
+     * @param casePath 案例输入；可以是单个 {@code .json} 文件，也可以是存放案例文件的目录
+     * @param outputDirectory NFP 拼接文本结果的输出目录；每个案例生成一个同名 {@code .txt} 文件
+     * @return 已写入的 NFP 拼接结果文件，顺序与案例文件名的字典序一致
+     * @throws IOException 当输入路径不可读、不是 JSON 案例，或结果文件无法写入时抛出
+     */
+    public static List<Path> stitchCases(Path casePath, Path outputDirectory) throws IOException {
+        return stitchCases(casePath, outputDirectory, DEFAULT_BEAM_WIDTH);
     }
 
-    public static void processDirectory(Path inputDirectory, Path outputDirectory) throws IOException {
-        processDirectory(inputDirectory, outputDirectory, DEFAULT_BEAM_WIDTH);
-    }
-
-    public static void processDirectory(Path inputDirectory, Path outputDirectory, int beamWidth) throws IOException {
+    /**
+     * 对一个案例 JSON 文件或目录执行 NFP 拼接，并允许调用方指定集束搜索宽度。
+     *
+     * @param casePath 案例输入；可以是单个 {@code .json} 文件，也可以是存放案例文件的目录
+     * @param outputDirectory NFP 拼接文本结果的输出目录
+     * @param beamWidth 每轮 NFP 集束搜索保留的状态数量，必须为正数
+     * @return 已写入的 NFP 拼接结果文件
+     * @throws IOException 当输入或输出路径不可用时抛出
+     */
+    public static List<Path> stitchCases(Path casePath,
+                                         Path outputDirectory,
+                                         int beamWidth) throws IOException {
+        if (casePath == null || !Files.exists(casePath)) {
+            throw new IOException("案例路径不存在: " + casePath);
+        }
+        if (beamWidth <= 0) {
+            throw new IllegalArgumentException("beamWidth 必须为正数: " + beamWidth);
+        }
         Files.createDirectories(outputDirectory);
+
+        if (Files.isRegularFile(casePath)) {
+            if (!casePath.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".json")) {
+                throw new IOException("案例文件必须是 .json: " + casePath);
+            }
+            return List.of(stitchCase(casePath, outputDirectory, beamWidth));
+        }
+        if (!Files.isDirectory(casePath)) {
+            throw new IOException("案例路径既不是文件也不是目录: " + casePath);
+        }
+
         List<Path> inputFiles;
-        try (var stream = Files.list(inputDirectory)) {
+        try (var stream = Files.list(casePath)) {
             inputFiles = stream
                     .filter(path -> path.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".json"))
                     .sorted(Comparator.comparing(path -> path.getFileName().toString()))
                     .toList();
         }
 
+        List<Path> outputFiles = new ArrayList<>();
         for (Path inputFile : inputFiles) {
-            List<PolygonItem> items = readItems(inputFile);
-            // 仅统计第一阶段组块搜索耗时，避免文件写入时间干扰每个案例的求解时间判断。
-            long solveStartNanos = System.nanoTime();
-            List<Block> blocks = buildBlocks(items, beamWidth);
-            long solveElapsedNanos = System.nanoTime() - solveStartNanos;
-            Path outputFile = outputDirectory.resolve(replaceExtension(inputFile.getFileName().toString(), ".txt"));
-            writeBlocks(outputFile, blocks);
-            System.out.printf(Locale.ROOT,
-                    "%s -> %s, blocks=%d, solveTime=%.3f ms%n",
-                    inputFile.getFileName(),
-                    outputFile,
-                    blocks.size(),
-                    nanosToMillis(solveElapsedNanos));
+            outputFiles.add(stitchCase(inputFile, outputDirectory, beamWidth));
         }
+        return outputFiles;
+    }
+
+    /**
+     * 对单个 JSON 案例执行 NFP 拼接并写出同名结果文件。
+     *
+     * @param inputFile 单个案例的 JSON 文件
+     * @param outputDirectory NFP 拼接文本结果目录
+     * @param beamWidth 每轮 NFP 集束搜索保留的状态数量，必须为正数
+     * @return 写出的 NFP 拼接结果文件路径
+     * @throws IOException 当案例读取或结果写入失败时抛出
+     */
+    public static Path stitchCase(Path inputFile,
+                                  Path outputDirectory,
+                                  int beamWidth) throws IOException {
+        if (inputFile == null || !Files.isRegularFile(inputFile)) {
+            throw new IOException("案例文件不存在: " + inputFile);
+        }
+        if (beamWidth <= 0) {
+            throw new IllegalArgumentException("beamWidth 必须为正数: " + beamWidth);
+        }
+
+        Files.createDirectories(outputDirectory);
+        List<PolygonItem> items = readItems(inputFile);
+        // 仅统计第一阶段组块搜索耗时，避免文件写入时间干扰每个案例的求解时间判断。
+        long solveStartNanos = System.nanoTime();
+        List<Block> blocks = buildBlocks(items, beamWidth);
+        long solveElapsedNanos = System.nanoTime() - solveStartNanos;
+        Path outputFile = outputDirectory.resolve(replaceExtension(inputFile.getFileName().toString(), ".txt"));
+        writeBlocks(outputFile, blocks);
+        System.out.printf(Locale.ROOT,
+                "%s -> %s, blocks=%d, solveTime=%.3f ms%n",
+                inputFile.getFileName(),
+                outputFile,
+                blocks.size(),
+                nanosToMillis(solveElapsedNanos));
+        return outputFile;
     }
 
     public static List<PolygonItem> readItems(Path inputFile) throws IOException {
@@ -1366,15 +1417,6 @@ public class BatchBlockStitcher {
             return fileName + extension;
         }
         return fileName.substring(0, dotIndex) + extension;
-    }
-
-    private static int parsePositiveInt(String value, int fallback) {
-        try {
-            int parsedValue = Integer.parseInt(value);
-            return parsedValue > 0 ? parsedValue : fallback;
-        } catch (NumberFormatException ignored) {
-            return fallback;
-        }
     }
 
     /**

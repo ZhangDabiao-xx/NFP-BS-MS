@@ -14,11 +14,13 @@ public class LoadingTestRun {
     private static final long TOTAL_SOLVE_TIME_MS = PriorityFirstPacker.DEFAULT_TOTAL_SOLVE_TIME_MS;
 
     /**
+     * 读取桥接层生成的板材与工件文件，执行优先级排样并写出排样结果文件。
      *
-     * @param materialInPath  Large Board File Path
-     * @param workPieceInPath Workpiece File Path
-     * @param outPath         Output Path
-     * @throws IOException
+     * @param materialInPath 板材 CSV 文件路径，包含板材长度、宽度和颜色组
+     * @param workPieceInPath 工件文件路径，包含矩形化后的 NFP 组块
+     * @param outPath 单案例排样结果目录，用于写入 CSV、统计和运行日志
+     * @return 案例名称、工件数、板材数、利用率和耗时组成的摘要；没有可排样工件时返回 {@code null}
+     * @throws IOException 当输入文件无法读取或结果文件无法写入时抛出
      */
     public static String[] runWithImprove(String materialInPath, String workPieceInPath, String outPath) throws IOException {
         long startTime = System.currentTimeMillis();
@@ -230,31 +232,4 @@ public class LoadingTestRun {
         return "unknown";
     }
 
-    public static void main(String[] args) throws IOException {
-        BufferedWriter bw = new BufferedWriter(new FileWriter("F:\\binpack_2D\\AI_result\\total.csv"));
-        bw.write("BathName,NumOfWorkpiece,NumOfBoard,Utilization,Time");
-        bw.newLine();
-        bw.flush();
-
-        String resultPath = "C:\\Users\\DaBiao\\Desktop\\TEST\\0-500";
-        String materialPath = "F:\\binpack_2D\\testData\\material.csv";
-        File datas = new File("F:\\binpack_2D\\testData\\0-500");
-
-        for (File data : datas.listFiles()) {
-            if (data.getName().contains(".txt")) {
-                String batchName = data.getName();
-                File resultDir = new File(resultPath + "\\" + batchName);
-                resultDir.mkdir();
-                String workpiecePath = data.getAbsolutePath();
-                String[] result = runWithImprove(materialPath, workpiecePath, resultDir.getAbsolutePath() + "\\");
-                bw.write(result[0] + "," + result[1] + "," + result[2] + "," + result[3] + "," + result[4]);
-                bw.newLine();
-                bw.flush();
-            }
-        }
-
-
-
-        bw.close();
-    }
 }

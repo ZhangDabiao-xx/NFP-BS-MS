@@ -50,7 +50,7 @@ import java.util.Map;
  *
  * <h3>使用方法</h3>
  * <pre>
- *   java PackingResultVisualizer [caseName] [resultDir] [outputDir]
+ *   java PackingResultVisualizer <resultDir> <outputDir> [caseName]
  * </pre>
  *
  * <h3>坐标变换（均在 ×10 整数坐标系中计算）</h3>
@@ -60,10 +60,6 @@ import java.util.Map;
  * </pre>
  */
 public final class PackingResultVisualizer {
-
-    // ---------- 默认路径 ----------
-    private static final Path DEFAULT_RESULT_DIR    = Path.of("data", "Result1");
-    private static final Path DEFAULT_VISUAL_DIR    = Path.of("data", "visualResult1");
 
     // ---------- 默认板材尺寸（mm），material.csv 不可用时回退 ----------
     private static final int DEFAULT_PLATE_LENGTH = 2440;
@@ -109,22 +105,53 @@ public final class PackingResultVisualizer {
 
     // ==================== 入口 ====================
 
+    /**
+     * 启动排样结果的独立可视化。
+     *
+     * @param args 前两个参数依次为排样结果目录、PNG 输出目录；可选第三个参数为单案例名称
+     * @throws IOException 当排样结果无法读取或 PNG 文件无法写入时抛出
+     */
     public static void main(String[] args) throws IOException {
-        String caseName  = args.length > 0 ? args[0] : "";
-        Path   resultDir = args.length > 1 ? Path.of(args[1]) : DEFAULT_RESULT_DIR;
-        Path   outputDir = args.length > 2 ? Path.of(args[2]) : DEFAULT_VISUAL_DIR;
+        if (args.length < 2 || args.length > 3) {
+            System.err.println("用法: PackingResultVisualizer <packingResultDirectory>"
+                    + " <visualOutputDirectory> [caseName]");
+            return;
+        }
 
-        if (caseName.isEmpty()) {
-            processAllCases(resultDir, outputDir);
+        String caseName = args.length == 3 ? args[2] : "";
+        visualize(Path.of(args[0]), Path.of(args[1]), caseName);
+    }
+
+    /**
+     * 将排样结果目录中的一个或全部案例渲染为 PNG 图像。
+     *
+     * @param resultDirectory 统一入口生成的排样结果根目录
+     * @param outputDirectory PNG 图片输出根目录
+     * @param caseName 要渲染的案例名称；传入空字符串时渲染结果目录中的全部案例
+     * @throws IOException 当案例结果文件无法读取或图片无法写入时抛出
+     */
+    public static void visualize(Path resultDirectory,
+                                 Path outputDirectory,
+                                 String caseName) throws IOException {
+        if (caseName == null || caseName.isBlank()) {
+            processAllCases(resultDirectory, outputDirectory);
         } else {
-            processCase(caseName, resultDir, outputDir);
+            processCase(caseName, resultDirectory, outputDirectory);
         }
     }
 
     // ==================== 批量/单案例调度 ====================
 
+    /**
+     * 遍历排样结果根目录中实际包含 {@code optimized.csv} 的案例目录并逐一渲染。
+     *
+     * @param resultDir 排样结果根目录；其中的 {@code bridge} 中间目录会被自动忽略
+     * @param outputDir PNG 图片输出根目录
+     * @throws IOException 当任一案例的结果读取或图片写入失败时抛出
+     */
     private static void processAllCases(Path resultDir, Path outputDir) throws IOException {
-        File[] cases = resultDir.toFile().listFiles(File::isDirectory);
+        File[] cases = resultDir.toFile().listFiles(file -> file.isDirectory()
+                && Files.isRegularFile(file.toPath().resolve("optimized.csv")));
         if (cases == null || cases.length == 0) {
             System.err.println("[ERROR] No case directories found under: " + resultDir);
             return;
@@ -134,6 +161,14 @@ public final class PackingResultVisualizer {
         }
     }
 
+    /**
+     * 渲染指定案例中每张板材的排样结果。
+     *
+     * @param caseName 排样结果根目录下的案例子目录名称
+     * @param resultDir 排样结果根目录
+     * @param outputDir PNG 图片输出根目录
+     * @throws IOException 当案例文件读取或图片写入失败时抛出
+     */
     private static void processCase(String caseName, Path resultDir, Path outputDir) throws IOException {
         Path optimizedCsv = resultDir.resolve(caseName).resolve("optimized.csv");
         Path polygonsJson = resultDir.resolve(caseName).resolve("polygons.json");
@@ -251,21 +286,31 @@ public final class PackingResultVisualizer {
     // ==================== 板材尺寸读取 ====================
 
     /**
-     * 从 inputData2 目录的 material.csv 读取板材长宽（mm）。
+     * 从统一入口生成的 bridge 目录读取板材长宽（mm）。
      * material.csv 格式：Color,Length,Width,Grain（Length 为长边，Width 为短边）。
      * 若文件不存在则回退到默认 2440×1220。
+     *
+     * <p>统一流程的 material.csv 位于
+     * {@code <resultDir>/bridge/<caseName>/material.csv}。旧目录结构不存在该文件时，
+     * 仍尝试读取历史 {@code inputData2} 路径，最后才回退到默认板材尺寸。</p>
      *
      * <p>修改理由：此前 renderContainer 按排样物品的实际占位推算板材大小，
      * 导致每张图片尺寸不一，无法直观感受板材上的空隙。
      * 改为从 material.csv 读取固定板材尺寸后，所有容器图片统一大小，
      * 空白区域即为未利用的板材空间。</p>
+     *
+     * @param caseName 当前正在可视化的案例名称
+     * @param resultDir 排样结果根目录，用于定位 {@code bridge} 中间目录
+     * @return 板材长度和宽度（毫米）组成的数组
      */
     private static int[] readPlateDimensions(String caseName, Path resultDir) {
-        /*
-         * resultDir 例如 data/packResult4，其父目录下 inputData2/{case}/material.csv
-         * 即为板材尺寸来源。
-         */
-        Path materialPath = resultDir.getParent().resolve("inputData2").resolve(caseName).resolve("material.csv");
+        Path materialPath = resultDir.resolve("bridge").resolve(caseName).resolve("material.csv");
+        if (!Files.exists(materialPath) && resultDir.getParent() != null) {
+            materialPath = resultDir.getParent()
+                    .resolve("inputData2")
+                    .resolve(caseName)
+                    .resolve("material.csv");
+        }
         if (Files.exists(materialPath)) {
             try (BufferedReader br = new BufferedReader(new FileReader(materialPath.toFile(), StandardCharsets.UTF_8))) {
                 br.readLine(); // 跳过表头 "Color,Length,Width,Grain"
