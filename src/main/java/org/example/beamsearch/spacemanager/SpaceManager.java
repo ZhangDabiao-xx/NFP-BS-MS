@@ -132,6 +132,29 @@ public class SpaceManager {
         return spaceList;
     }
 
+    /**
+     * 按当前空间比较器返回最多若干个剩余空间的深复制，供 Q-learning 只读评估候选。
+     *
+     * <p>返回副本可避免动作评分过程改变 BeamSearch 分支的空间缓存或角点信息。</p>
+     *
+     * @param limit 最多返回的空间数量；非正值时返回空列表
+     * @return 按现有启发式从优到劣排序的剩余空间副本
+     */
+    public ArrayList<Space> getBestSpaceCopies(int limit) {
+        if (limit <= 0 || spaceList.isEmpty()) {
+            return new ArrayList<>();
+        }
+        ArrayList<Space> copies = new ArrayList<>(spaceList.size());
+        for (Space space : spaceList) {
+            copies.add(new Space(space.x1, space.y1, space.x2, space.y2));
+        }
+        copies.sort(spaceComparator);
+        if (copies.size() > limit) {
+            return new ArrayList<>(copies.subList(0, limit));
+        }
+        return copies;
+    }
+
     public double getTotalSpaceArea(){
         double totalArea = 0;
         for (int i = 0; i < spaceList.size(); i++) {

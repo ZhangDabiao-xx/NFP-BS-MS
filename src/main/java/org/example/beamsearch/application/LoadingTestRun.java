@@ -1,6 +1,7 @@
 package org.example.beamsearch.application;
 
 import org.example.beamsearch.common.*;
+import org.example.qlearning.QLearningSession;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
@@ -23,6 +24,23 @@ public class LoadingTestRun {
      * @throws IOException 当输入文件无法读取或结果文件无法写入时抛出
      */
     public static String[] runWithImprove(String materialInPath, String workPieceInPath, String outPath) throws IOException {
+        return runWithImprove(materialInPath, workPieceInPath, outPath, QLearningSession.disabled());
+    }
+
+    /**
+     * 读取桥接层输入、执行优先级排样，并可选地将 Q-learning 会话传递给排样器。
+     *
+     * @param materialInPath 板材 CSV 文件路径，包含板材长度、宽度和颜色组。
+     * @param workPieceInPath 工件文件路径，包含矩形化后的 NFP 组块。
+     * @param outPath 单案例排样结果目录，用于写入 CSV、统计和运行日志。
+     * @param qLearningSession 当前一体化运行共享的 Q-learning 会话；关闭时保持原有启发式行为。
+     * @return 案例名称、工件数、板材数、利用率和耗时组成的摘要；没有可排样工件时返回 {@code null}。
+     * @throws IOException 当输入文件无法读取或结果文件无法写入时抛出。
+     */
+    public static String[] runWithImprove(String materialInPath,
+                                          String workPieceInPath,
+                                          String outPath,
+                                          QLearningSession qLearningSession) throws IOException {
         long startTime = System.currentTimeMillis();
 
         ProblemLoader problemLoader = new ProblemLoader(workPieceInPath);
@@ -52,7 +70,8 @@ public class LoadingTestRun {
         System.out.println("Start priority-first combined packing.");
         ExecutionResult exeResult = PriorityFirstPacker.solveWithTotalTime(
                 instances,
-                TOTAL_SOLVE_TIME_MS);
+                TOTAL_SOLVE_TIME_MS,
+                qLearningSession);
         exeResult.setAvgUtilization();
 
         int containerCount = exeResult.solutions.size();

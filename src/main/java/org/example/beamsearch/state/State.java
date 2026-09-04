@@ -34,6 +34,69 @@ public class State {
         return freeBoxes;
     }
 
+    /**
+     * 返回当前搜索状态使用的板材与工件实例。
+     *
+     * @return 当前状态的只读 Instance 引用；调用方不得修改其中的 Box 数量
+     */
+    public Instance getInstance() {
+        return inst;
+    }
+
+    /**
+     * 返回最多若干个按当前启发式排序的剩余空间副本。
+     *
+     * @param limit 最多返回的空间数量
+     * @return 可用于只读候选评分的空间副本列表
+     */
+    public ArrayList<Space> getCandidateSpaces(int limit) {
+        return spaceManager.getBestSpaceCopies(limit);
+    }
+
+    /**
+     * 返回指定空间中可放置的前若干个候选矩形块。
+     *
+     * @param space 要评估的剩余空间
+     * @param limit 最多返回的候选数量
+     * @return 按现有 block 顺序保留的可放置候选
+     */
+    public ArrayList<GeneralBlock> getFeasibleBlocks(Space space, int limit) {
+        if (space == null || limit <= 0) {
+            return new ArrayList<>();
+        }
+        return chooseBestBlocks(space, limit);
+    }
+
+    /**
+     * 返回当前状态已经放置的块的深复制，用于估算候选接触长度。
+     *
+     * @return 当前已放置块副本数组
+     */
+    public PlacedBlock[] getPlacedBlocks() {
+        PlacedBlock[] copies = new PlacedBlock[placedBlock.length];
+        for (int i = 0; i < placedBlock.length; i++) {
+            copies[i] = placedBlock[i].clone();
+        }
+        return copies;
+    }
+
+    /**
+     * 计算当前板材内全部已放置块的矩形占用面积。
+     *
+     * <p>这里使用 {@link GeneralBlock#blockVolume}，而非多边形材料实际面积
+     * {@link GeneralBlock#boxVolume}。前者才是 Beam Search 空间切分时已被占据的
+     * 矩形区域，适合用于 Q-learning 的碎片率和空间利用状态。</p>
+     *
+     * @return 已放置矩形块的占用面积之和，包含固定优先件和当前阶段新放置的普通件
+     */
+    public double getTotalPlacedBlockArea() {
+        double totalArea = 0.0;
+        for (PlacedBlock block : placedBlock) {
+            totalArea += block.block.blockVolume;
+        }
+        return totalArea;
+    }
+
     public Space chooseBestSpace() {
         return spaceManager.chooseBestSpace();
     }

@@ -2,6 +2,8 @@ package org.example.application;
 
 import org.example.beamsearch.application.NFPToBeamSearchBridge;
 import org.example.nfp.BatchBlockStitcher;
+import org.example.qlearning.QLearningConfig;
+import org.example.qlearning.QLearningSession;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -13,16 +15,16 @@ import java.util.List;
  *
  * <p>程序只需要案例路径。案例路径既可以是单个 JSON 文件，也可以是包含多个
  * JSON 案例的目录。NFP 结果目录和排样结果目录会按案例目录自动创建为同级目录：
- * {@code NFPJoint1} 和 {@code Result1}。
+ * {@code NFPJoint2} 和 {@code Result2}。
  * 中间 {@code material.csv} 与 {@code workpiece} 文件统一写入
  * {@code <packingResultDirectory>/bridge/<caseName>/}，避免额外暴露启动参数。</p>
  */
 public final class IntegratedPackingApplication {
 
     /** 未传入命令行参数时使用的默认案例目录；需要时只修改这一处路径即可。 */
-    private static final Path DEFAULT_CASE_PATH = Path.of("data", "inputData");
-    private static final String NFP_RESULT_DIRECTORY_NAME = "NFPJoint2";
-    private static final String PACKING_RESULT_DIRECTORY_NAME = "Result2";
+    private static final Path DEFAULT_CASE_PATH = Path.of("data", "inputData2");
+    private static final String NFP_RESULT_DIRECTORY_NAME = "NFPJoint3_train";
+    private static final String PACKING_RESULT_DIRECTORY_NAME = "Result3_train";
     private static final String BRIDGE_DIRECTORY_NAME = "material";
 
     private IntegratedPackingApplication() {
@@ -35,13 +37,20 @@ public final class IntegratedPackingApplication {
      * @throws IOException 当案例、NFP 结果或排样结果无法读写时抛出
      */
     public static void main(String[] args) throws IOException {
-        if (args.length > 1) {
-            printUsage();
-            return;
-        }
+        int temp = 0;
+        while (true) {
+            if (args.length > 1) {
+                printUsage();
+                return;
+            }
 
-        Path casePath = args.length == 1 ? Path.of(args[0]) : DEFAULT_CASE_PATH;
-        run(casePath);
+            Path casePath = args.length == 1 ? Path.of(args[0]) : DEFAULT_CASE_PATH;
+            run(casePath);
+            temp++;
+            if (temp > 3) {
+                break;
+            }
+        }
     }
 
     /**
@@ -75,18 +84,27 @@ public final class IntegratedPackingApplication {
         Files.createDirectories(nfpResultDirectory);
         Files.createDirectories(packingResultDirectory);
 
-        List<Path> nfpResultFiles = BatchBlockStitcher.stitchCases(casePath, nfpResultDirectory);
-        Path bridgeRootDirectory = packingResultDirectory.resolve(BRIDGE_DIRECTORY_NAME);
+        QLearningConfig qLearningConfig = QLearningConfig.fromSystemProperties();
+        Path qLearningDirectory = packingResultDirectory.resolve("qlearning");
+        System.out.println("Q-learning 模式: " + qLearningConfig.mode());
 
-        for (Path nfpResultFile : nfpResultFiles) {
-            Path caseJsonFile = resolveCaseJsonFile(casePath, nfpResultFile);
-            Path casePackingDirectory = NFPToBeamSearchBridge.packCase(
-                    nfpResultFile,
-                    caseJsonFile,
-                    bridgeRootDirectory,
-                    packingResultDirectory);
-            System.out.println("案例完成: " + caseJsonFile.getFileName()
-                    + " -> " + casePackingDirectory);
+        try (QLearningSession qLearningSession = QLearningSession.open(
+                qLearningConfig,
+                qLearningDirectory)) {
+            List<Path> nfpResultFiles = BatchBlockStitcher.stitchCases(casePath, nfpResultDirectory);
+            Path bridgeRootDirectory = packingResultDirectory.resolve(BRIDGE_DIRECTORY_NAME);
+
+            for (Path nfpResultFile : nfpResultFiles) {
+                Path caseJsonFile = resolveCaseJsonFile(casePath, nfpResultFile);
+                Path casePackingDirectory = NFPToBeamSearchBridge.packCase(
+                        nfpResultFile,
+                        caseJsonFile,
+                        bridgeRootDirectory,
+                        packingResultDirectory,
+                        qLearningSession);
+                System.out.println("案例完成: " + caseJsonFile.getFileName()
+                        + " -> " + casePackingDirectory);
+            }
         }
     }
 
@@ -145,7 +163,7 @@ public final class IntegratedPackingApplication {
      */
     private static void printUsage() {
         System.err.println("用法: IntegratedPackingApplication [caseJsonFileOrDirectory]");
-        System.err.println("结果将自动写入案例目录同级的 NFPJoint1 和 Result1 目录。");
+        System.err.println("结果将自动写入案例目录同级的 NFPJoint2 和 Result2 目录。");
     }
 
     /**

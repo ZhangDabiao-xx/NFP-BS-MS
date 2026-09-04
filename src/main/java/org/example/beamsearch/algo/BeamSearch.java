@@ -5,12 +5,15 @@ import org.example.beamsearch.blockgenerator.GeneralBlock;
 import org.example.beamsearch.common.*;
 import org.example.beamsearch.spacemanager.SpaceManager;
 import org.example.beamsearch.state.State;
+import org.example.qlearning.packing.QPackingPolicy;
 
 import java.util.*;
 
 public class BeamSearch {
     private final SpaceManager spaceManager;
     final Instance inst;
+    /** 可选的 Q-learning 候选动作策略；为空时严格使用原有启发式扩展。 */
+    private final QPackingPolicy qPackingPolicy;
 
     /**
      * 连续完成多少轮“全部低利用率板材均未减少板材数量”后停止全局重排。
@@ -26,9 +29,27 @@ public class BeamSearch {
 
     private long finishTime = 0;
 
+    /**
+     * 创建使用原有固定启发式候选排序的 Beam Search 求解器。
+     *
+     * @param spaceManager 初始板材空闲空间管理器。
+     * @param inst 当前待排样实例。
+     */
     public BeamSearch(SpaceManager spaceManager, Instance inst) {
+        this(spaceManager, inst, null);
+    }
+
+    /**
+     * 创建一个矩形排样 Beam Search 求解器。
+     *
+     * @param spaceManager 初始板材空闲空间管理器。
+     * @param inst 当前待排样实例。
+     * @param qPackingPolicy Q-learning 候选动作策略；传入 {@code null} 时使用原有启发式策略。
+     */
+    public BeamSearch(SpaceManager spaceManager, Instance inst, QPackingPolicy qPackingPolicy) {
         this.inst = inst;
         this.spaceManager = spaceManager;
+        this.qPackingPolicy = qPackingPolicy;
     }
 
     /**
@@ -983,8 +1004,21 @@ public class BeamSearch {
         }
     }
 
+    /**
+     * 按当前配置扩展一个 Beam Search 状态；关闭 Q-learning 时执行原有候选生成逻辑。
+     *
+     * @param state 当前待扩展状态。
+     * @param width 当前节点允许生成的最大子节点数量。
+     * @param child 下一层候选节点收集器。
+     * @param volumeType 完整度评估所使用的体积类型。
+     */
     private void blockSearch(State state, int width, ArrayList<Node> child, int volumeType) {
         if (state.hasFreeSpace()) {
+            if (qPackingPolicy != null) {
+                expandByQPolicy(state, width, child, volumeType);
+                return;
+            }
+
             Space space = state.chooseBestSpace();
             List<GeneralBlock> candidate = state.chooseBestBlocks(space, width);
 
@@ -1001,6 +1035,37 @@ public class BeamSearch {
                 }
             }
         }
+    }
+
+    /**
+     * 使用 Q-learning 策略选择候选空闲区和块，并将所得子节点加入 Beam Search 的下一层。
+     * 当当前状态没有可放置块时，仍沿用原算法的“删除当前空闲区后继续搜索”语义。
+     *
+     * @param state 当前 Beam Search 状态。
+     * @param width 当前节点允许生成的最大子节点数量。
+     * @param child 用于收集下一层候选节点的列表。
+     * @param volumeType 完整度评估所使用的体积类型。
+     */
+    private void expandByQPolicy(State state, int width, ArrayList<Node> child, int volumeType) {
+        QPackingPolicy.Decision decision = qPackingPolicy.select(state, width);
+        if (decision.moves().isEmpty()) {
+            qPackingPolicy.observe(decision, List.of());
+            State newState = state.deleteSpace(decision.discardSpace());
+            blockSearch(newState, width, child, volumeType);
+            return;
+        }
+
+        List<State> successors = new ArrayList<>(decision.moves().size());
+        for (QPackingPolicy.Move move : decision.moves()) {
+            State newState = state.packBlock(move.space(), move.block());
+            successors.add(newState);
+
+            Node newNode = new Node();
+            newNode.state = newState;
+            newNode.score = completeSolution(newNode.state, volumeType);
+            child.add(newNode);
+        }
+        qPackingPolicy.observe(decision, successors);
     }
 
     private double completeSolution(State initState, int volumeType) {

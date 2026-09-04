@@ -4,6 +4,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import org.example.qlearning.QLearningSession;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
@@ -92,6 +93,30 @@ public class NFPToBeamSearchBridge {
                                 Path caseJsonFile,
                                 Path bridgeRootDirectory,
                                 Path packingResultRootDirectory) throws IOException {
+        return packCase(
+                nfpResultFile,
+                caseJsonFile,
+                bridgeRootDirectory,
+                packingResultRootDirectory,
+                QLearningSession.disabled());
+    }
+
+    /**
+     * 将一个 NFP 拼接结果转换为矩形排样输入，并使用指定的 Q-learning 会话完成优先级排样。
+     *
+     * @param nfpResultFile NFP 拼接阶段输出的单案例 {@code .txt} 文件。
+     * @param caseJsonFile 与 NFP 结果同案例的原始 JSON 文件，用于读取板材尺寸。
+     * @param bridgeRootDirectory 中间 {@code material.csv}/{@code workpiece} 文件的根目录。
+     * @param packingResultRootDirectory 排样结果的根目录；每个案例写入一个同名子目录。
+     * @param qLearningSession 当前一体化运行共享的 Q-learning 会话；关闭时保持原有启发式行为。
+     * @return 当前案例的排样结果目录。
+     * @throws IOException 当拼接结果、案例文件或排样结果文件无法读写时抛出。
+     */
+    public static Path packCase(Path nfpResultFile,
+                                Path caseJsonFile,
+                                Path bridgeRootDirectory,
+                                Path packingResultRootDirectory,
+                                QLearningSession qLearningSession) throws IOException {
         if (nfpResultFile == null || !Files.isRegularFile(nfpResultFile)) {
             throw new IOException("NFP 拼接结果不存在: " + nfpResultFile);
         }
@@ -140,7 +165,8 @@ public class NFPToBeamSearchBridge {
         String[] summary = LoadingTestRun.runWithImprove(
                 materialPath.toString(),
                 workpiecePath.toString(),
-                caseResultDir.toString());
+                caseResultDir.toString(),
+                qLearningSession);
 
         long elapsed = System.currentTimeMillis() - start;
         System.out.printf("  完成 (%.1fs)%n", elapsed / 1000.0);
