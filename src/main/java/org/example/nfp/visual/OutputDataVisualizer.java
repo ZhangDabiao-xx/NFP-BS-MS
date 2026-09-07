@@ -47,11 +47,10 @@ public final class OutputDataVisualizer {
      * @throws IOException 当 NFP 结果不可读或 PNG 文件无法写入时抛出
      */
     public static void main(String[] args) throws IOException {
-        if (args.length != 2) {
-            System.err.println("用法: OutputDataVisualizer <nfpResultFileOrDirectory> <visualOutputDirectory>");
-            return;
-        }
-        visualize(Path.of(args[0]), Path.of(args[1]));
+
+        String nfpResultPath = "D:\\IDEA\\work\\NFP_BS\\NFPKSum\\data\\qlearningExperiments\\experiment01\\evaluation\\nfp";
+        String pictureDiectory = "data\\experiment01_evaluation\\nfp";
+        visualize(Path.of(nfpResultPath), Path.of(pictureDiectory));
     }
 
     /**
