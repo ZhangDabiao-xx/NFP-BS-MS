@@ -23,7 +23,7 @@ import java.util.List;
 public final class IntegratedPackingApplication {
 
     /** 未传入命令行参数时使用的默认案例目录；需要时只修改这一处路径即可。 */
-    private static final Path DEFAULT_CASE_PATH = Path.of("data", "inputData2");
+    private static final Path DEFAULT_CASE_PATH = Path.of("data", "inputData");
     private static final String NFP_RESULT_DIRECTORY_NAME = "NFPJoint3_evaluate";
     private static final String PACKING_RESULT_DIRECTORY_NAME = "Result3_evaluate";
     private static final String BRIDGE_DIRECTORY_NAME = "material";
@@ -53,6 +53,11 @@ public final class IntegratedPackingApplication {
             }
 
             Path casePath = args.length == 1 ? Path.of(args[0]) : DEFAULT_CASE_PATH;
+            int trainingRounds = QExperimentRunner.trainingRoundsFromSystemProperties();
+            if (trainingRounds > 0) {
+                QExperimentRunner.run(casePath, trainingRounds);
+                return;
+            }
             run(casePath);
             /*temp++;
             if (temp > 3) {
@@ -89,11 +94,31 @@ public final class IntegratedPackingApplication {
     public static void run(Path casePath,
                            Path nfpResultDirectory,
                            Path packingResultDirectory) throws IOException {
+        run(casePath,
+                nfpResultDirectory,
+                packingResultDirectory,
+                QLearningConfig.fromSystemProperties(),
+                resolveQLearningModelDirectory());
+    }
+
+    /**
+     * 对一个案例文件或案例目录执行完整流程，并允许实验协调器显式指定 Q-learning 配置和模型目录。
+     *
+     * @param casePath 单个案例 JSON 文件，或包含多个案例 JSON 文件的目录。
+     * @param nfpResultDirectory NFP 拼接结果目录；每个案例输出同名 {@code .txt} 文件。
+     * @param packingResultDirectory 排样结果目录；每个案例输出同名子目录和中间文件。
+     * @param qLearningConfig 当前运行使用的 Q-learning 参数和模式。
+     * @param qLearningDirectory Q 表和训练轨迹的独立模型目录；OFF 模式下可为 {@code null}。
+     * @throws IOException 当任一案例的输入、NFP 输出、排样输出或 Q 表无法读写时抛出。
+     */
+    public static void run(Path casePath,
+                           Path nfpResultDirectory,
+                           Path packingResultDirectory,
+                           QLearningConfig qLearningConfig,
+                           Path qLearningDirectory) throws IOException {
         Files.createDirectories(nfpResultDirectory);
         Files.createDirectories(packingResultDirectory);
 
-        QLearningConfig qLearningConfig = QLearningConfig.fromSystemProperties();
-        Path qLearningDirectory = resolveQLearningModelDirectory();
         System.out.println("Q-learning 模式: " + qLearningConfig.mode());
         if (qLearningConfig.mode() != QMode.OFF) {
             System.out.println("Q-learning 模型目录: " + qLearningDirectory.toAbsolutePath());

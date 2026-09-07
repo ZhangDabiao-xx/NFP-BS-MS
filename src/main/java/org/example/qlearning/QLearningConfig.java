@@ -159,6 +159,29 @@ public final class QLearningConfig {
         return traceEnabled;
     }
 
+    /**
+     * 在保持其余学习参数不变的前提下，创建使用指定运行模式的新配置。
+     *
+     * @param newMode 新的 Q-learning 运行模式。
+     * @return 除运行模式外与当前配置完全相同的新配置。
+     */
+    public QLearningConfig withMode(QMode newMode) {
+        return new QLearningConfig(
+                newMode,
+                seed,
+                alpha,
+                gamma,
+                epsilonInitial,
+                epsilonMinimum,
+                epsilonDecay,
+                warmupDecisions,
+                maxCandidateSpaces,
+                maxCandidateBlocksPerSpace,
+                hardFitThreshold,
+                diversifyFraction,
+                traceEnabled);
+    }
+
     private static QMode parseMode(String raw) {
         try {
             return QMode.valueOf(raw.trim().toUpperCase(Locale.ROOT));
