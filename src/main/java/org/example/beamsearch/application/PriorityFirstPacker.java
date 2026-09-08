@@ -10,6 +10,7 @@ import org.example.beamsearch.common.SpaceComparator;
 import org.example.beamsearch.spacemanager.SpaceManager;
 import org.example.qlearning.QLearningSession;
 import org.example.qlearning.SearchPhase;
+import org.example.qlearning.packing.QFillInsertionPolicy;
 import org.example.qlearning.packing.QPackingPolicy;
 
 import java.util.ArrayList;
@@ -204,7 +205,8 @@ public final class PriorityFirstPacker {
         BeamSearch insertionSearch = new BeamSearch(
                 createSpaceManager(mixedInstance),
                 mixedInstance,
-                createPackingPolicy(effectiveSession, SearchPhase.FILL));
+                null,
+                createFillInsertionPolicy(effectiveSession, mixedInstance));
         long insertionStartNanos = System.nanoTime();
         ExecutionResult insertionResult = insertionSearch.packIntoExistingBoardsUntil(
                 priorityResult.boardStates,
@@ -324,6 +326,25 @@ public final class PriorityFirstPacker {
             return null;
         }
         return new QPackingPolicy(qLearningSession, phase);
+    }
+
+    /**
+     * 为普通件填入既有优先件板材阶段创建分层 Q-learning 策略。
+     *
+     * <p>该策略替代旧的 {@link SearchPhase#FILL} 七动作联合排序，改为依次学习
+     * 插入模式、空闲空间排序和候选物品排序。Q-learning 关闭时返回 {@code null}，
+     * 以完整保留原有固定插入流程。</p>
+     *
+     * @param qLearningSession 当前案例共享的 Q-learning 会话。
+     * @param mixedInstance 同时包含优先件与普通件的排样实例。
+     * @return 已启用时返回分层插入策略；关闭时返回 {@code null}。
+     */
+    private static QFillInsertionPolicy createFillInsertionPolicy(QLearningSession qLearningSession,
+                                                                   Instance mixedInstance) {
+        if (qLearningSession == null || !qLearningSession.isEnabled()) {
+            return null;
+        }
+        return new QFillInsertionPolicy(qLearningSession, mixedInstance);
     }
 
     private static List<Box> collectBoxes(List<Instance> instances) {

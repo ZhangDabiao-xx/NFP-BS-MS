@@ -28,6 +28,9 @@ public final class QLearningSession implements AutoCloseable {
     private static final String TRACE_FILE_NAME = "packing-q-trace.csv";
     private static final int PACKING_ACTION_COUNT = 7;
     private static final int NFP_ACTION_COUNT = 6;
+    private static final int FILL_MODE_ACTION_COUNT = 3;
+    private static final int FILL_SPACE_ACTION_COUNT = 2;
+    private static final int FILL_ITEM_ACTION_COUNT = 3;
     /** 单个案例最多保留的终局强化动作数，防止超大案例占用无界内存。 */
     private static final int MAX_TERMINAL_DECISIONS_PER_EPISODE = 20_000;
 
@@ -258,7 +261,7 @@ public final class QLearningSession implements AutoCloseable {
                                         Map<SearchPhase, TabularQController> controllers) throws IOException {
         Files.createDirectories(tableFile.getParent());
         Properties properties = new Properties();
-        properties.setProperty("schemaVersion", "1");
+        properties.setProperty("schemaVersion", "2");
         for (Map.Entry<SearchPhase, TabularQController> entry : controllers.entrySet()) {
             entry.getValue().saveTo(properties, entry.getKey().name().toLowerCase());
         }
@@ -367,6 +370,12 @@ public final class QLearningSession implements AutoCloseable {
      * @return 与该阶段动作枚举数量一致的正整数。
      */
     private static int actionCountFor(SearchPhase phase) {
-        return phase == SearchPhase.NFP_STITCH ? NFP_ACTION_COUNT : PACKING_ACTION_COUNT;
+        return switch (phase) {
+            case NFP_STITCH -> NFP_ACTION_COUNT;
+            case FILL_MODE -> FILL_MODE_ACTION_COUNT;
+            case FILL_SPACE -> FILL_SPACE_ACTION_COUNT;
+            case FILL_ITEM -> FILL_ITEM_ACTION_COUNT;
+            default -> PACKING_ACTION_COUNT;
+        };
     }
 }

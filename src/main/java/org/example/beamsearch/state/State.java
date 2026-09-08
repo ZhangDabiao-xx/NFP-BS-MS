@@ -54,6 +54,15 @@ public class State {
     }
 
     /**
+     * 返回当前全部极大空闲空间的深复制，供阶段专属策略自行排序。
+     *
+     * @return 不共享内部可变对象的全部剩余空间副本。
+     */
+    public ArrayList<Space> getAllCandidateSpaces() {
+        return spaceManager.getBestSpaceCopies(Integer.MAX_VALUE);
+    }
+
+    /**
      * 返回指定空间中可放置的前若干个候选矩形块。
      *
      * @param space 要评估的剩余空间
@@ -225,7 +234,19 @@ public class State {
     }
 
     public State packBlock(Space s, GeneralBlock b) {
-        PlacedBlock pb = s.packBlock(b);
+        return packBlock(s, b, PlacementAnchor.NEAREST_BOARD_CORNER);
+    }
+
+    /**
+     * 将可行矩形块放入一个极大空闲空间，并按指定锚点更新剩余空间。
+     *
+     * @param s 已验证可容纳 {@code b} 的极大空闲空间。
+     * @param b 待放置的矩形块。
+     * @param placementAnchor 块在 {@code s} 内的坐标锚点。
+     * @return 放置后的独立搜索状态；原状态不会被修改。
+     */
+    public State packBlock(Space s, GeneralBlock b, PlacementAnchor placementAnchor) {
+        PlacedBlock pb = s.packBlock(b, placementAnchor);
 
         double packedVolume = this.packedVolume + b.boxVolume;
         double scoreVolume = this.scoreVolume + b.scoreVolume;
