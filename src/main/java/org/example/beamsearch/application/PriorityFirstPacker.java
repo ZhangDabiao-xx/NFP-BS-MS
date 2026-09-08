@@ -39,7 +39,7 @@ public final class PriorityFirstPacker {
     private static final String PRIORITY_COLOR = "1";
 
     /** 默认的排样与解优化总预算，不包含 NFP 拼接和组块生成阶段。 */
-    public static final long DEFAULT_TOTAL_SOLVE_TIME_MS = 600_000L;
+    public static final long DEFAULT_TOTAL_SOLVE_TIME_MS = PackingRuntimeConfig.DEFAULT_TOTAL_SOLVE_TIME_MS;
 
     private PriorityFirstPacker() {
     }
@@ -194,7 +194,7 @@ public final class PriorityFirstPacker {
         priorityResult = GlobalRepackOptimizer.optimize(
                 priorityInstance,
                 priorityResult,
-                priorityOptimizeTimeLimitMs);
+                PackingRuntimeConfig.capRepackTimeMs(priorityOptimizeTimeLimitMs));
         long priorityOptimizeTimeMs = elapsedMillis(priorityOptimizeStartNanos);
 
         // 重新建立混合 Instance，统一重编号 typeNum，使 freeBoxes 和
@@ -247,7 +247,7 @@ public final class PriorityFirstPacker {
             remainingResult = GlobalRepackOptimizer.optimize(
                     remainingOrdinaryInstance,
                     remainingResult,
-                    remainingMillis(deadlineMillis));
+                    PackingRuntimeConfig.capRepackTimeMs(remainingMillis(deadlineMillis)));
             ordinaryOptimizeTimeMs = elapsedMillis(ordinaryOptimizeStartNanos);
         }
 

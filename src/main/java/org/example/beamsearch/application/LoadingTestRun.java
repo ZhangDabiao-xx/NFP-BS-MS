@@ -12,7 +12,7 @@ import java.nio.file.Paths;
 public class LoadingTestRun {
 
     /** 排样与解优化的总时间预算，不包含 NFP 拼接和组块生成，单位为毫秒。 */
-    private static final long TOTAL_SOLVE_TIME_MS = PriorityFirstPacker.DEFAULT_TOTAL_SOLVE_TIME_MS;
+    private static final long TOTAL_SOLVE_TIME_MS = PackingRuntimeConfig.totalSolveTimeMs();
 
     /**
      * 读取桥接层生成的板材与工件文件，执行优先级排样并写出排样结果文件。

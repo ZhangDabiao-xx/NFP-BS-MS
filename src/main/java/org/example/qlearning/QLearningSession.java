@@ -3,6 +3,7 @@ package org.example.qlearning;
 import org.example.beamsearch.common.ExecutionResult;
 import org.example.beamsearch.common.PlacedCuboid;
 import org.example.beamsearch.common.Solution;
+import org.example.beamsearch.application.PackingRuntimeConfig;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -92,7 +93,7 @@ public final class QLearningSession implements AutoCloseable {
         try {
             return open(new QLearningConfig(
                     QMode.OFF, 0L, 0.20, 0.85, 1.0, 0.05, 0.995,
-                    0, 8, 12, 2, 0.15, false), null);
+                    0, 8, 12, 24, 2, 0.15, false), null);
         } catch (IOException exception) {
             throw new IllegalStateException("创建关闭状态的 Q-learning 会话失败", exception);
         }
@@ -312,7 +313,8 @@ public final class QLearningSession implements AutoCloseable {
                 ? 1.0
                 : clamp((double) totalLowerBound / Math.max(1, totalBoards), 0.0, 1.0);
         double utilization = clamp(result.avgUtilization / 100.0, 0.0, 1.0);
-        double timePenalty = clamp(result.totalSolveTimeMs / 600_000.0, 0.0, 1.0);
+        double timePenalty = clamp(result.totalSolveTimeMs
+                / Math.max(1.0, PackingRuntimeConfig.totalSolveTimeMs()), 0.0, 1.0);
 
         double quality = 0.55 * priorityEfficiency
                 + 0.30 * totalEfficiency

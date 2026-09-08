@@ -23,6 +23,7 @@ public final class QLearningConfig {
     private final int warmupDecisions;
     private final int maxCandidateSpaces;
     private final int maxCandidateBlocksPerSpace;
+    private final int fillCandidateSpaceScanLimit;
     private final int hardFitThreshold;
     private final double diversifyFraction;
     private final boolean traceEnabled;
@@ -40,6 +41,7 @@ public final class QLearningConfig {
      * @param warmupDecisions 训练开始时强制随机探索的决策次数
      * @param maxCandidateSpaces 每个 Beam 节点用于 Q 排序的最大剩余空间数
      * @param maxCandidateBlocksPerSpace 每个剩余空间用于 Q 排序的最大矩形候选数
+     * @param fillCandidateSpaceScanLimit Sp 填充策略为寻找可行空间最多扫描的极大空间数
      * @param hardFitThreshold 可放位置数不高于此值时视为难放工件
      * @param diversifyFraction DIVERSIFY 动作可随机抽取的 Top 候选比例
      * @param traceEnabled 是否写出逐步 Q 决策轨迹
@@ -54,6 +56,7 @@ public final class QLearningConfig {
                            int warmupDecisions,
                            int maxCandidateSpaces,
                            int maxCandidateBlocksPerSpace,
+                           int fillCandidateSpaceScanLimit,
                            int hardFitThreshold,
                            double diversifyFraction,
                            boolean traceEnabled) {
@@ -67,6 +70,7 @@ public final class QLearningConfig {
         this.warmupDecisions = Math.max(0, warmupDecisions);
         this.maxCandidateSpaces = Math.max(1, maxCandidateSpaces);
         this.maxCandidateBlocksPerSpace = Math.max(1, maxCandidateBlocksPerSpace);
+        this.fillCandidateSpaceScanLimit = Math.max(this.maxCandidateSpaces, fillCandidateSpaceScanLimit);
         this.hardFitThreshold = Math.max(0, hardFitThreshold);
         this.diversifyFraction = clamp(diversifyFraction, 0.01, 1.0);
         this.traceEnabled = traceEnabled;
@@ -89,6 +93,7 @@ public final class QLearningConfig {
                 parseInt("qlearning.warmupDecisions", 200),
                 parseInt("qlearning.maxCandidateSpaces", 8),
                 parseInt("qlearning.maxCandidateBlocksPerSpace", 12),
+                parseInt("qlearning.fillCandidateSpaceScanLimit", 24),
                 parseInt("qlearning.hardFitThreshold", 2),
                 parseDouble("qlearning.diversifyFraction", 0.15),
                 Boolean.parseBoolean(System.getProperty("qlearning.trace", "false")));
@@ -144,6 +149,15 @@ public final class QLearningConfig {
         return maxCandidateBlocksPerSpace;
     }
 
+    /**
+     * 返回 Sp 填充策略为定位可行空间而最多扫描的极大空闲空间数量。
+     *
+     * @return 扫描上限；至少不小于 {@link #maxCandidateSpaces()}。
+     */
+    public int fillCandidateSpaceScanLimit() {
+        return fillCandidateSpaceScanLimit;
+    }
+
     /** @return 判定难放工件时允许的最大可放位置数。 */
     public int hardFitThreshold() {
         return hardFitThreshold;
@@ -177,6 +191,7 @@ public final class QLearningConfig {
                 warmupDecisions,
                 maxCandidateSpaces,
                 maxCandidateBlocksPerSpace,
+                fillCandidateSpaceScanLimit,
                 hardFitThreshold,
                 diversifyFraction,
                 traceEnabled);

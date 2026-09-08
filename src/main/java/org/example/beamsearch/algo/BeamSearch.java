@@ -1,6 +1,7 @@
 package org.example.beamsearch.algo;
 
 import org.example.beamsearch.blockgenerator.BlockGenerator;
+import org.example.beamsearch.application.PackingRuntimeConfig;
 import org.example.beamsearch.blockgenerator.GeneralBlock;
 import org.example.beamsearch.common.*;
 import org.example.beamsearch.spacemanager.SpaceManager;
@@ -310,7 +311,9 @@ public class BeamSearch {
         finishTime = startTime + Math.max(1, timeLimit);
 
         int availableBlockCount = initialState.availableBlocks.length;
-        for (int width = 4; System.currentTimeMillis() < finishTime; width <<= 1) {
+        for (int width = 4;
+             width <= PackingRuntimeConfig.maxBeamWidth() && System.currentTimeMillis() < finishTime;
+             width <<= 1) {
             if (width > availableBlockCount / 3 && width != 4 && minCon > 330) {
                 break;
             }
@@ -365,7 +368,9 @@ public class BeamSearch {
                 }
             }
 
-            if (width >= availableBlockCount) {
+            if (width >= availableBlockCount
+                    || width >= PackingRuntimeConfig.maxBeamWidth()
+                    || width > Integer.MAX_VALUE / 2) {
                 break;
             }
         }
@@ -410,7 +415,8 @@ public class BeamSearch {
         // 参考 solve() 的动态宽度策略：每个宽度阶段独立从根节点开始，
         // 阶段内部保留 beamWidth 个状态，完成后再扩大宽度。
         for (int beamWidth = initialBeamWidth;
-             beamWidth > 0 && System.currentTimeMillis() < finishTime;
+             beamWidth > 0 && beamWidth <= PackingRuntimeConfig.maxBeamWidth()
+                     && System.currentTimeMillis() < finishTime;
              beamWidth <<= 1) {
 
             // 当保留宽度已经超过候选数量的约三分之一时，继续扩大宽度
@@ -475,7 +481,7 @@ public class BeamSearch {
             }
 
             // 当前宽度已经覆盖了全部候选时，没有必要继续扩大。
-            if (beamWidth >= availableBlockCount) {
+            if (beamWidth >= availableBlockCount || beamWidth >= PackingRuntimeConfig.maxBeamWidth()) {
                 break;
             }
             // 防止极大候选数量导致左移溢出后重新进入负数循环。

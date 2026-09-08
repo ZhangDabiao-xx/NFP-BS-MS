@@ -62,7 +62,7 @@ public class BatchBlockStitcher {
      * @throws IOException 当输入路径不可读、不是 JSON 案例，或结果文件无法写入时抛出
      */
     public static List<Path> stitchCases(Path casePath, Path outputDirectory) throws IOException {
-        return stitchCases(casePath, outputDirectory, DEFAULT_BEAM_WIDTH, null);
+        return stitchCases(casePath, outputDirectory, configuredDefaultBeamWidth(), null);
     }
 
     /**
@@ -77,7 +77,7 @@ public class BatchBlockStitcher {
     public static List<Path> stitchCases(Path casePath,
                                          Path outputDirectory,
                                          QLearningSession qLearningSession) throws IOException {
-        return stitchCases(casePath, outputDirectory, DEFAULT_BEAM_WIDTH, qLearningSession);
+        return stitchCases(casePath, outputDirectory, configuredDefaultBeamWidth(), qLearningSession);
     }
 
     /**
@@ -239,7 +239,22 @@ public class BatchBlockStitcher {
      * 与“AB、AC、AD 中保留前 w 个，后续 ACG 淘汰 AB”的要求一致。
      */
     public static List<Block> buildBlocks(List<PolygonItem> items) {
-        return buildBlocks(items, DEFAULT_BEAM_WIDTH, null);
+        return buildBlocks(items, configuredDefaultBeamWidth(), null);
+    }
+
+    /**
+     * 返回未显式传入 Beam 宽度时使用的 NFP 根搜索宽度。
+     *
+     * @return JVM 参数 {@code nfp.beamWidth} 的正整数值；未设置或非法时使用默认值 5。
+     */
+    private static int configuredDefaultBeamWidth() {
+        try {
+            int configured = Integer.parseInt(System.getProperty(
+                    "nfp.beamWidth", String.valueOf(DEFAULT_BEAM_WIDTH)));
+            return configured > 0 ? configured : DEFAULT_BEAM_WIDTH;
+        } catch (NumberFormatException exception) {
+            return DEFAULT_BEAM_WIDTH;
+        }
     }
 
     public static List<Block> buildBlocks(List<PolygonItem> items, int beamWidth) {

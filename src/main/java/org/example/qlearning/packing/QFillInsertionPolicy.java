@@ -90,18 +90,26 @@ public final class QFillInsertionPolicy {
      * @return 已排序的候选移动；没有可行候选时提供应删除的空间。
      */
     public Decision select(State state, int maxMoves) {
-        List<SpaceCandidate> candidates = enumerateFeasibleSpaces(state);
-        if (candidates.isEmpty()) {
+        List<Space> allSpaces = state.getAllCandidateSpaces();
+        if (allSpaces.isEmpty()) {
             Space discardSpace = state.hasFreeSpace() ? state.chooseBestSpace() : null;
             return new Decision(List.of(), discardSpace, null, List.of(), potential(state));
         }
 
-        int spaceStateKey = encodeSpaceState(state, candidates);
+        int spaceStateKey = encodeSpaceState(state, allSpaces);
         int spaceActionIndex = spaceController.selectAction(spaceStateKey, SPACE_ACTIONS);
         FillSpaceAction spaceAction = FillSpaceAction.values()[spaceActionIndex];
         session.recordDecision(SearchPhase.FILL_SPACE, spaceStateKey, spaceActionIndex);
+        allSpaces.sort(spaceComparator(spaceAction));
+        List<SpaceCandidate> candidates = enumerateFeasibleSpaces(state, allSpaces);
+        if (candidates.isEmpty()) {
+            return new Decision(List.of(),
+                    allSpaces.get(0),
+                    new LocalReference(SearchPhase.FILL_SPACE, spaceStateKey, spaceActionIndex),
+                    List.of(),
+                    potential(state));
+        }
 
-        candidates.sort(spaceCandidateComparator(spaceAction));
         int spaceLimit = Math.min(config.maxCandidateSpaces(), candidates.size());
         List<RankedSpace> rankedSpaces = new ArrayList<>(spaceLimit);
         List<LocalReference> itemReferences = new ArrayList<>();
@@ -139,7 +147,8 @@ public final class QFillInsertionPolicy {
         }
         boolean noSuccessor = successors == null || successors.isEmpty();
         State bestSuccessor = noSuccessor ? null : bestPotentialSuccessor(successors);
-        boolean noFurtherMove = !noSuccessor && enumerateFeasibleSpaces(bestSuccessor).isEmpty();
+        List<Space> nextSpaces = noSuccessor ? List.of() : bestSuccessor.getAllCandidateSpaces();
+        boolean noFurtherMove = !noSuccessor && enumerateFeasibleSpaces(bestSuccessor, nextSpaces).isEmpty();
         boolean terminal = noSuccessor || noFurtherMove;
         double nextPotential = noSuccessor ? decision.potentialBefore() - 0.50 : potential(bestSuccessor);
         double reward = clamp(nextPotential - decision.potentialBefore(), -0.25, 0.25);
@@ -147,7 +156,7 @@ public final class QFillInsertionPolicy {
             reward = -0.50;
         }
 
-        int nextSpaceState = terminal ? 0 : encodeSpaceState(bestSuccessor, enumerateFeasibleSpaces(bestSuccessor));
+        int nextSpaceState = terminal ? 0 : encodeSpaceState(bestSuccessor, nextSpaces);
         updateAndTrace(spaceController,
                 decision.spaceReference(),
                 reward,
@@ -291,27 +300,25 @@ public final class QFillInsertionPolicy {
      * 枚举当前状态中至少能容纳一个普通件的极大空闲空间。
      *
      * @param state 当前 Beam 搜索状态。
+     * @param orderedSpaces 已按当前空间动作排序的极大空闲空间。
      * @return 每个空间及其可放置普通件列表组成的候选集合。
      */
-    private List<SpaceCandidate> enumerateFeasibleSpaces(State state) {
+    private List<SpaceCandidate> enumerateFeasibleSpaces(State state, List<Space> orderedSpaces) {
         List<SpaceCandidate> candidates = new ArrayList<>();
-        for (Space space : state.getAllCandidateSpaces()) {
+        int scannedSpaceCount = 0;
+        for (Space space : orderedSpaces) {
+            if (scannedSpaceCount++ >= config.fillCandidateSpaceScanLimit()) {
+                break;
+            }
             List<GeneralBlock> feasibleBlocks = state.getFeasibleBlocks(space, Integer.MAX_VALUE);
             if (!feasibleBlocks.isEmpty()) {
                 candidates.add(new SpaceCandidate(space, feasibleBlocks));
+                if (candidates.size() >= config.maxCandidateSpaces()) {
+                    break;
+                }
             }
         }
         return candidates;
-    }
-
-    /**
-     * 将空间排序动作转换为带候选物品的空间记录比较器。
-     *
-     * @param action 当前空间排序动作。
-     * @return 对 {@link SpaceCandidate} 从优到劣排序的比较器。
-     */
-    private Comparator<SpaceCandidate> spaceCandidateComparator(FillSpaceAction action) {
-        return (left, right) -> spaceComparator(action).compare(left.space(), right.space());
     }
 
     /**
@@ -420,17 +427,16 @@ public final class QFillInsertionPolicy {
      *
      * @param state 当前 Beam 搜索状态。
      * @param candidates 当前可容纳普通件的空间候选。
-     * @return 由已填充比例、空闲比例、最大空间、碎片率和可用空间比例组成的状态编号。
+     * @return 由已填充比例、空闲比例、最大空间、碎片率和空间数量组成的状态编号。
      */
-    private int encodeSpaceState(State state, List<SpaceCandidate> candidates) {
-        List<Space> spaces = state.getAllCandidateSpaces();
+    private int encodeSpaceState(State state, List<Space> spaces) {
         double boardArea = boardArea();
         int packedBin = bin(state.getPackedVolume() / boardArea, 0.25, 0.60);
         int freeBin = bin(totalSpaceArea(spaces) / boardArea, 0.25, 0.60);
         int largestBin = bin(largestSpaceArea(spaces) / boardArea, 0.15, 0.40);
         int fragmentationBin = bin(fragmentation(spaces), 0.25, 0.55);
-        int fitBin = bin((double) candidates.size() / Math.max(1, spaces.size()), 0.25, 0.60);
-        return packedBin + 3 * freeBin + 9 * largestBin + 27 * fragmentationBin + 81 * fitBin;
+        int spaceCountBin = bin(spaces.size(), 2, 8);
+        return packedBin + 3 * freeBin + 9 * largestBin + 27 * fragmentationBin + 81 * spaceCountBin;
     }
 
     /**
@@ -464,7 +470,7 @@ public final class QFillInsertionPolicy {
      * @return 存在可放置普通件时的空间候选；不存在时返回 {@code null}。
      */
     private SpaceCandidate firstFeasibleSpace(State state) {
-        List<SpaceCandidate> candidates = enumerateFeasibleSpaces(state);
+        List<SpaceCandidate> candidates = enumerateFeasibleSpaces(state, state.getAllCandidateSpaces());
         return candidates.isEmpty() ? null : candidates.get(0);
     }
 
