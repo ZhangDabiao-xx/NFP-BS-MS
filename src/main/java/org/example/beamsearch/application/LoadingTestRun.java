@@ -20,7 +20,7 @@ public class LoadingTestRun {
      * @param materialInPath 板材 CSV 文件路径，包含板材长度、宽度和颜色组
      * @param workPieceInPath 工件文件路径，包含矩形化后的 NFP 组块
      * @param outPath 单案例排样结果目录，用于写入 CSV、统计和运行日志
-     * @return 案例名称、工件数、板材数、利用率和耗时组成的摘要；没有可排样工件时返回 {@code null}
+     * @return 案例名称、工件数、实际/等效容器数、真实平均利用率、Sp、So 和耗时组成的摘要；没有可排样工件时返回 {@code null}
      * @throws IOException 当输入文件无法读取或结果文件无法写入时抛出
      */
     public static String[] runWithImprove(String materialInPath, String workPieceInPath, String outPath) throws IOException {
@@ -34,7 +34,7 @@ public class LoadingTestRun {
      * @param workPieceInPath 工件文件路径，包含矩形化后的 NFP 组块。
      * @param outPath 单案例排样结果目录，用于写入 CSV、统计和运行日志。
      * @param qLearningSession 当前一体化运行共享的 Q-learning 会话；关闭时保持原有启发式行为。
-     * @return 案例名称、工件数、板材数、利用率和耗时组成的摘要；没有可排样工件时返回 {@code null}。
+     * @return 案例名称、工件数、实际/等效容器数、真实平均利用率、Sp、So 和耗时组成的摘要；没有可排样工件时返回 {@code null}。
      * @throws IOException 当输入文件无法读取或结果文件无法写入时抛出。
      */
     public static String[] runWithImprove(String materialInPath,
@@ -72,7 +72,9 @@ public class LoadingTestRun {
                 instances,
                 TOTAL_SOLVE_TIME_MS,
                 qLearningSession);
+        // 保留原近似矩形利用率，同时额外计算真实多边形面积口径的 U、N、Uagv。
         exeResult.setAvgUtilization();
+        exeResult.setActualUtilizationMetrics();
 
         int containerCount = exeResult.solutions.size();
         PrintWriter pw;
@@ -138,6 +140,8 @@ public class LoadingTestRun {
 
             FileWriter fw = new FileWriter(new File(dir, "container" + (j + 1) + ".txt"));
             fw.write(exeResult.solutions.get(j).toString());
+            fw.write("Actual workpiece utilization U: "
+                    + formatPercent(exeResult.actualContainerUtilizations.get(j)) + "%\n");
             fw.close();
 
             for (int k = 0; k < rectList.size(); k++) {
@@ -167,10 +171,13 @@ public class LoadingTestRun {
         pwTotal.println(workPieceInPath);
         pwTotal.println("Total number of nestable workpieces in this batch: " + numOfWorkpiece);
         pwTotal.println("Number of sheets used in this batch: " + containerCount);
+        pwTotal.println("Equivalent container count (N): " + formatDecimal(exeResult.equivalentContainerCount));
         pwTotal.println("Priority containers (Sp): " + exeResult.priorityBoardCount);
         pwTotal.println("Ordinary containers (So): " + exeResult.ordinaryBoardCount);
         pwTotal.println("S = Sp + So: " + (exeResult.priorityBoardCount + exeResult.ordinaryBoardCount));
         pwTotal.println("Average utilization rate of this batch: " + exeResult.avgUtilization + "%");
+        pwTotal.println("Actual average utilization (Uagv): "
+                + formatPercent(exeResult.actualAverageUtilization) + "%");
         writeSolveTiming(pwTotal, exeResult);
         pwTotal.println("Running time: " + ((System.currentTimeMillis() - startTime) / 1000d) + "s");
 
@@ -179,17 +186,25 @@ public class LoadingTestRun {
         pwTotal.close();
         System.setOut(oldout);
 
-        System.out.println("Total number of nestable workpieces in this batch: " + numOfWorkpiece);
-        System.out.println("Number of sheets used in this batch: " + containerCount);
-        System.out.println("Actual solve time: " + formatSeconds(exeResult.totalSolveTimeMs) + "s");
-        System.out.println("Average utilization rate of this batch: " + exeResult.avgUtilization + "%");
-        System.out.println("Running time: " + ((System.currentTimeMillis() - startTime) / 1000d) + "s");
+        System.out.printf(Locale.ROOT,
+                "结果: 工件数量 %d, 容器使用数量 %d, 容器数量 N %s, 平均利用率 Uagv %s%%, Sp %d, So %d, 耗时 %ss%n",
+                numOfWorkpiece,
+                containerCount,
+                formatDecimal(exeResult.equivalentContainerCount),
+                formatPercent(exeResult.actualAverageUtilization),
+                exeResult.priorityBoardCount,
+                exeResult.ordinaryBoardCount,
+                formatSeconds(exeResult.totalSolveTimeMs));
         if (numOfWorkpiece == workpieceNum) {
             System.out.println("The algorithm executed successfully and the optimization results have been output.");
         } else {
             System.out.println("The number of workpieces in the result does not match the input data!!!");
         }
-        return new String[]{firstPlacedName(exeResult), numOfWorkpiece + "", containerCount + "", exeResult.avgUtilization + "%", ((System.currentTimeMillis() - startTime) / 1000d) + "s"};
+        return new String[]{firstPlacedName(exeResult), numOfWorkpiece + "", containerCount + "",
+                formatDecimal(exeResult.equivalentContainerCount),
+                formatPercent(exeResult.actualAverageUtilization) + "%",
+                exeResult.priorityBoardCount + "", exeResult.ordinaryBoardCount + "",
+                formatSeconds(exeResult.totalSolveTimeMs) + "s"};
     }
 
     /** 将排样阶段的实际耗时写入总结果文件，便于核对全局时间预算。 */
@@ -204,6 +219,26 @@ public class LoadingTestRun {
 
     private static String formatSeconds(long timeMs) {
         return String.format(Locale.ROOT, "%.3f", timeMs / 1000.0);
+    }
+
+    /**
+     * 将比率形式的利用率转换为固定小数位的百分数文本，不附加百分号。
+     *
+     * @param utilization 取值通常为 [0, 1] 的利用率比率。
+     * @return 适合写入结果文本或控制台的百分数数值。
+     */
+    private static String formatPercent(double utilization) {
+        return String.format(Locale.ROOT, "%.4f", utilization * 100.0);
+    }
+
+    /**
+     * 将统计数值格式化为固定小数位文本。
+     *
+     * @param value 待输出的统计数值。
+     * @return 保留四位小数的文本。
+     */
+    private static String formatDecimal(double value) {
+        return String.format(Locale.ROOT, "%.4f", value);
     }
 
     /**

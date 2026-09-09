@@ -31,7 +31,7 @@ import java.util.regex.Pattern;
  *     0,2440,1220,0
  *
  *   workpiece（逗号分隔，首行为表头会被跳过）:
- *     BatchNo UPI Qty Color Length Width IsSpecial Rotatable
+ *     BatchNo UPI Qty Color Length Width IsSpecial Rotatable ActualWorkpieceArea
  *
  *   polygons.json（独立可视化用）:
  *     JSON 数组，每项对应一个 block，包含 UPI、外轮廓、子 item 的 id 及多边形顶点。
@@ -171,8 +171,8 @@ public class NFPToBeamSearchBridge {
         long elapsed = System.currentTimeMillis() - start;
         System.out.printf("  完成 (%.1fs)%n", elapsed / 1000.0);
         if (summary != null) {
-            System.out.printf("  结果: %s 工件, %s 张板, 利用率 %s, 耗时 %s%n",
-                    summary[1], summary[2], summary[3], summary[4]);
+            System.out.printf("  结果: 工件数量 %s, 容器使用数量 %s, 容器数量 N %s, 平均利用率 Uagv %s, Sp %s, So %s, 耗时 %s%n",
+                    summary[1], summary[2], summary[3], summary[4], summary[5], summary[6], summary[7]);
         }
 
         Path polygonJsonPath = caseResultDir.resolve("polygons.json");
@@ -335,7 +335,7 @@ public class NFPToBeamSearchBridge {
     static void writeWorkpiece(Path path, String caseName, List<BlockRecord> blocks) throws IOException {
         try (PrintWriter pw = new PrintWriter(new BufferedWriter(
                 new OutputStreamWriter(new FileOutputStream(path.toFile()), StandardCharsets.UTF_8)))) {
-            pw.println("BatchNo,UPI,Qty,Color,Length,Width,IsSpecial,Rotatable");
+            pw.println("BatchNo,UPI,Qty,Color,Length,Width,IsSpecial,Rotatable,ActualWorkpieceArea");
 
             int seq = 0;
             for (BlockRecord block : blocks) {
@@ -349,11 +349,48 @@ public class NFPToBeamSearchBridge {
                 String color     = block.backFrontPriority ? "1" : "0";
                 String isSpecial = "0";
                 String rotatable = canRotateInBeamSearch(block.rotate) ? "0" : "1";
+                double actualWorkpieceArea = calculateBlockActualArea(block);
 
-                pw.printf(Locale.ROOT, "%s,%s,%s,%s,%.4f,%.4f,%s,%s%n",
-                        batchNo, upi, qty, color, w, h, isSpecial, rotatable);
+                pw.printf(Locale.ROOT, "%s,%s,%s,%s,%.4f,%.4f,%s,%s,%.4f%n",
+                        batchNo, upi, qty, color, w, h, isSpecial, rotatable, actualWorkpieceArea);
             }
         }
+    }
+
+    /**
+     * 计算一个 NFP 组块内所有真实工件的面积和。
+     *
+     * @param block 已解析的 NFP 组块；组合块使用每个子件的原始多边形，简单块使用外轮廓。
+     * @return 工件真实面积和；顶点不足三条时返回 0。
+     */
+    private static double calculateBlockActualArea(BlockRecord block) {
+        List<ItemRecord> items = block.items.isEmpty()
+                ? List.of(new ItemRecord(block.id, block.outline, block.outline))
+                : block.items;
+        double totalArea = 0.0;
+        for (ItemRecord item : items) {
+            totalArea += polygonArea(item.originalPoints);
+        }
+        return totalArea;
+    }
+
+    /**
+     * 使用鞋带公式计算一个简单多边形的绝对面积。
+     *
+     * @param points 按边界顺序给出的二维顶点列表。
+     * @return 多边形面积；顶点不足三条时返回 0。
+     */
+    private static double polygonArea(List<double[]> points) {
+        if (points == null || points.size() < 3) {
+            return 0.0;
+        }
+        double twiceArea = 0.0;
+        for (int i = 0; i < points.size(); i++) {
+            double[] current = points.get(i);
+            double[] next = points.get((i + 1) % points.size());
+            twiceArea += current[0] * next[1] - next[0] * current[1];
+        }
+        return Math.abs(twiceArea) / 2.0;
     }
 
     /**
