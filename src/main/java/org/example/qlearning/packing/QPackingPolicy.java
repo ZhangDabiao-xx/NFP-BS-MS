@@ -124,12 +124,12 @@ public final class QPackingPolicy {
      */
     private List<Candidate> enumerateCandidates(State state) {
         Instance instance = state.getInstance();
-        List<Space> spaces = state.getCandidateSpaces(config.maxCandidateSpaces());
+        List<Space> spaces = state.getCandidateSpaces(candidateSpaceLimit());
         List<Candidate> candidates = new ArrayList<>();
         for (Space space : spaces) {
             // packBlock 依赖 cornerId；对空间副本显式初始化该角点信息。
             space.cornerDistance(instance.length, instance.width);
-            for (GeneralBlock block : state.getFeasibleBlocks(space, config.maxCandidateBlocksPerSpace())) {
+            for (GeneralBlock block : state.getFeasibleBlocks(space, candidateBlockLimit())) {
                 candidates.add(createCandidate(state, space, block));
             }
         }
@@ -274,6 +274,24 @@ public final class QPackingPolicy {
     private Space selectDiscardSpace(State state) {
         List<Space> spaces = state.getCandidateSpaces(1);
         return spaces.isEmpty() ? null : spaces.get(0);
+    }
+
+    /**
+     * 返回当前 Q 策略可参与排序的空间数量上限。
+     *
+     * @return 公平模式下返回全部空间；快速模式下返回 JVM 参数配置的上限。
+     */
+    private int candidateSpaceLimit() {
+        return config.limitCandidateSet() ? config.maxCandidateSpaces() : Integer.MAX_VALUE;
+    }
+
+    /**
+     * 返回单个空间内可参与 Q 排序的块数量上限。
+     *
+     * @return 公平模式下返回全部可行块；快速模式下返回 JVM 参数配置的上限。
+     */
+    private int candidateBlockLimit() {
+        return config.limitCandidateSet() ? config.maxCandidateBlocksPerSpace() : Integer.MAX_VALUE;
     }
 
     /**

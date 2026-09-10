@@ -93,7 +93,7 @@ public final class QLearningSession implements AutoCloseable {
         try {
             return open(new QLearningConfig(
                     QMode.OFF, 0L, 0.20, 0.85, 1.0, 0.05, 0.995,
-                    0, 8, 12, 24, 2, 0.15, false), null);
+                    0, 8, 12, 24, false, 2, 0.15, false), null);
         } catch (IOException exception) {
             throw new IllegalStateException("创建关闭状态的 Q-learning 会话失败", exception);
         }
@@ -274,10 +274,10 @@ public final class QLearningSession implements AutoCloseable {
     /**
      * 把最终排样目标转换为有界终局奖励。
      *
-     * <p>奖励按优先级目标设计：优先件板材效率权重最高；其次使用真实工件面积
-     * 下界与等效容器数量 N 的比值，因此 N 降低会直接提高奖励；再以真实面积的
-     * 平均利用率 Uagv 衡量材料利用率，最后以较小权重惩罚超长求解时间。所有面积
-     * 效率均经归一化，因而不同规模案例可以共享同一份 Q 表。</p>
+     * <p>奖励按目标优先级分层：先评价优先容器数 Sp，再评价实际使用容器数 Nb；
+     * 只有在这两个主目标之后，才以等效容器数 N、真实平均利用率 Uagv 和时间作为
+     * 次级指标。这样 N 因最低利用率容器波动而略有下降时，不会掩盖 Sp 或 Nb 增加
+     * 所代表的实际退化。所有效率均经归一化，因而不同规模案例可以共享 Q 表。</p>
      *
      * @param result 当前案例完整排样结果。
      * @return 位于 {@code [-1, 1]} 的终局奖励；越大代表最终目标质量越好。
@@ -286,6 +286,7 @@ public final class QLearningSession implements AutoCloseable {
         // 确保从任意排样入口结束时，Q-learning 都使用最终布局的真实面积统计。
         result.setActualUtilizationMetrics();
         int priorityBoards = Math.max(0, result.priorityBoardCount);
+        int actualBoardCount = Math.max(0, result.solutions.size());
         double totalMaterialArea = 0.0;
         double priorityMaterialArea = 0.0;
         double largestBoardArea = 0.0;
@@ -313,6 +314,9 @@ public final class QLearningSession implements AutoCloseable {
         double priorityEfficiency = priorityLowerBound == 0
                 ? 1.0
                 : clamp((double) priorityLowerBound / Math.max(1, priorityBoards), 0.0, 1.0);
+        double actualBoardEfficiency = totalLowerBound == 0
+                ? 1.0
+                : clamp((double) totalLowerBound / Math.max(1, actualBoardCount), 0.0, 1.0);
         double equivalentContainerEfficiency = totalLowerBound == 0
                 ? 1.0
                 : clamp((double) totalLowerBound
@@ -321,10 +325,13 @@ public final class QLearningSession implements AutoCloseable {
         double timePenalty = clamp(result.totalSolveTimeMs
                 / Math.max(1.0, PackingRuntimeConfig.totalSolveTimeMs()), 0.0, 1.0);
 
-        double quality = 0.55 * priorityEfficiency
-                + 0.30 * equivalentContainerEfficiency
-                + 0.20 * actualUtilization
-                - 0.05 * timePenalty;
+        // 权重遵循 Sp -> Nb -> N -> Uagv 的主次顺序。N 与 Uagv 仅在板材数
+        // 相近时用于区分布局质量，不能再单独主导终局奖励。
+        double quality = 0.58 * priorityEfficiency
+                + 0.30 * actualBoardEfficiency
+                + 0.07 * equivalentContainerEfficiency
+                + 0.04 * actualUtilization
+                - 0.01 * timePenalty;
         return clamp(2.0 * quality - 1.0, -1.0, 1.0);
     }
 

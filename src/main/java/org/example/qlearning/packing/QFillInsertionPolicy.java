@@ -110,7 +110,9 @@ public final class QFillInsertionPolicy {
                     potential(state));
         }
 
-        int spaceLimit = Math.min(config.maxCandidateSpaces(), candidates.size());
+        int spaceLimit = config.limitCandidateSet()
+                ? Math.min(config.maxCandidateSpaces(), candidates.size())
+                : candidates.size();
         List<RankedSpace> rankedSpaces = new ArrayList<>(spaceLimit);
         List<LocalReference> itemReferences = new ArrayList<>();
         for (int index = 0; index < spaceLimit; index++) {
@@ -122,7 +124,9 @@ public final class QFillInsertionPolicy {
 
             List<GeneralBlock> blocks = new ArrayList<>(candidate.blocks());
             blocks.sort(itemComparator(itemAction));
-            int blockLimit = Math.min(config.maxCandidateBlocksPerSpace(), blocks.size());
+            int blockLimit = config.limitCandidateSet()
+                    ? Math.min(config.maxCandidateBlocksPerSpace(), blocks.size())
+                    : blocks.size();
             rankedSpaces.add(new RankedSpace(candidate.space(), blocks.subList(0, blockLimit)));
             itemReferences.add(new LocalReference(SearchPhase.FILL_ITEM, itemStateKey, itemActionIndex));
         }
@@ -307,13 +311,15 @@ public final class QFillInsertionPolicy {
         List<SpaceCandidate> candidates = new ArrayList<>();
         int scannedSpaceCount = 0;
         for (Space space : orderedSpaces) {
-            if (scannedSpaceCount++ >= config.fillCandidateSpaceScanLimit()) {
+            if (config.limitCandidateSet()
+                    && scannedSpaceCount++ >= config.fillCandidateSpaceScanLimit()) {
                 break;
             }
             List<GeneralBlock> feasibleBlocks = state.getFeasibleBlocks(space, Integer.MAX_VALUE);
             if (!feasibleBlocks.isEmpty()) {
                 candidates.add(new SpaceCandidate(space, feasibleBlocks));
-                if (candidates.size() >= config.maxCandidateSpaces()) {
+                if (config.limitCandidateSet()
+                        && candidates.size() >= config.maxCandidateSpaces()) {
                     break;
                 }
             }
