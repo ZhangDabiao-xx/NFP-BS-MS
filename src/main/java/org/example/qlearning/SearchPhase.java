@@ -1,6 +1,6 @@
 package org.example.qlearning;
 
-/** 使用独立 Q 表的 NFP 拼接与矩形排样阶段。 */
+/** 使用独立 Q 表的矩形排样阶段。NFP 拼接始终采用固定的确定性规则。 */
 public enum SearchPhase {
     /** 优先件新板排样阶段。 */
     PRIORITY,
@@ -13,7 +13,5 @@ public enum SearchPhase {
     /** 普通件填入 Sp 时选择候选物品排序策略的阶段。 */
     FILL_ITEM,
     /** 剩余普通件新板排样阶段。 */
-    ORDINARY,
-    /** NFP 几何校验完成后的拼接候选排序阶段。 */
-    NFP_STITCH
+    ORDINARY
 }

@@ -23,9 +23,9 @@ import java.util.List;
 public final class IntegratedPackingApplication {
 
     /** 未传入命令行参数时使用的默认案例目录；需要时只修改这一处路径即可。 */
-    private static final Path DEFAULT_CASE_PATH = Path.of("data", "inputData");
-    private static final String NFP_RESULT_DIRECTORY_NAME = "NFPJoint5_evaluate";
-    private static final String PACKING_RESULT_DIRECTORY_NAME = "Result5_evaluate";
+    private static final Path DEFAULT_CASE_PATH = Path.of("data", "inputData2");
+    private static final String NFP_RESULT_DIRECTORY_NAME = "NFPJoint6_baseline";
+    private static final String PACKING_RESULT_DIRECTORY_NAME = "Result6_baseline";
     private static final String BRIDGE_DIRECTORY_NAME = "material";
     /**
      * 默认 Q-learning 模型目录，与任一次排样结果目录相互独立。
@@ -45,8 +45,7 @@ public final class IntegratedPackingApplication {
      * @throws IOException 当案例、NFP 结果或排样结果无法读写时抛出
      */
     public static void main(String[] args) throws IOException {
-        //int temp = 0;
-        //while (true) {
+
             if (args.length > 1) {
                 printUsage();
                 return;
@@ -59,11 +58,7 @@ public final class IntegratedPackingApplication {
                 return;
             }
             run(casePath);
-            /*temp++;
-            if (temp > 3) {
-                break;
-            }*/
-        //}
+
     }
 
     /**
@@ -127,15 +122,15 @@ public final class IntegratedPackingApplication {
         try (QLearningSession qLearningSession = QLearningSession.open(
                 qLearningConfig,
                 qLearningDirectory)) {
-            List<Path> nfpResultFiles = BatchBlockStitcher.stitchCases(
-                    casePath,
-                    nfpResultDirectory,
-                    qLearningSession);
+            // NFP 拼接始终使用固定的确定性排序，不读取也不写入 Q-learning 表。
+            // 这样同一输入案例在 baseline、train、evaluate 中得到相同的矩形块集合，
+            // Q-learning 的学习对象只剩下后续的矩形排样与普通件插入决策。
+            List<Path> nfpResultFiles = BatchBlockStitcher.stitchCases(casePath, nfpResultDirectory);
             Path bridgeRootDirectory = packingResultDirectory.resolve(BRIDGE_DIRECTORY_NAME);
 
             for (Path nfpResultFile : nfpResultFiles) {
                 Path caseJsonFile = resolveCaseJsonFile(casePath, nfpResultFile);
-                qLearningSession.activateEpisode(caseName(caseJsonFile));
+                qLearningSession.beginEpisode(caseName(caseJsonFile));
                 Path casePackingDirectory = NFPToBeamSearchBridge.packCase(
                         nfpResultFile,
                         caseJsonFile,
@@ -174,7 +169,7 @@ public final class IntegratedPackingApplication {
     }
 
     /**
-     * 从案例文件路径取得用于关联 NFP 与排样 Q 决策的稳定案例名称。
+     * 从案例文件路径取得用于标识本案例排样 Q 决策的稳定名称。
      *
      * @param caseJsonFile 当前案例 JSON 文件路径。
      * @return 不含扩展名的案例名称。

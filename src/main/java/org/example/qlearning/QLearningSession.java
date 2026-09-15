@@ -20,15 +20,15 @@ import java.util.Properties;
 /**
  * 一次端到端求解期间共享的 Q-learning 会话。
  *
- * <p>会话为 NFP 拼接、优先件、填充和普通件阶段维护独立控制器，并在 TRAIN
- * 模式结束时保存 Q 表。OFF 模式不会创建文件，也不会改变原启发式流程。</p>
+ * <p>会话为优先件排样、普通件填入和剩余普通件排样维护独立控制器，并在 TRAIN
+ * 模式结束时保存 Q 表。NFP 拼接不参与 Q-learning，始终使用固定规则生成稳定的矩形块。
+ * OFF 模式不会创建文件，也不会改变原启发式流程。</p>
  */
 public final class QLearningSession implements AutoCloseable {
 
     private static final String TABLE_FILE_NAME = "packing-q-tables.properties";
     private static final String TRACE_FILE_NAME = "packing-q-trace.csv";
     private static final int PACKING_ACTION_COUNT = 7;
-    private static final int NFP_ACTION_COUNT = 6;
     private static final int FILL_MODE_ACTION_COUNT = 3;
     private static final int FILL_SPACE_ACTION_COUNT = 2;
     private static final int FILL_ITEM_ACTION_COUNT = 3;
@@ -57,7 +57,7 @@ public final class QLearningSession implements AutoCloseable {
      *
      * @param config 当前运行的 Q-learning 配置
      * @param storageDirectory Q 表和轨迹文件目录；OFF 模式下可为 {@code null}
-     * @return 可传递给排样阶段的共享 Q-learning 会话
+     * @return 可传递给矩形排样阶段的共享 Q-learning 会话
      * @throws IOException 当 TRAIN/EVALUATE 模式的表文件无法读写时抛出
      */
     public static QLearningSession open(QLearningConfig config,
@@ -102,7 +102,7 @@ public final class QLearningSession implements AutoCloseable {
     /**
      * 返回指定阶段的 Q 控制器。
      *
-     * @param phase 当前 NFP 拼接或优先级排样阶段
+     * @param phase 当前矩形排样阶段
      * @return 与阶段一一对应的独立 Q 表控制器
      */
     public TabularQController controller(SearchPhase phase) {
@@ -120,7 +120,7 @@ public final class QLearningSession implements AutoCloseable {
     }
 
     /**
-     * 开始记录一个案例的 NFP 与排样 Q 决策，以便在取得最终排样结果后施加终局奖励。
+     * 开始记录一个案例的矩形排样决策，供终局奖励只强化本案例的排样与插入动作。
      *
      * @param episodeId 当前案例的稳定标识；通常使用不含扩展名的案例文件名。
      */
@@ -129,26 +129,14 @@ public final class QLearningSession implements AutoCloseable {
             return;
         }
         activeEpisodeId = normalizeEpisodeId(episodeId);
+        // 同一会话中再次开始同名案例时，必须丢弃上一轮遗留决策，避免跨轮奖励串扰。
         episodeDecisions.put(activeEpisodeId, new ArrayList<>());
-    }
-
-    /**
-     * 激活已经由 NFP 阶段创建的案例决策记录，供后续矩形排样继续追加决策。
-     *
-     * @param episodeId 当前案例的稳定标识；通常使用不含扩展名的案例文件名。
-     */
-    public void activateEpisode(String episodeId) {
-        if (!isEnabled()) {
-            return;
-        }
-        activeEpisodeId = normalizeEpisodeId(episodeId);
-        episodeDecisions.computeIfAbsent(activeEpisodeId, ignored -> new ArrayList<>());
     }
 
     /**
      * 记录一项已执行的局部 Q 决策，等待案例结束时接受终局奖励强化。
      *
-     * @param phase 执行动作所属的 NFP 拼接或排样阶段。
+     * @param phase 执行动作所属的矩形排样阶段。
      * @param stateKey 执行动作时的离散状态编号。
      * @param actionIndex 已执行动作在对应阶段 Q 表中的索引。
      */
@@ -163,7 +151,7 @@ public final class QLearningSession implements AutoCloseable {
     }
 
     /**
-     * 使用当前活动案例的最终排样结果，对其 NFP 和排样 Q 决策追加一次终局奖励强化。
+     * 使用当前活动案例的最终排样结果，对其矩形排样 Q 决策追加一次终局奖励强化。
      *
      * @param result 当前案例完整的优先级排样结果，包含 Sp、So、利用率和实际求解时间。
      */
@@ -262,7 +250,8 @@ public final class QLearningSession implements AutoCloseable {
                                         Map<SearchPhase, TabularQController> controllers) throws IOException {
         Files.createDirectories(tableFile.getParent());
         Properties properties = new Properties();
-        properties.setProperty("schemaVersion", "2");
+        // 版本 4 起模型仅包含矩形排样与普通件插入阶段，不再保存 NFP 拼接 Q 表。
+        properties.setProperty("schemaVersion", "4");
         for (Map.Entry<SearchPhase, TabularQController> entry : controllers.entrySet()) {
             entry.getValue().saveTo(properties, entry.getKey().name().toLowerCase());
         }
@@ -385,7 +374,6 @@ public final class QLearningSession implements AutoCloseable {
      */
     private static int actionCountFor(SearchPhase phase) {
         return switch (phase) {
-            case NFP_STITCH -> NFP_ACTION_COUNT;
             case FILL_MODE -> FILL_MODE_ACTION_COUNT;
             case FILL_SPACE -> FILL_SPACE_ACTION_COUNT;
             case FILL_ITEM -> FILL_ITEM_ACTION_COUNT;

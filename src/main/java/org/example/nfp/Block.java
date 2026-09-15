@@ -131,6 +131,53 @@ public class Block {
     }
 
     /**
+     * 返回最近一次 NFP 拼接的归一化 Sbox。
+     *
+     * @return {@code Sbox / (A 外接框面积 + B 外接框面积)}；单件 Block 返回 0。
+     */
+    public double lastNormalizedSBox() {
+        if (placements.size() < 2) {
+            return 0.0;
+        }
+        return placements.get(placements.size() - 1).candidateNormalizedSBox;
+    }
+
+    /**
+     * 返回最近一次 NFP 拼接的原始 Sbox 面积节省量。
+     *
+     * @return {@code A 外接框面积 + B 外接框面积 - AB 外接框面积}；单件 Block 返回 0。
+     */
+    public double lastSBox() {
+        if (placements.size() < 2) {
+            return 0.0;
+        }
+        return placements.get(placements.size() - 1).candidateScore2;
+    }
+
+    /**
+     * 返回最近一次 NFP 拼接的 Sarea，即该次拼接带来的填充率增量。
+     *
+     * @return 最近一步的 Sarea；单件 Block 返回 0。
+     */
+    public double lastSArea() {
+        if (placements.size() < 2) {
+            return 0.0;
+        }
+        return placements.get(placements.size() - 1).candidateSArea;
+    }
+
+    /**
+     * 按给定权重重新计算最近一次 NFP 拼接的综合评分。
+     *
+     * @param sBoxWeight 归一化 Sbox 的权重。
+     * @param sAreaWeight Sarea 的权重。
+     * @return {@code sBoxWeight * normalizedSBox + sAreaWeight * Sarea}；单件 Block 返回 0。
+     */
+    public double lastWeightedStitchScore(double sBoxWeight, double sAreaWeight) {
+        return sBoxWeight * lastNormalizedSBox() + sAreaWeight * lastSArea();
+    }
+
+    /**
      * 返回 Block 中全部已放置工件的实际轮廓，所有轮廓处于 Block 的统一坐标系。
      *
      * 用途：复合 Block 继续做 NFP 拼接时，求解器必须看到每个成员，才能保留成员之间
@@ -271,6 +318,8 @@ public class Block {
         // 保存最终采用的 NFP 来源和 score2，便于追踪每个子物品进入组合块时的面积收益。
         public final String sourceType;
         public final double candidateScore2;
+        // 保存无量纲的 Sbox，供不同 Sbox/Sarea 权重的 Q-learning 动作公平比较。
+        public final double candidateNormalizedSBox;
         // 保存本次拼接的 Sarea，便于复核填充率提升量是否参与综合评分。
         public final double candidateSArea;
         // 保存本次拼接的综合 Score，供根级 Beam 延续 NFP 候选排序结果。
@@ -288,6 +337,7 @@ public class Block {
                               List<Point> placedPoints,
                               String sourceType,
                               double candidateScore2,
+                              double candidateNormalizedSBox,
                               double candidateSArea,
                               double candidateCombinedScore,
                               double candidateContactLength,
@@ -300,6 +350,7 @@ public class Block {
             this.placedPoints = Collections.unmodifiableList(copyPolygon(placedPoints));
             this.sourceType = sourceType;
             this.candidateScore2 = candidateScore2;
+            this.candidateNormalizedSBox = candidateNormalizedSBox;
             this.candidateSArea = candidateSArea;
             this.candidateCombinedScore = candidateCombinedScore;
             this.candidateContactLength = candidateContactLength;
@@ -311,12 +362,12 @@ public class Block {
         private static ItemPlacement fromItem(PolygonItem item) {
             return new ItemPlacement(item, 0, new Point(0, 0), item.points,
                     // 单件工件没有 NFP 拼接评分，新增的 Sarea 和综合 Score 等字段均使用 0。
-                    "SINGLE", 0, 0, 0, 0, 0, item.fillRate, false);
+                    "SINGLE", 0, 0, 0, 0, 0, 0, item.fillRate, false);
         }
 
         private static ItemPlacement fromCandidate(PolygonItem item, PolygonStitcher.StitchingCandidate candidate) {
             return new ItemPlacement(item, candidate.movingRotationDegrees, candidate.translation, candidate.translatedPolygonB,
-                    candidate.sourceType, candidate.sBox, candidate.sArea, candidate.combinedScore,
+                    candidate.sourceType, candidate.sBox, candidate.normalizedSBox, candidate.sArea, candidate.combinedScore,
                     candidate.contactLength,
                     candidate.minBoundaryDistance, candidate.combinedFillRate,
                     candidate.cavityInsertion);
@@ -329,6 +380,7 @@ public class Block {
                     Geometry.translatePolygon(placedPoints, offset),
                     sourceType,
                     candidateScore2,
+                    candidateNormalizedSBox,
                     candidateSArea,
                     candidateCombinedScore,
                     candidateContactLength,
