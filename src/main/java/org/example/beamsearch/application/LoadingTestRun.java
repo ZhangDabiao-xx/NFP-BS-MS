@@ -11,7 +11,7 @@ import java.nio.file.Paths;
 
 public class LoadingTestRun {
 
-    /** 排样与解优化的总时间预算，不包含 NFP 拼接和组块生成，单位为毫秒。 */
+    /** 全局重排优化的总时间预算，不包含初始排样、普通件插入、NFP 拼接和组块生成，单位为毫秒。 */
     private static final long TOTAL_SOLVE_TIME_MS = PackingRuntimeConfig.totalSolveTimeMs();
 
     /**
@@ -65,8 +65,8 @@ public class LoadingTestRun {
         System.out.println("total number of nestable workpieces：" + numOfWorkpiece);
 
         // 先求解优先件，再把优先件板材的剩余空间交给普通件。
-        // 600 秒由 PriorityFirstPacker 在各阶段之间统一分配，不能在这里
-        // 为每张板材重复传入一个独立搜索时间。
+        // 600 秒由 PriorityFirstPacker 在优先件和普通件全局重排阶段之间统一分配；
+        // 初始排样和普通件插入 Sp 独立计时，不扣减该预算。
         System.out.println("Start priority-first combined packing.");
         ExecutionResult exeResult = PriorityFirstPacker.solveWithTotalTime(
                 instances,
@@ -187,14 +187,17 @@ public class LoadingTestRun {
         System.setOut(oldout);
 
         System.out.printf(Locale.ROOT,
-                "结果: 工件数量 %d, 容器使用数量 %d, 容器数量 N %s, 平均利用率 Uagv %s%%, Sp %d, So %d, 耗时 %ss%n",
+                "结果: 工件数量 %d, 容器使用数量 %d, 容器数量 N %s, 平均利用率 Uagv %s%%, Sp %d, So %d, 初始排样耗时 %ss, 全局优化耗时 %ss, 插入耗时 %ss, 总排样耗时 %ss%n",
                 numOfWorkpiece,
                 containerCount,
                 formatDecimal(exeResult.equivalentContainerCount),
                 formatPercent(exeResult.actualAverageUtilization),
                 exeResult.priorityBoardCount,
                 exeResult.ordinaryBoardCount,
-                formatSeconds(exeResult.totalSolveTimeMs));
+                formatSeconds(exeResult.initialPackingTimeMs),
+                formatSeconds(exeResult.totalSolveTimeMs),
+                formatSeconds(exeResult.ordinaryInsertionTimeMs),
+                formatSeconds(exeResult.totalPackingTimeMs));
         if (numOfWorkpiece == workpieceNum) {
             System.out.println("The algorithm executed successfully and the optimization results have been output.");
         } else {
@@ -204,17 +207,21 @@ public class LoadingTestRun {
                 formatDecimal(exeResult.equivalentContainerCount),
                 formatPercent(exeResult.actualAverageUtilization) + "%",
                 exeResult.priorityBoardCount + "", exeResult.ordinaryBoardCount + "",
-                formatSeconds(exeResult.totalSolveTimeMs) + "s"};
+                formatSeconds(exeResult.totalPackingTimeMs) + "s"};
     }
 
-    /** 将排样阶段的实际耗时写入总结果文件，便于核对全局时间预算。 */
+    /** 将初始排样、全局优化、插入与总排样时间写入结果文件。 */
     private static void writeSolveTiming(PrintWriter writer, ExecutionResult result) {
-        writer.println("Actual solve time: " + formatSeconds(result.totalSolveTimeMs) + "s");
+        writer.println("Initial packing time: " + formatSeconds(result.initialPackingTimeMs) + "s");
+        writer.println("Actual optimization time: " + formatSeconds(result.totalSolveTimeMs) + "s");
+        writer.println("Optimization time scope: global repacking only; initial packing and ordinary insertion excluded.");
         writer.println("Priority solve time: " + formatSeconds(result.prioritySolveTimeMs) + "s");
         writer.println("Priority optimize time: " + formatSeconds(result.priorityOptimizeTimeMs) + "s");
         writer.println("Ordinary insertion time: " + formatSeconds(result.ordinaryInsertionTimeMs) + "s");
         writer.println("Ordinary solve time: " + formatSeconds(result.ordinarySolveTimeMs) + "s");
         writer.println("Ordinary optimize time: " + formatSeconds(result.ordinaryOptimizeTimeMs) + "s");
+        writer.println("Total packing time (including ordinary insertion): "
+                + formatSeconds(result.totalPackingTimeMs) + "s");
     }
 
     private static String formatSeconds(long timeMs) {

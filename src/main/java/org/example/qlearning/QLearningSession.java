@@ -29,7 +29,8 @@ public final class QLearningSession implements AutoCloseable {
     private static final String TABLE_FILE_NAME = "packing-q-tables.properties";
     private static final String TRACE_FILE_NAME = "packing-q-trace.csv";
     private static final int PACKING_ACTION_COUNT = 7;
-    private static final int FILL_MODE_ACTION_COUNT = 3;
+    /** Sp 普通件插入模式动作数：候选件整体重排、旧四角、最低利用率 Sp 重排、左下角。 */
+    private static final int FILL_MODE_ACTION_COUNT = 4;
     private static final int FILL_SPACE_ACTION_COUNT = 2;
     private static final int FILL_ITEM_ACTION_COUNT = 3;
     /** 单个案例最多保留的终局强化动作数，防止超大案例占用无界内存。 */
@@ -250,8 +251,8 @@ public final class QLearningSession implements AutoCloseable {
                                         Map<SearchPhase, TabularQController> controllers) throws IOException {
         Files.createDirectories(tableFile.getParent());
         Properties properties = new Properties();
-        // 版本 4 起模型仅包含矩形排样与普通件插入阶段，不再保存 NFP 拼接 Q 表。
-        properties.setProperty("schemaVersion", "4");
+        // 版本 5 起 FILL_MODE 新增“候选普通件整体重排”动作，旧三动作表会自动跳过。
+        properties.setProperty("schemaVersion", "5");
         for (Map.Entry<SearchPhase, TabularQController> entry : controllers.entrySet()) {
             entry.getValue().saveTo(properties, entry.getKey().name().toLowerCase());
         }
@@ -311,6 +312,8 @@ public final class QLearningSession implements AutoCloseable {
                 : clamp((double) totalLowerBound
                 / Math.max(1.0, result.equivalentContainerCount), 0.0, 1.0);
         double actualUtilization = clamp(result.actualAverageUtilization, 0.0, 1.0);
+        // totalSolveTimeMs 只累计全局重排优化，因此初始排样与插入耗时不会改变
+        // Q-learning 对排样动作质量的终局时间惩罚。
         double timePenalty = clamp(result.totalSolveTimeMs
                 / Math.max(1.0, PackingRuntimeConfig.totalSolveTimeMs()), 0.0, 1.0);
 

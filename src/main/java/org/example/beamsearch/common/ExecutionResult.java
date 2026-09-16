@@ -27,8 +27,27 @@ public class ExecutionResult {
     public long ordinarySolveTimeMs;
     /** 普通件新板全局优化阶段实际耗时，单位为毫秒。 */
     public long ordinaryOptimizeTimeMs;
-    /** 上述排样和优化阶段的总实际耗时，单位为毫秒。 */
+    /**
+     * 优先件与普通件全局重排优化的累计耗时，单位为毫秒。
+     *
+     * <p>该值不包含初始 Beam 排样和普通件插入，并受
+     * {@code packing.totalSolveTimeMs} 限制。保留原字段名，以兼容已有的
+     * Q-learning 时间惩罚和实验汇总读取逻辑。</p>
+     */
     public long totalSolveTimeMs;
+    /**
+     * 优先件与普通件新板初始排样的累计耗时，单位为毫秒。
+     *
+     * <p>初始排样必须产生完整解，因此不受全局重排优化预算限制。</p>
+     */
+    public long initialPackingTimeMs;
+    /**
+     * 优先件排样开始至整个排样结束的总墙钟耗时，单位为毫秒。
+     *
+     * <p>该值包含普通件插入 Sp 的全部耗时，用于评价一次案例求解实际花费的时间，
+     * 因此允许大于 {@link #totalSolveTimeMs}。</p>
+     */
+    public long totalPackingTimeMs;
     /** 原有基于近似矩形面积计算的平均利用率，单位为百分比。 */
     public double avgUtilization;
     /** 每张最终使用容器的真实工件面积利用率 U，按 solutions 顺序保存，取值为 [0, 1]。 */

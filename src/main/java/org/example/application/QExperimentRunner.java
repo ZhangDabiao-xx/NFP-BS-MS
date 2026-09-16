@@ -257,6 +257,7 @@ public final class QExperimentRunner {
             double equivalentContainerCount = Double.NaN;
             double actualUtilization = Double.NaN;
             double solveTimeSeconds = Double.NaN;
+            double totalPackingTimeSeconds = Double.NaN;
             for (String line : Files.readAllLines(totalFile, StandardCharsets.UTF_8)) {
                 if (line.startsWith("Priority containers (Sp):")) {
                     priorityBoards = parseIntValue(line);
@@ -270,14 +271,16 @@ public final class QExperimentRunner {
                     equivalentContainerCount = parseDoubleValue(line);
                 } else if (line.startsWith("Actual average utilization (Uagv):")) {
                     actualUtilization = parseDoubleValue(line);
-                } else if (line.startsWith("Actual solve time:")) {
+                } else if (line.startsWith("Actual optimization time:")) {
                     solveTimeSeconds = parseDoubleValue(line);
+                } else if (line.startsWith("Total packing time (including ordinary insertion):")) {
+                    totalPackingTimeSeconds = parseDoubleValue(line);
                 }
             }
             String caseName = totalFile.getParent().getFileName().toString();
             rows.add(new SummaryRow(stageName, round, caseName, priorityBoards,
                     ordinaryBoards, totalBoards, utilization, equivalentContainerCount,
-                    actualUtilization, solveTimeSeconds));
+                    actualUtilization, solveTimeSeconds, totalPackingTimeSeconds));
         }
         return rows;
     }
@@ -292,13 +295,14 @@ public final class QExperimentRunner {
     private static void writeSummary(Path summaryFile, List<SummaryRow> rows) throws IOException {
         Files.createDirectories(summaryFile.getParent());
         try (BufferedWriter writer = Files.newBufferedWriter(summaryFile, StandardCharsets.UTF_8)) {
-            writer.write("Stage,Round,Case,Sp,So,S,AverageUtilizationPercent,EquivalentContainerCount,ActualAverageUtilizationPercent,ActualSolveTimeSeconds");
+            writer.write("Stage,Round,Case,Sp,So,S,AverageUtilizationPercent,EquivalentContainerCount,ActualAverageUtilizationPercent,ActualOptimizationTimeSeconds,TotalPackingTimeSeconds");
             writer.newLine();
             for (SummaryRow row : rows) {
                 writer.write(row.stageName() + "," + row.round() + "," + row.caseName() + ","
                         + row.priorityBoards() + "," + row.ordinaryBoards() + "," + row.totalBoards() + ","
                         + row.utilization() + "," + row.equivalentContainerCount() + ","
-                        + row.actualUtilization() + "," + row.solveTimeSeconds());
+                        + row.actualUtilization() + "," + row.solveTimeSeconds() + ","
+                        + row.totalPackingTimeSeconds());
                 writer.newLine();
             }
         }
@@ -393,7 +397,8 @@ public final class QExperimentRunner {
      * @param utilization 原有近似矩形面积的平均利用率百分比。
      * @param equivalentContainerCount 等效容器数量 N；值越小表示容器使用效果越好。
      * @param actualUtilization 使用真实多边形面积计算的平均利用率 Uagv 百分比。
-     * @param solveTimeSeconds 实际求解时间，单位为秒。
+     * @param solveTimeSeconds 受 600 秒预算限制的全局重排优化时间，单位为秒。
+     * @param totalPackingTimeSeconds 包含普通件插入的总排样墙钟时间，单位为秒。
      */
     private record SummaryRow(String stageName,
                               int round,
@@ -404,7 +409,8 @@ public final class QExperimentRunner {
                               double utilization,
                               double equivalentContainerCount,
                               double actualUtilization,
-                              double solveTimeSeconds) {
+                              double solveTimeSeconds,
+                              double totalPackingTimeSeconds) {
     }
 
     /**

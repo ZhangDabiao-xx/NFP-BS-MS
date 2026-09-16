@@ -227,12 +227,28 @@ public class BeamSearch {
         long insertionStartMillis = System.currentTimeMillis();
         QFillInsertionPolicy.ModeDecision modeDecision = null;
         List<BoardStateSnapshot> effectiveSeedBoards = new ArrayList<>(seedBoards);
+        // Q-learning 关闭时，候选普通件整体重排是 Sp 插入阶段的固定基线。
+        // Q-learning 开启后，该模式与其余三种既有模式共同由 FILL_MODE 动作选择。
+        FillInsertionMode insertionMode = FillInsertionMode.CANDIDATE_ITEM_REPACK;
         if (qFillInsertionPolicy != null) {
             modeDecision = qFillInsertionPolicy.selectMode(effectiveSeedBoards);
-            activeInsertionAnchor = qFillInsertionPolicy.placementAnchorFor(modeDecision.mode());
-            if (modeDecision.mode() == FillInsertionMode.REPACK_LOWEST_UTILIZATION_BOARD) {
+            insertionMode = modeDecision.mode();
+            activeInsertionAnchor = qFillInsertionPolicy.placementAnchorFor(insertionMode);
+            if (insertionMode == FillInsertionMode.REPACK_LOWEST_UTILIZATION_BOARD) {
                 effectiveSeedBoards = repackLowestUtilizationPriorityBoard(effectiveSeedBoards, deadlineMillis);
             }
+        }
+
+        if (insertionMode == FillInsertionMode.CANDIDATE_ITEM_REPACK) {
+            ExecutionResult candidateRepackResult = packByCandidateItemRepacking(
+                    effectiveSeedBoards, allowedTypes, deadlineMillis);
+            if (qFillInsertionPolicy != null) {
+                long elapsedMillis = Math.max(0L, System.currentTimeMillis() - insertionStartMillis);
+                long allottedMillis = insertionAllottedMillis(deadlineMillis, insertionStartMillis);
+                qFillInsertionPolicy.observeMode(
+                        modeDecision, candidateRepackResult.boardStates, elapsedMillis, allottedMillis);
+            }
+            return candidateRepackResult;
         }
 
         GeneralBlock[] availableBlocks = new BlockGenerator(inst)
@@ -272,7 +288,10 @@ public class BeamSearch {
 
             int remainingBoards = remainingSeedBoards.size() + 1;
             long remainingTime = deadlineMillis - System.currentTimeMillis();
-            int boardTime = (int) Math.max(1, remainingTime / Math.max(1, remainingBoards));
+            // 插入阶段允许使用 Long.MAX_VALUE 表示不设总时限。必须先截断到 int
+            // 可表达范围，避免直接强制转换后溢出为负数，使单板搜索立即失效。
+            int boardTime = (int) Math.min(Integer.MAX_VALUE,
+                    Math.max(1L, remainingTime / Math.max(1, remainingBoards)));
 
             // 插入阶段使用动态宽度的集束搜索。初始宽度为 4，根节点
             // 生成 4*4 个候选，之后每层保留 4 个状态；完成当前宽度
@@ -293,7 +312,7 @@ public class BeamSearch {
         result.setAvgUtilization();
         if (qFillInsertionPolicy != null) {
             long elapsedMillis = Math.max(0L, System.currentTimeMillis() - insertionStartMillis);
-            long allottedMillis = Math.max(1L, deadlineMillis - insertionStartMillis);
+            long allottedMillis = insertionAllottedMillis(deadlineMillis, insertionStartMillis);
             qFillInsertionPolicy.observeMode(modeDecision, result.boardStates, elapsedMillis, allottedMillis);
         }
         return result;
@@ -491,6 +510,329 @@ public class BeamSearch {
         }
 
         return bestNode.state == null ? initialState : bestNode.state;
+    }
+
+    /**
+     * 使用“候选普通件整体重排”策略向既有 Sp 逐张插入普通件。
+     *
+     * <p>每次选择当前最大连续空闲区所在的 Sp，再依次尝试一个普通件。候选件先通过
+     * 矩形占用面积上界：当前板材中全部已放工件面积加候选面积超过板材面积时必定失败；
+     * 未超过时，把该 Sp 内所有优先件、已插入普通件及候选件一起重新进行单板排样。
+     * 仅当全部工件重新装入同一张板材时，才提交新布局并扣减该普通件数量。</p>
+     *
+     * @param seedBoards 优先件阶段输出的 Sp 板材快照；其中可能已含此前成功插入的普通件。
+     * @param allowedTypes 与 {@link #inst} 工件类型一一对应的普通件允许掩码。
+     * @param deadlineMillis 当前案例排样的全局绝对截止时间，单位为毫秒。
+     * @return 插入成功后的 Sp 布局及仍未插入的普通件数量。
+     */
+    private ExecutionResult packByCandidateItemRepacking(List<BoardStateSnapshot> seedBoards,
+                                                          boolean[] allowedTypes,
+                                                          long deadlineMillis) {
+        ExecutionResult result = new ExecutionResult();
+        int[] freeBoxes = initialFreeBoxes(allowedTypes);
+        List<BoardStateSnapshot> remainingBoards = new ArrayList<>(seedBoards);
+
+        while (!remainingBoards.isEmpty()) {
+            if (System.currentTimeMillis() >= deadlineMillis) {
+                appendUnchangedBoards(result, remainingBoards);
+                break;
+            }
+
+            int boardIndex = findLargestResidualSpaceBoard(remainingBoards);
+            BoardStateSnapshot selectedBoard = remainingBoards.remove(boardIndex);
+            BoardStateSnapshot updatedBoard = tryInsertCandidatesByRepacking(
+                    selectedBoard,
+                    freeBoxes,
+                    allowedTypes,
+                    remainingBoards.size() + 1,
+                    deadlineMillis);
+            result.solutions.add(updatedBoard.toSolution(inst));
+            result.boardStates.add(updatedBoard);
+        }
+
+        fillUnplacedBoxes(result, freeBoxes, allowedTypes);
+        result.setAvgUtilization();
+        return result;
+    }
+
+    /**
+     * 将未处理的 Sp 原样写入插入结果，保证全局时间耗尽时优先件板材不会丢失。
+     *
+     * @param result 正在构建的插入阶段结果。
+     * @param boards 尚未进行普通件插入的 Sp 板材快照。
+     */
+    private void appendUnchangedBoards(ExecutionResult result, List<BoardStateSnapshot> boards) {
+        for (BoardStateSnapshot board : boards) {
+            result.solutions.add(board.toSolution(inst));
+            result.boardStates.add(board);
+        }
+    }
+
+    /**
+     * 在一张指定 Sp 中按普通件优先级逐件执行“面积筛选—整体重排—提交或拒绝”。
+     *
+     * @param original 当前选定的 Sp 板材快照。
+     * @param freeBoxes 混合实例中每种普通件尚未使用的数量；成功时会原地扣减。
+     * @param allowedTypes 普通件类型允许掩码。
+     * @param remainingBoardCount 包含当前 Sp 在内、尚待处理的 Sp 数量，用于均分候选验证时间。
+     * @param deadlineMillis 当前案例排样的全局绝对截止时间，单位为毫秒。
+     * @return 已提交零个或多个普通件后的 Sp 快照；失败候选不会改变布局。
+     */
+    private BoardStateSnapshot tryInsertCandidatesByRepacking(BoardStateSnapshot original,
+                                                              int[] freeBoxes,
+                                                              boolean[] allowedTypes,
+                                                              int remainingBoardCount,
+                                                              long deadlineMillis) {
+        BoardStateSnapshot currentBoard = original;
+        Set<Integer> rejectedTypeIndexes = new HashSet<>();
+
+        while (System.currentTimeMillis() < deadlineMillis) {
+            CandidateItem candidate = nextCandidateItem(freeBoxes, allowedTypes, rejectedTypeIndexes);
+            if (candidate == null) {
+                break;
+            }
+
+            if (!passesCandidateAreaBound(currentBoard, candidate.box())) {
+                rejectedTypeIndexes.add(candidate.typeIndex());
+                continue;
+            }
+
+            long remainingCandidateCount = remainingCandidateItemCount(
+                    freeBoxes, allowedTypes, rejectedTypeIndexes);
+            long candidateDeadline = candidateRepackDeadline(
+                    deadlineMillis, remainingCandidateCount, remainingBoardCount);
+            BoardStateSnapshot repackedBoard = repackBoardWithCandidate(
+                    currentBoard, candidate.box(), candidateDeadline);
+            if (repackedBoard == null) {
+                // 本候选已经在当前 Sp 的完整重排中失败；继续测试下一个普通件类型。
+                rejectedTypeIndexes.add(candidate.typeIndex());
+                continue;
+            }
+
+            currentBoard = repackedBoard;
+            freeBoxes[candidate.typeIndex()]--;
+            // 同一种普通件仍可能有多个副本。已成功一次后允许继续测试下一副本；
+            // 先前失败的其他类型仍保持跳过，避免对同一布局反复做无效验证。
+        }
+        return currentBoard;
+    }
+
+    /**
+     * 从当前剩余普通件中选出下一个待尝试的物品类型。
+     *
+     * <p>候选顺序沿用原插入阶段的面积与综合尺寸评分排序；同一类型的不同旋转只代表
+     * 同一个物品，因为整体重排时会重新枚举该物品全部允许方向。</p>
+     *
+     * @param freeBoxes 各工件类型当前尚未使用的数量。
+     * @param allowedTypes 普通件类型允许掩码。
+     * @param rejectedTypeIndexes 当前 Sp 已完整重排失败、无需再次测试的类型下标集合。
+     * @return 下一个普通件候选；没有可测试物品时返回 {@code null}。
+     */
+    private CandidateItem nextCandidateItem(int[] freeBoxes,
+                                            boolean[] allowedTypes,
+                                            Set<Integer> rejectedTypeIndexes) {
+        GeneralBlock[] candidateBlocks = new BlockGenerator(inst).generateSingleBlock(true, allowedTypes);
+        sortInsertionBlocksByPriorityScore(candidateBlocks);
+        Set<Integer> inspectedTypeIndexes = new HashSet<>();
+        for (GeneralBlock block : candidateBlocks) {
+            if (block.component == null || block.component.length != 1 || block.cuboid.isEmpty()) {
+                continue;
+            }
+            int typeIndex = block.component[0];
+            if (!inspectedTypeIndexes.add(typeIndex)
+                    || rejectedTypeIndexes.contains(typeIndex)
+                    || typeIndex < 0
+                    || typeIndex >= freeBoxes.length
+                    || freeBoxes[typeIndex] <= 0) {
+                continue;
+            }
+            return new CandidateItem(typeIndex, inst.boxes[typeIndex]);
+        }
+        return null;
+    }
+
+    /**
+     * 用当前 Sp 占用面积和候选普通件面积执行必要条件筛选。
+     *
+     * @param board 当前 Sp 布局，包含优先件及此前成功插入的普通件。
+     * @param candidate 待尝试的一个普通件。
+     * @return 两者矩形面积和不超过板材面积时返回 {@code true}；否则候选必定无法装入。
+     */
+    private boolean passesCandidateAreaBound(BoardStateSnapshot board, Box candidate) {
+        if (board == null || candidate == null) {
+            return false;
+        }
+        double occupiedArea = 0.0;
+        for (PlacedCuboid placedCuboid : board.getPlacedCuboids()) {
+            occupiedArea += Math.max(0.0, placedCuboid.getVolume());
+        }
+        double boardArea = Math.max(1.0, (double) inst.length * inst.width);
+        return occupiedArea + Math.max(0.0, candidate.volume) <= boardArea + 1e-6;
+    }
+
+    /**
+     * 将一张 Sp 内全部现有工件与一个普通件重新执行单板 Beam Search 验证。
+     *
+     * @param board 当前 Sp 快照，包含必须保留的优先件和已插入普通件。
+     * @param candidate 待插入的普通件；本方法只尝试一个物理副本。
+     * @param candidateDeadlineMillis 本次候选验证允许使用的绝对截止时间，单位为毫秒。
+     * @return 全部工件确实装入同一张板材时返回重排后的快照；不能完整装入时返回 {@code null}。
+     */
+    private BoardStateSnapshot repackBoardWithCandidate(BoardStateSnapshot board,
+                                                         Box candidate,
+                                                         long candidateDeadlineMillis) {
+        if (board == null || candidate == null || System.currentTimeMillis() >= candidateDeadlineMillis) {
+            return null;
+        }
+
+        List<Box> temporaryBoxes = new ArrayList<>();
+        IdentityHashMap<Box, Box> canonicalBoxes = new IdentityHashMap<>();
+        for (PlacedCuboid placedCuboid : board.getPlacedCuboids()) {
+            if (placedCuboid.box == null) {
+                return null;
+            }
+            Box copiedBox = placedCuboid.box.copy();
+            copiedBox.count = 1;
+            temporaryBoxes.add(copiedBox);
+            canonicalBoxes.put(copiedBox, placedCuboid.box);
+        }
+        Box copiedCandidate = candidate.copy();
+        copiedCandidate.count = 1;
+        temporaryBoxes.add(copiedCandidate);
+        canonicalBoxes.put(copiedCandidate, candidate);
+
+        Instance candidateInstance = new Instance(inst, new ArrayList<>(temporaryBoxes));
+        SpaceManager candidateSpaceManager = new SpaceManager(
+                SpaceComparator.getSpaceComparator(candidateInstance, 1));
+        BeamSearch candidateSearch = new BeamSearch(candidateSpaceManager, candidateInstance);
+        int minContainerCount = (int) Math.max(0L,
+                (long) (candidateInstance.totalBoxVolume
+                        / Math.max(1L, (long) candidateInstance.length * candidateInstance.width)));
+        ExecutionResult candidateResult = candidateSearch.solveUntil(
+                candidateDeadlineMillis, minContainerCount);
+        if (!isCompleteSingleBoardRepack(candidateResult, temporaryBoxes.size())) {
+            return null;
+        }
+
+        List<PlacedCuboid> canonicalPlacements = new ArrayList<>(temporaryBoxes.size());
+        for (PlacedCuboid placedCuboid : candidateResult.solutions.get(0).getPlacedCuboid()) {
+            Box canonicalBox = canonicalBoxes.get(placedCuboid.box);
+            if (canonicalBox == null) {
+                return null;
+            }
+            canonicalPlacements.add(new PlacedCuboid(
+                    placedCuboid.x,
+                    placedCuboid.y,
+                    placedCuboid.length,
+                    placedCuboid.width,
+                    canonicalBox,
+                    placedCuboid.ortIdx));
+        }
+        List<Space> remainingSpaces = SpaceManager.calculateResidualSpaces(
+                inst.length, inst.width, canonicalPlacements);
+        return new BoardStateSnapshot(canonicalPlacements, remainingSpaces);
+    }
+
+    /**
+     * 判断候选整体重排是否确实只使用一张板材并放入了全部待验证工件。
+     *
+     * @param result 单板候选验证的求解结果。
+     * @param expectedPieceCount 当前 Sp 工件数加一个候选普通件后的应放置总数。
+     * @return 仅一张板、没有未放工件且放置数量匹配时返回 {@code true}。
+     */
+    private boolean isCompleteSingleBoardRepack(ExecutionResult result, int expectedPieceCount) {
+        if (result == null || result.solutions.size() != 1 || result.unplacedCounts == null) {
+            return false;
+        }
+        for (int unplacedCount : result.unplacedCounts) {
+            if (unplacedCount > 0) {
+                return false;
+            }
+        }
+        return result.solutions.get(0).getPlacedCuboid().size() == expectedPieceCount;
+    }
+
+    /**
+     * 按剩余普通件数量估算当前和后续 Sp 仍可能执行的候选验证次数。
+     *
+     * @param freeBoxes 各普通件类型尚未使用的数量。
+     * @param allowedTypes 普通件类型允许掩码。
+     * @param rejectedTypeIndexes 当前 Sp 已失败、不会再次验证的类型下标。
+     * @return 至少为 1 的剩余物理候选件数量估计。
+     */
+    private long remainingCandidateItemCount(int[] freeBoxes,
+                                             boolean[] allowedTypes,
+                                             Set<Integer> rejectedTypeIndexes) {
+        long count = 0L;
+        for (int index = 0; index < freeBoxes.length; index++) {
+            boolean allowed = allowedTypes == null
+                    || (index < allowedTypes.length && allowedTypes[index]);
+            if (allowed && !rejectedTypeIndexes.contains(index)) {
+                count += Math.max(0, freeBoxes[index]);
+            }
+        }
+        return Math.max(1L, count);
+    }
+
+    /**
+     * 为一次候选整体重排分配时间片。
+     *
+     * @param globalDeadlineMillis 插入阶段的绝对截止时间，单位为毫秒；
+     *                             {@link Long#MAX_VALUE} 表示插入阶段不设总时限。
+     * @param remainingCandidateCount 当前和后续待尝试的物理普通件数量估计。
+     * @param remainingBoardCount 包含当前 Sp 在内的尚待处理 Sp 数量。
+     * @return 本次候选验证的绝对截止时间；无总时限时仅受单次验证上限约束。
+     */
+    private long candidateRepackDeadline(long globalDeadlineMillis,
+                                         long remainingCandidateCount,
+                                         int remainingBoardCount) {
+        long now = System.currentTimeMillis();
+        long configuredLimit = PackingRuntimeConfig.candidateRepackTimeLimitMs();
+        if (globalDeadlineMillis == Long.MAX_VALUE) {
+            return addMillisSaturated(now, configuredLimit);
+        }
+        long remainingMillis = Math.max(0L, globalDeadlineMillis - now);
+        long attemptCount = Math.max(1L, remainingCandidateCount * Math.max(1, remainingBoardCount));
+        long fairShareMillis = Math.max(1L, remainingMillis / attemptCount);
+        long allocatedMillis = Math.max(1L, Math.min(fairShareMillis, configuredLimit));
+        return Math.min(globalDeadlineMillis, addMillisSaturated(now, allocatedMillis));
+    }
+
+    /**
+     * 计算不发生 long 溢出的未来时间戳。
+     *
+     * @param currentMillis 当前时间戳，单位为毫秒。
+     * @param durationMillis 需要增加的时长，单位为毫秒。
+     * @return 饱和到 {@link Long#MAX_VALUE} 的未来时间戳。
+     */
+    private long addMillisSaturated(long currentMillis, long durationMillis) {
+        if (durationMillis <= 0L || currentMillis >= Long.MAX_VALUE - durationMillis) {
+            return Long.MAX_VALUE;
+        }
+        return currentMillis + durationMillis;
+    }
+
+    /**
+     * 返回 Q-learning 插入模式局部奖励使用的时间预算。
+     *
+     * @param deadlineMillis 插入阶段截止时间；{@link Long#MAX_VALUE} 表示无总时限。
+     * @param insertionStartMillis 插入阶段开始时的系统时间戳，单位为毫秒。
+     * @return 有总时限时返回阶段预算；无总时限时返回 0，表示奖励不施加时间惩罚。
+     */
+    private long insertionAllottedMillis(long deadlineMillis, long insertionStartMillis) {
+        if (deadlineMillis == Long.MAX_VALUE) {
+            return 0L;
+        }
+        return Math.max(1L, deadlineMillis - insertionStartMillis);
+    }
+
+    /**
+     * 表示一次候选整体重排待尝试的普通件类型。
+     *
+     * @param typeIndex 候选在混合实例 {@link Instance#boxes} 中的数组下标。
+     * @param box 该候选的规范 Box 对象；成功后用于扣减对应剩余数量。
+     */
+    private record CandidateItem(int typeIndex, Box box) {
     }
 
     private BoardStateSnapshot createBoardStateSnapshot(Solution solution) {

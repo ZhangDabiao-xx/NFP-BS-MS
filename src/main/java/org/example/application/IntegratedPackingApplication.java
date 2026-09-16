@@ -23,9 +23,9 @@ import java.util.List;
 public final class IntegratedPackingApplication {
 
     /** 未传入命令行参数时使用的默认案例目录；需要时只修改这一处路径即可。 */
-    private static final Path DEFAULT_CASE_PATH = Path.of("data", "inputData2");
-    private static final String NFP_RESULT_DIRECTORY_NAME = "NFPJoint6_baseline";
-    private static final String PACKING_RESULT_DIRECTORY_NAME = "Result6_baseline";
+    private static final Path DEFAULT_CASE_PATH = Path.of("data", "inputData");
+    private static final String NFP_RESULT_DIRECTORY_NAME = "NFPJoint8_baseline";
+    private static final String PACKING_RESULT_DIRECTORY_NAME = "Result8_baseline";
     private static final String BRIDGE_DIRECTORY_NAME = "material";
     /**
      * 默认 Q-learning 模型目录，与任一次排样结果目录相互独立。
