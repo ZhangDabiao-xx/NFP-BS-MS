@@ -60,7 +60,7 @@ public class BatchBlockStitcher {
      * @throws IOException 当输入路径不可读、不是 JSON 案例，或结果文件无法写入时抛出
      */
     public static List<Path> stitchCases(Path casePath, Path outputDirectory) throws IOException {
-        return stitchCases(casePath, outputDirectory, configuredDefaultBeamWidth());
+        return stitchCases(casePath, outputDirectory, DEFAULT_BEAM_WIDTH);
     }
 
     /**
@@ -183,22 +183,7 @@ public class BatchBlockStitcher {
      * 与“AB、AC、AD 中保留前 w 个，后续 ACG 淘汰 AB”的要求一致。
      */
     public static List<Block> buildBlocks(List<PolygonItem> items) {
-        return buildBlocks(items, configuredDefaultBeamWidth());
-    }
-
-    /**
-     * 返回未显式传入 Beam 宽度时使用的 NFP 根搜索宽度。
-     *
-     * @return JVM 参数 {@code nfp.beamWidth} 的正整数值；未设置或非法时使用默认值 5。
-     */
-    private static int configuredDefaultBeamWidth() {
-        try {
-            int configured = Integer.parseInt(System.getProperty(
-                    "nfp.beamWidth", String.valueOf(DEFAULT_BEAM_WIDTH)));
-            return configured > 0 ? configured : DEFAULT_BEAM_WIDTH;
-        } catch (NumberFormatException exception) {
-            return DEFAULT_BEAM_WIDTH;
-        }
+        return buildBlocks(items, DEFAULT_BEAM_WIDTH);
     }
 
     public static List<Block> buildBlocks(List<PolygonItem> items, int beamWidth) {
@@ -898,7 +883,7 @@ public class BatchBlockStitcher {
                                                             int beamWidth) {
         int normalizedBeamWidth = Math.max(1, beamWidth);
         List<RootBeamState> orderedStates = new ArrayList<>(states);
-        // NFP 阶段不再参与 Q-learning；始终使用综合评分和几何特征的固定比较器。
+        // NFP 阶段始终使用综合评分和几何特征的固定比较器。
         orderedStates.sort(BatchBlockStitcher::compareRootStates);
         List<RootBeamState> selectedStates = new ArrayList<>();
         Set<String> signatures = new HashSet<>();
@@ -1370,7 +1355,7 @@ public class BatchBlockStitcher {
         // 显式输出 Sbox 别名；candidateScore2 保留用于兼容历史结果读取程序。
         writer.write(String.format(Locale.ROOT, "    candidateSBox=%.6f", placement.candidateScore2));
         writer.newLine();
-        // 输出归一化 Sbox，便于复核 Q-learning 的三档综合评分采用的无量纲输入。
+        // 输出归一化 Sbox，便于复核综合评分采用的无量纲输入。
         writer.write(String.format(Locale.ROOT, "    candidateNormalizedSBox=%.6f",
                 placement.candidateNormalizedSBox));
         writer.newLine();

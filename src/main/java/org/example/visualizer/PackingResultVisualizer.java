@@ -112,7 +112,7 @@ public final class PackingResultVisualizer {
      * @throws IOException 当排样结果无法读取或 PNG 文件无法写入时抛出
      */
     public static void main(String[] args) throws IOException {
-        String resultDiectory = "D:\\IDEA\\work\\NFP_BS\\NFPKSum\\data\\qlearningExperiments\\packingOnly_v1\\baseline\\packing";
+        String resultDiectory = "data/Result9_evaluate";
         String outputDirectory = "data\\visualResult9_baseline";
 
         String caseName = args.length == 3 ? args[2] : "";

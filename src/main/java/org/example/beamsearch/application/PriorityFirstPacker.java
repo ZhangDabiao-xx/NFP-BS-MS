@@ -8,10 +8,6 @@ import org.example.beamsearch.common.Instance;
 import org.example.beamsearch.common.Space;
 import org.example.beamsearch.common.SpaceComparator;
 import org.example.beamsearch.spacemanager.SpaceManager;
-import org.example.qlearning.QLearningSession;
-import org.example.qlearning.SearchPhase;
-import org.example.qlearning.packing.QFillInsertionPolicy;
-import org.example.qlearning.packing.QPackingPolicy;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -78,24 +74,6 @@ public final class PriorityFirstPacker {
      */
     public static ExecutionResult solveWithTotalTime(List<Instance> groupedInstances,
                                                      long totalTimeMs) {
-        return solveWithTotalTime(groupedInstances, totalTimeMs, QLearningSession.disabled());
-    }
-
-    /**
-     * 执行优先先排的完整流程，并在 Beam Search 候选排序中使用可选的 Q-learning 策略。
-     * 传入关闭的会话或 {@code null} 时，求解过程与原有启发式流程完全一致。
-     *
-     * @param groupedInstances 当前输入按颜色拆出的 Instance 列表。
-     * @param totalTimeMs 全局重排优化的总时间，单位为毫秒；初始排样和普通件插入不占用该预算。
-     * @param qLearningSession 本次案例共享的 Q-learning 会话；负责读取、更新和保存 Q 表。
-     * @return 合并后的最终排样结果，并包含各阶段实际耗时。
-     */
-    public static ExecutionResult solveWithTotalTime(List<Instance> groupedInstances,
-                                                     long totalTimeMs,
-                                                     QLearningSession qLearningSession) {
-        QLearningSession effectiveSession = qLearningSession == null
-                ? QLearningSession.disabled()
-                : qLearningSession;
         if (groupedInstances == null || groupedInstances.isEmpty()) {
             return emptyResult();
         }
@@ -136,9 +114,7 @@ public final class PriorityFirstPacker {
             long ordinarySolveStartNanos = System.nanoTime();
             ExecutionResult ordinaryResult = solveNewBoardsUntil(
                     ordinaryInstance,
-                    Long.MAX_VALUE,
-                    effectiveSession,
-                    SearchPhase.ORDINARY);
+                    Long.MAX_VALUE);
             long ordinarySolveTimeMs = elapsedMillis(ordinarySolveStartNanos);
 
             long ordinaryOptimizeStartNanos = System.nanoTime();
@@ -158,7 +134,6 @@ public final class PriorityFirstPacker {
                     ordinaryOptimizeTimeMs,
                     ordinaryOptimizeTimeMs,
                     elapsedMillis(solveStartNanos));
-            completeEpisode(effectiveSession, ordinaryResult);
             return ordinaryResult;
         }
 
@@ -175,9 +150,7 @@ public final class PriorityFirstPacker {
         long prioritySolveStartNanos = System.nanoTime();
         ExecutionResult priorityResult = solveNewBoardsUntil(
                 priorityInstance,
-                Long.MAX_VALUE,
-                effectiveSession,
-                SearchPhase.PRIORITY);
+                Long.MAX_VALUE);
         long prioritySolveTimeMs = elapsedMillis(prioritySolveStartNanos);
 
         // 目标函数首先最小化 Sp，因此必须在普通件插入前完成优先件全局优化。
@@ -199,11 +172,7 @@ public final class PriorityFirstPacker {
         Instance mixedInstance = new Instance(new ArrayList<>(allBoxes), mixedContainer);
         boolean[] ordinaryTypes = buildOrdinaryTypeMask(mixedInstance);
 
-        BeamSearch insertionSearch = new BeamSearch(
-                createSpaceManager(mixedInstance),
-                mixedInstance,
-                null,
-                createFillInsertionPolicy(effectiveSession, mixedInstance));
+        BeamSearch insertionSearch = new BeamSearch(createSpaceManager(mixedInstance), mixedInstance);
         long insertionStartNanos = System.nanoTime();
         // 普通件插入是独立阶段：不扣减全局重排优化的时间预算。候选整体
         // 重排仍通过 candidateRepackTimeLimitMs 限制单次验证，避免不可行候选无限搜索。
@@ -236,9 +205,7 @@ public final class PriorityFirstPacker {
             long ordinarySolveStartNanos = System.nanoTime();
             remainingResult = solveNewBoardsUntil(
                     remainingOrdinaryInstance,
-                    Long.MAX_VALUE,
-                    effectiveSession,
-                    SearchPhase.ORDINARY);
+                    Long.MAX_VALUE);
             ordinarySolveTimeMs = elapsedMillis(ordinarySolveStartNanos);
 
             // 这里只优化普通件新开的板材。由于优先件板材已经在上一步锁定，
@@ -269,21 +236,7 @@ public final class PriorityFirstPacker {
                 ordinaryOptimizeTimeMs,
                 priorityOptimizeTimeMs + ordinaryOptimizeTimeMs,
                 elapsedMillis(solveStartNanos));
-        completeEpisode(effectiveSession, finalResult);
         return finalResult;
-    }
-
-    /**
-     * 在一个案例完整排样结束后，将最终目标质量反馈给该案例内发生的 Q 决策。
-     *
-     * @param qLearningSession 当前案例共享的 Q-learning 会话。
-     * @param result 已完成并填写阶段耗时的最终排样结果。
-     */
-    private static void completeEpisode(QLearningSession qLearningSession,
-                                        ExecutionResult result) {
-        if (qLearningSession != null && qLearningSession.isEnabled()) {
-            qLearningSession.completeActiveEpisode(result);
-        }
     }
 
     /**
@@ -291,20 +244,13 @@ public final class PriorityFirstPacker {
      *
      * @param instance 当前阶段待排的矩形实例。
      * @param deadlineMillis 新板排样的绝对截止时间戳；传入 {@link Long#MAX_VALUE} 表示必须完整排样。
-     * @param qLearningSession 当前案例共享的 Q-learning 会话。
-     * @param phase 当前求解阶段，用于选择独立的 Q 表。
      * @return 当前实例的排样结果。
      */
     private static ExecutionResult solveNewBoardsUntil(Instance instance,
-                                                       long deadlineMillis,
-                                                       QLearningSession qLearningSession,
-                                                       SearchPhase phase) {
+                                                       long deadlineMillis) {
         Comparator<Space> comparator = SpaceComparator.getSpaceComparator(instance, 1);
         SpaceManager spaceManager = new SpaceManager(comparator);
-        BeamSearch beamSearch = new BeamSearch(
-                spaceManager,
-                instance,
-                createPackingPolicy(qLearningSession, phase));
+        BeamSearch beamSearch = new BeamSearch(spaceManager, instance);
 
         int minCon = 0;
         long boardArea = (long) instance.length * instance.width;
@@ -317,40 +263,6 @@ public final class PriorityFirstPacker {
         return result;
     }
 
-    /**
-     * 为一个排样阶段创建 Q-learning 候选策略。
-     *
-     * @param qLearningSession 当前案例共享的 Q-learning 会话。
-     * @param phase 当前求解阶段。
-     * @return 已启用时返回策略；关闭 Q-learning 时返回 {@code null} 以保持旧路径不变。
-     */
-    private static QPackingPolicy createPackingPolicy(QLearningSession qLearningSession,
-                                                       SearchPhase phase) {
-        if (qLearningSession == null || !qLearningSession.isEnabled()) {
-            return null;
-        }
-        return new QPackingPolicy(qLearningSession, phase);
-    }
-
-    /**
-     * 为普通件填入既有优先件板材阶段创建分层 Q-learning 策略。
-     *
-     * <p>该策略替代旧的 {@link SearchPhase#FILL} 七动作联合排序，改为依次学习
-     * 插入模式、空闲空间排序和候选物品排序。Q-learning 关闭时返回 {@code null}，
-     * 此时 BeamSearch 会使用候选普通件整体重排这一固定基线；开启时仍可从该基线和
-     * 三种既有极大空间插入模式中学习选择。</p>
-     *
-     * @param qLearningSession 当前案例共享的 Q-learning 会话。
-     * @param mixedInstance 同时包含优先件与普通件的排样实例。
-     * @return 已启用时返回分层插入策略；关闭时返回 {@code null}。
-     */
-    private static QFillInsertionPolicy createFillInsertionPolicy(QLearningSession qLearningSession,
-                                                                   Instance mixedInstance) {
-        if (qLearningSession == null || !qLearningSession.isEnabled()) {
-            return null;
-        }
-        return new QFillInsertionPolicy(qLearningSession, mixedInstance);
-    }
 
     private static List<Box> collectBoxes(List<Instance> instances) {
         List<Box> boxes = new ArrayList<>();

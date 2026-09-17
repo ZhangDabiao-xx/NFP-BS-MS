@@ -318,7 +318,7 @@ public class Block {
         // 保存最终采用的 NFP 来源和 score2，便于追踪每个子物品进入组合块时的面积收益。
         public final String sourceType;
         public final double candidateScore2;
-        // 保存无量纲的 Sbox，供不同 Sbox/Sarea 权重的 Q-learning 动作公平比较。
+        // 保存无量纲的 Sbox，供不同 Sbox/Sarea 权重的综合评分公平比较。
         public final double candidateNormalizedSBox;
         // 保存本次拼接的 Sarea，便于复核填充率提升量是否参与综合评分。
         public final double candidateSArea;

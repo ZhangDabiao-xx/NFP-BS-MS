@@ -32,7 +32,7 @@ public class ExecutionResult {
      *
      * <p>该值不包含初始 Beam 排样和普通件插入，并受
      * {@code packing.totalSolveTimeMs} 限制。保留原字段名，以兼容已有的
-     * Q-learning 时间惩罚和实验汇总读取逻辑。</p>
+     * 统一结果汇总逻辑。</p>
      */
     public long totalSolveTimeMs;
     /**

@@ -94,7 +94,7 @@ public class State {
      *
      * <p>这里使用 {@link GeneralBlock#blockVolume}，而非多边形材料实际面积
      * {@link GeneralBlock#boxVolume}。前者才是 Beam Search 空间切分时已被占据的
-     * 矩形区域，适合用于 Q-learning 的碎片率和空间利用状态。</p>
+     * 矩形区域，便于后续的候选空间分析。</p>
      *
      * @return 已放置矩形块的占用面积之和，包含固定优先件和当前阶段新放置的普通件
      */
