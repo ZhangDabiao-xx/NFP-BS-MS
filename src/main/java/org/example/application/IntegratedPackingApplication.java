@@ -24,8 +24,8 @@ public final class IntegratedPackingApplication {
 
     /** 未传入命令行参数时使用的默认案例目录；需要时只修改这一处路径即可。 */
     private static final Path DEFAULT_CASE_PATH = Path.of("data", "inputData");
-    private static final String NFP_RESULT_DIRECTORY_NAME = "NFPJoint8_baseline";
-    private static final String PACKING_RESULT_DIRECTORY_NAME = "Result8_baseline";
+    private static final String NFP_RESULT_DIRECTORY_NAME = "NFPJoint9_evaluate";
+    private static final String PACKING_RESULT_DIRECTORY_NAME = "Result9_evaluate";
     private static final String BRIDGE_DIRECTORY_NAME = "material";
     /**
      * 默认 Q-learning 模型目录，与任一次排样结果目录相互独立。
@@ -112,6 +112,39 @@ public final class IntegratedPackingApplication {
                            QLearningConfig qLearningConfig,
                            Path qLearningDirectory) throws IOException {
         Files.createDirectories(nfpResultDirectory);
+        // 常规单次求解仍在这里生成 NFP 结果；自动 Q-learning 实验会调用下面的
+        // runWithPreparedNfpResults()，复用同一份已经生成的 NFP 结果。
+        List<Path> nfpResultFiles = BatchBlockStitcher.stitchCases(casePath, nfpResultDirectory);
+        runWithPreparedNfpResults(
+                casePath,
+                nfpResultFiles,
+                packingResultDirectory,
+                qLearningConfig,
+                qLearningDirectory);
+    }
+
+    /**
+     * 基于已经生成的 NFP 拼接结果执行矩形排样和可选 Q-learning。
+     *
+     * <p>该入口不重新运行 NFP 拼接。自动 Q-learning 实验用它让 baseline、每轮
+     * train、validation 与最终 evaluate 共享同一批 NFP block，从而确保各阶段唯一
+     * 的差异来自矩形排样与普通件插入策略。</p>
+     *
+     * @param casePath 单个案例 JSON 文件，或包含多个案例 JSON 文件的目录；用于匹配每个 NFP 文件的原始案例。
+     * @param nfpResultFiles 已完成 NFP 拼接的结果文件列表；必须与 {@code casePath} 中的案例同名。
+     * @param packingResultDirectory 当前 baseline、训练或评估阶段的独立排样结果目录。
+     * @param qLearningConfig 当前阶段使用的 Q-learning 配置。
+     * @param qLearningDirectory Q 表和训练轨迹目录；OFF 模式下可以为 {@code null}。
+     * @throws IOException 当 NFP 结果、案例文件、Q 表或排样结果无法读写时抛出。
+     */
+    public static void runWithPreparedNfpResults(Path casePath,
+                                                 List<Path> nfpResultFiles,
+                                                 Path packingResultDirectory,
+                                                 QLearningConfig qLearningConfig,
+                                                 Path qLearningDirectory) throws IOException {
+        if (nfpResultFiles == null || nfpResultFiles.isEmpty()) {
+            throw new IOException("没有可供排样复用的 NFP 拼接结果。");
+        }
         Files.createDirectories(packingResultDirectory);
 
         System.out.println("Q-learning 模式: " + qLearningConfig.mode());
@@ -122,13 +155,11 @@ public final class IntegratedPackingApplication {
         try (QLearningSession qLearningSession = QLearningSession.open(
                 qLearningConfig,
                 qLearningDirectory)) {
-            // NFP 拼接始终使用固定的确定性排序，不读取也不写入 Q-learning 表。
-            // 这样同一输入案例在 baseline、train、evaluate 中得到相同的矩形块集合，
-            // Q-learning 的学习对象只剩下后续的矩形排样与普通件插入决策。
-            List<Path> nfpResultFiles = BatchBlockStitcher.stitchCases(casePath, nfpResultDirectory);
             Path bridgeRootDirectory = packingResultDirectory.resolve(BRIDGE_DIRECTORY_NAME);
-
             for (Path nfpResultFile : nfpResultFiles) {
+                if (nfpResultFile == null || !Files.isRegularFile(nfpResultFile)) {
+                    throw new IOException("NFP 拼接结果不存在，无法复用: " + nfpResultFile);
+                }
                 Path caseJsonFile = resolveCaseJsonFile(casePath, nfpResultFile);
                 qLearningSession.beginEpisode(caseName(caseJsonFile));
                 Path casePackingDirectory = NFPToBeamSearchBridge.packCase(

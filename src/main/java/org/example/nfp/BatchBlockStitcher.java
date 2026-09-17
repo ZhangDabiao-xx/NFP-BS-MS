@@ -83,6 +83,7 @@ public class BatchBlockStitcher {
         }
         Files.createDirectories(outputDirectory);
 
+        //判断是否为单个案例，如果是当案例，这按照单个案例求解。
         if (Files.isRegularFile(casePath)) {
             if (!casePath.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".json")) {
                 throw new IOException("案例文件必须是 .json: " + casePath);
@@ -128,7 +129,7 @@ public class BatchBlockStitcher {
         }
 
         Files.createDirectories(outputDirectory);
-        List<PolygonItem> items = readItems(inputFile);
+        List<PolygonItem> items = readItems(inputFile);//读取物品信息
         // 仅统计第一阶段组块搜索耗时，避免文件写入时间干扰每个案例的求解时间判断。
         long solveStartNanos = System.nanoTime();
         List<Block> blocks = buildBlocks(items, beamWidth);

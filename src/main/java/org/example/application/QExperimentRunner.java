@@ -1,5 +1,6 @@
 package org.example.application;
 
+import org.example.nfp.BatchBlockStitcher;
 import org.example.qlearning.QLearningConfig;
 import org.example.qlearning.QMode;
 
@@ -18,8 +19,8 @@ import java.util.Locale;
  * 在不新增 main 入口的前提下，自动执行 Q-learning 基线、连续训练、评估与结果汇总。
  *
  * <p>由 {@link IntegratedPackingApplication} 在设置 JVM 属性
- * {@code qlearning.experiment.trainRounds} 后调用。所有轮次共用一个模型目录，
- * 但每个阶段和训练轮次拥有独立的 NFP、排样及轨迹归档目录。默认每轮训练都会
+ * {@code qlearning.experiment.trainRounds} 后调用。所有轮次共用一个模型目录和一份
+ * 固定的 NFP 拼接结果；每个阶段和训练轮次只拥有独立的排样及轨迹归档目录。默认每轮训练都会
  * 使用冻结的当轮 Q 表执行 validation，并按 {@code Sp -> Nb -> N -> Uagv -> 时间}
  * 选择冠军表；可用 {@code -Dqlearning.experiment.evaluateEveryRound=false} 关闭。
  * 若要开始独立实验，可用 {@code -Dqlearning.experiment.resetModel=true} 清除指定
@@ -38,6 +39,8 @@ public final class QExperimentRunner {
     private static final String TRACE_FILE_NAME = "packing-q-trace.csv";
     private static final String CHECKPOINT_DIRECTORY_NAME = "model-checkpoints";
     private static final String CHAMPION_MODEL_DIRECTORY_NAME = "champion-model";
+    /** 一个实验内全部阶段共享的 NFP 拼接结果目录。 */
+    private static final String SHARED_NFP_DIRECTORY_NAME = "nfp";
 
     private QExperimentRunner() {
     }
@@ -78,7 +81,17 @@ public final class QExperimentRunner {
         }
 
         System.out.println("开始自动 Q-learning 实验: " + experimentDirectory.toAbsolutePath());
-        summaryRows.addAll(runStage(casePath, experimentDirectory.resolve("baseline"), configured.withMode(QMode.OFF),
+        Path sharedNfpDirectory = experimentDirectory.resolve(SHARED_NFP_DIRECTORY_NAME);
+        // NFP 与 Q-learning 无关且已采用确定性规则，因此整个实验只生成一次。
+        // 后续全部阶段只读取这组文件，保证训练/评估面对完全一致的矩形 block。
+        System.out.println("生成本实验共享的 NFP 拼接结果: " + sharedNfpDirectory.toAbsolutePath());
+        List<Path> sharedNfpResultFiles = BatchBlockStitcher.stitchCases(casePath, sharedNfpDirectory);
+        if (sharedNfpResultFiles.isEmpty()) {
+            throw new IOException("未生成任何 NFP 拼接结果，无法启动 Q-learning 实验。");
+        }
+
+        summaryRows.addAll(runStage(casePath, sharedNfpResultFiles,
+                experimentDirectory.resolve("baseline"), configured.withMode(QMode.OFF),
                 modelDirectory, "baseline", 0));
 
         Path checkpointRoot = experimentDirectory.resolve(CHECKPOINT_DIRECTORY_NAME);
@@ -89,7 +102,8 @@ public final class QExperimentRunner {
         for (int round = 1; round <= trainingRounds; round++) {
             Path stageDirectory = experimentDirectory.resolve("training")
                     .resolve(String.format(Locale.ROOT, "round-%02d", round));
-            summaryRows.addAll(runStage(casePath, stageDirectory, configured.withMode(QMode.TRAIN),
+            summaryRows.addAll(runStage(casePath, sharedNfpResultFiles,
+                    stageDirectory, configured.withMode(QMode.TRAIN),
                     modelDirectory, "train", round));
             archiveTrace(modelDirectory, experimentDirectory.resolve("traces"), round);
 
@@ -98,7 +112,7 @@ public final class QExperimentRunner {
             if (evaluateEveryRound) {
                 Path validationDirectory = experimentDirectory.resolve("validation")
                         .resolve(String.format(Locale.ROOT, "round-%02d", round));
-                List<SummaryRow> validationRows = runStage(casePath, validationDirectory,
+                List<SummaryRow> validationRows = runStage(casePath, sharedNfpResultFiles, validationDirectory,
                         configured.withMode(QMode.EVALUATE), checkpointDirectory, "validation", round);
                 summaryRows.addAll(validationRows);
                 ChampionScore score = ChampionScore.from(validationRows);
@@ -118,7 +132,8 @@ public final class QExperimentRunner {
         }
         // 对外暴露的模型目录始终保存冠军，以便后续手动 EVALUATE 自动使用最佳表。
         copyModelTable(championModelDirectory, modelDirectory);
-        summaryRows.addAll(runStage(casePath, experimentDirectory.resolve("evaluation"), configured.withMode(QMode.EVALUATE),
+        summaryRows.addAll(runStage(casePath, sharedNfpResultFiles,
+                experimentDirectory.resolve("evaluation"), configured.withMode(QMode.EVALUATE),
                 championModelDirectory, "evaluate", 0));
         writeChampionMetadata(experimentDirectory, championRound, championScore, evaluateEveryRound);
         writeSummary(experimentDirectory.resolve("experiment-summary.csv"), summaryRows);
@@ -130,6 +145,7 @@ public final class QExperimentRunner {
      * 执行一个实验阶段，并从该阶段全部案例的 total.txt 汇总指标。
      *
      * @param casePath 当前实验使用的案例路径。
+     * @param sharedNfpResultFiles 本实验唯一一次 NFP 拼接生成的结果文件；所有阶段只读复用。
      * @param stageDirectory 当前阶段的独立输出目录。
      * @param config 当前阶段的 Q-learning 运行配置。
      * @param modelDirectory 所有训练与评估阶段共享的 Q 表目录。
@@ -139,16 +155,21 @@ public final class QExperimentRunner {
      * @throws IOException 当阶段执行或指标读取失败时抛出。
      */
     private static List<SummaryRow> runStage(Path casePath,
+                                             List<Path> sharedNfpResultFiles,
                                              Path stageDirectory,
                                              QLearningConfig config,
                                              Path modelDirectory,
                                              String stageName,
                                              int round) throws IOException {
-        Path nfpDirectory = stageDirectory.resolve("nfp");
         Path packingDirectory = stageDirectory.resolve("packing");
         System.out.printf(Locale.ROOT, "执行阶段 %s%s%n", stageName,
                 round <= 0 ? "" : " round " + round);
-        IntegratedPackingApplication.run(casePath, nfpDirectory, packingDirectory, config, modelDirectory);
+        IntegratedPackingApplication.runWithPreparedNfpResults(
+                casePath,
+                sharedNfpResultFiles,
+                packingDirectory,
+                config,
+                modelDirectory);
         return readStageSummary(packingDirectory, stageName, round);
     }
 
