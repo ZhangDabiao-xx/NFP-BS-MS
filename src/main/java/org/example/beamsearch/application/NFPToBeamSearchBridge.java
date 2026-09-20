@@ -14,15 +14,15 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * NFP 组块结果 → BeamSearch 排样 的桥接主程序。
+ * NFP 组块结果 → BeamSearch 排样的桥接服务。
  *
  * 流程:
- *   1. 读取 data/newOutputData10/{case}.txt（NFP 拼接结果）
- *   2. 读取 data/inputData/{case}.json（获取板材尺寸）
- *   3. 生成 data/materialData/{case}/material.csv（板材信息）
- *   4. 生成 data/materialData/{case}/workpiece（矩形排样输入，逗号分隔）
+ *   1. 读取单案例 NFP 拼接文本结果
+ *   2. 读取对应案例 JSON（获取板材尺寸）
+ *   3. 生成 bridge/{case}/material.csv（板材信息）
+ *   4. 生成 bridge/{case}/workpiece（矩形排样输入，逗号分隔）
  *   5. 调用 LoadingTestRun.runWithImprove() 执行排样
- *   6. 生成 data/packResult5/{case}/polygons.json（供独立可视化使用）
+ *   6. 生成 result/{case}/polygons.json（供独立可视化使用）
  *
  * 生成文件格式:
  *   material.csv（逗号分隔）:
@@ -30,7 +30,7 @@ import java.util.regex.Pattern;
  *     0,2440,1220,0
  *
  *   workpiece（逗号分隔，首行为表头会被跳过）:
- *     BatchNo UPI Qty Color Length Width IsSpecial Rotatable
+ *     BatchNo UPI Qty Color Length Width IsSpecial Rotatable ActualWorkpieceArea
  *
  *   polygons.json（独立可视化用）:
  *     JSON 数组，每项对应一个 block，包含 UPI、外轮廓、子 item 的 id 及多边形顶点。
@@ -38,11 +38,6 @@ import java.util.regex.Pattern;
  *     使每个 item 单独可辨。
  */
 public class NFPToBeamSearchBridge {
-
-    private static final Path DEFAULT_OUTPUT_DIR = Path.of("data", "NFPJoint1");
-    private static final Path DEFAULT_INPUT_DIR  = Path.of("data", "inputData");
-    private static final Path DEFAULT_BRIDGE_DIR = Path.of("data", "material1");
-    private static final Path DEFAULT_RESULT_DIR = Path.of("data", "Result1");
 
     // ---------- 数据模型 ----------
 
@@ -83,50 +78,39 @@ public class NFPToBeamSearchBridge {
         }
     }
 
-    // ---------- 入口 ----------
-
-    public static void main(String[] args) throws IOException {
-        Path outputDir  = args.length > 0 ? Path.of(args[0]) : DEFAULT_OUTPUT_DIR;
-        Path inputDir   = args.length > 1 ? Path.of(args[1]) : DEFAULT_INPUT_DIR;
-        Path bridgeDir  = args.length > 2 ? Path.of(args[2]) : DEFAULT_BRIDGE_DIR;
-        Path resultDir  = args.length > 3 ? Path.of(args[3]) : DEFAULT_RESULT_DIR;
-
-        Files.createDirectories(bridgeDir);
-        Files.createDirectories(resultDir);
-
-        List<Path> txtFiles;
-        try (var stream = Files.list(outputDir)) {
-            txtFiles = stream
-                    .filter(p -> p.getFileName().toString().endsWith(".txt"))
-                    .sorted(Comparator.comparing(p -> p.getFileName().toString()))
-                    .toList();
+    /**
+     * 将一个 NFP 拼接结果转换为矩形排样输入并完成优先级排样。
+     *
+     * @param nfpResultFile NFP 拼接阶段输出的单案例 {@code .txt} 文件
+     * @param caseJsonFile 与 NFP 结果同案例的原始 JSON 文件，用于读取板材尺寸
+     * @param bridgeRootDirectory 中间 {@code material.csv}/{@code workpiece} 文件的根目录
+     * @param packingResultRootDirectory 排样结果的根目录；每个案例写入一个同名子目录
+     * @return 当前案例的排样结果目录
+     * @throws IOException 当拼接结果、案例文件或排样结果文件无法读写时抛出
+     */
+    public static Path packCase(Path nfpResultFile,
+                                Path caseJsonFile,
+                                Path bridgeRootDirectory,
+                                Path packingResultRootDirectory) throws IOException {
+        if (nfpResultFile == null || !Files.isRegularFile(nfpResultFile)) {
+            throw new IOException("NFP 拼接结果不存在: " + nfpResultFile);
+        }
+        if (caseJsonFile == null || !Files.isRegularFile(caseJsonFile)) {
+            throw new IOException("案例 JSON 不存在: " + caseJsonFile);
         }
 
-        for (Path txtFile : txtFiles) {
-            String caseName = stripExtension(txtFile.getFileName().toString());
-            Path jsonFile = inputDir.resolve(caseName + ".json");
-            if (!Files.exists(jsonFile)) {
-                System.out.println("[跳过] 找不到 JSON: " + jsonFile);
-                continue;
-            }
-            processCase(caseName, txtFile, jsonFile, bridgeDir, resultDir);
-        }
-    }
-
-    // ---------- 单案例处理 ----------
-
-    static void processCase(String caseName, Path txtFile, Path jsonFile,
-                            Path bridgeDir, Path resultDir) throws IOException {
+        String caseName = stripExtension(caseJsonFile.getFileName().toString());
+        Files.createDirectories(bridgeRootDirectory);
+        Files.createDirectories(packingResultRootDirectory);
         System.out.println("处理案例: " + caseName);
 
-        List<BlockRecord> blocks = parseBlocks(txtFile);
+        List<BlockRecord> blocks = parseBlocks(nfpResultFile);
         if (blocks.isEmpty()) {
-            System.out.println("  无 block，跳过");
-            return;
+            throw new IOException("NFP 拼接结果中未解析到 block: " + nfpResultFile);
         }
         System.out.printf("  解析 block: %d 个%n", blocks.size());
 
-        double[] plate = readPlate(jsonFile);
+        double[] plate = readPlate(caseJsonFile);
         double plateW = plate[0];
         double plateH = plate[1];
         System.out.printf("  板材: %.0f x %.0f%n", plateW, plateH);
@@ -137,7 +121,7 @@ public class NFPToBeamSearchBridge {
         }
         System.out.printf("  颜色组: %s%n", colors);
 
-        Path caseBridgeDir = bridgeDir.resolve(caseName);
+        Path caseBridgeDir = bridgeRootDirectory.resolve(caseName);
         Files.createDirectories(caseBridgeDir);
 
         Path materialPath = caseBridgeDir.resolve("material.csv");
@@ -148,7 +132,7 @@ public class NFPToBeamSearchBridge {
         writeWorkpiece(workpiecePath, caseName, blocks);
         System.out.println("  写入: " + workpiecePath);
 
-        Path caseResultDir = resultDir.resolve(caseName);
+        Path caseResultDir = packingResultRootDirectory.resolve(caseName);
         Files.createDirectories(caseResultDir);
         System.out.println("  开始排样...");
         long start = System.currentTimeMillis();
@@ -156,18 +140,19 @@ public class NFPToBeamSearchBridge {
         String[] summary = LoadingTestRun.runWithImprove(
                 materialPath.toString(),
                 workpiecePath.toString(),
-                caseResultDir.toString() + File.separator);
+                caseResultDir.toString());
 
         long elapsed = System.currentTimeMillis() - start;
         System.out.printf("  完成 (%.1fs)%n", elapsed / 1000.0);
         if (summary != null) {
-            System.out.printf("  结果: %s 工件, %s 张板, 利用率 %s, 耗时 %s%n",
-                    summary[1], summary[2], summary[3], summary[4]);
+            System.out.printf("  结果: 工件数量 %s, 容器使用数量 %s, 容器数量 N %s, 平均利用率 Uagv %s, Sp %s, So %s, 耗时 %s%n",
+                    summary[1], summary[2], summary[3], summary[4], summary[5], summary[6], summary[7]);
         }
 
         Path polygonJsonPath = caseResultDir.resolve("polygons.json");
         writePolygonJson(polygonJsonPath, blocks);
         System.out.println("  写入: " + polygonJsonPath);
+        return caseResultDir;
     }
 
     // ---------- outputData 解析 ----------
@@ -324,7 +309,7 @@ public class NFPToBeamSearchBridge {
     static void writeWorkpiece(Path path, String caseName, List<BlockRecord> blocks) throws IOException {
         try (PrintWriter pw = new PrintWriter(new BufferedWriter(
                 new OutputStreamWriter(new FileOutputStream(path.toFile()), StandardCharsets.UTF_8)))) {
-            pw.println("BatchNo,UPI,Qty,Color,Length,Width,IsSpecial,Rotatable");
+            pw.println("BatchNo,UPI,Qty,Color,Length,Width,IsSpecial,Rotatable,ActualWorkpieceArea");
 
             int seq = 0;
             for (BlockRecord block : blocks) {
@@ -338,11 +323,48 @@ public class NFPToBeamSearchBridge {
                 String color     = block.backFrontPriority ? "1" : "0";
                 String isSpecial = "0";
                 String rotatable = canRotateInBeamSearch(block.rotate) ? "0" : "1";
+                double actualWorkpieceArea = calculateBlockActualArea(block);
 
-                pw.printf(Locale.ROOT, "%s,%s,%s,%s,%.4f,%.4f,%s,%s%n",
-                        batchNo, upi, qty, color, w, h, isSpecial, rotatable);
+                pw.printf(Locale.ROOT, "%s,%s,%s,%s,%.4f,%.4f,%s,%s,%.4f%n",
+                        batchNo, upi, qty, color, w, h, isSpecial, rotatable, actualWorkpieceArea);
             }
         }
+    }
+
+    /**
+     * 计算一个 NFP 组块内所有真实工件的面积和。
+     *
+     * @param block 已解析的 NFP 组块；组合块使用每个子件的原始多边形，简单块使用外轮廓。
+     * @return 工件真实面积和；顶点不足三条时返回 0。
+     */
+    private static double calculateBlockActualArea(BlockRecord block) {
+        List<ItemRecord> items = block.items.isEmpty()
+                ? List.of(new ItemRecord(block.id, block.outline, block.outline))
+                : block.items;
+        double totalArea = 0.0;
+        for (ItemRecord item : items) {
+            totalArea += polygonArea(item.originalPoints);
+        }
+        return totalArea;
+    }
+
+    /**
+     * 使用鞋带公式计算一个简单多边形的绝对面积。
+     *
+     * @param points 按边界顺序给出的二维顶点列表。
+     * @return 多边形面积；顶点不足三条时返回 0。
+     */
+    private static double polygonArea(List<double[]> points) {
+        if (points == null || points.size() < 3) {
+            return 0.0;
+        }
+        double twiceArea = 0.0;
+        for (int i = 0; i < points.size(); i++) {
+            double[] current = points.get(i);
+            double[] next = points.get((i + 1) % points.size());
+            twiceArea += current[0] * next[1] - next[0] * current[1];
+        }
+        return Math.abs(twiceArea) / 2.0;
     }
 
     /**

@@ -27,9 +27,37 @@ public class ExecutionResult {
     public long ordinarySolveTimeMs;
     /** 普通件新板全局优化阶段实际耗时，单位为毫秒。 */
     public long ordinaryOptimizeTimeMs;
-    /** 上述排样和优化阶段的总实际耗时，单位为毫秒。 */
+    /**
+     * 优先件与普通件全局重排优化的累计耗时，单位为毫秒。
+     *
+     * <p>该值不包含初始 Beam 排样和普通件插入，并受
+     * {@code packing.totalSolveTimeMs} 限制。保留原字段名，以兼容已有的
+     * 统一结果汇总逻辑。</p>
+     */
     public long totalSolveTimeMs;
+    /**
+     * 优先件与普通件新板初始排样的累计耗时，单位为毫秒。
+     *
+     * <p>初始排样必须产生完整解，因此不受全局重排优化预算限制。</p>
+     */
+    public long initialPackingTimeMs;
+    /**
+     * 优先件排样开始至整个排样结束的总墙钟耗时，单位为毫秒。
+     *
+     * <p>该值包含普通件插入 Sp 的全部耗时，用于评价一次案例求解实际花费的时间，
+     * 因此允许大于 {@link #totalSolveTimeMs}。</p>
+     */
+    public long totalPackingTimeMs;
+    /** 原有基于近似矩形面积计算的平均利用率，单位为百分比。 */
     public double avgUtilization;
+    /** 每张最终使用容器的真实工件面积利用率 U，按 solutions 顺序保存，取值为 [0, 1]。 */
+    public ArrayList<Double> actualContainerUtilizations = new ArrayList<>();
+    /** 最终排样中全部真实多边形工件的面积和。 */
+    public double actualTotalWorkpieceArea;
+    /** 等效容器数量 N = Nb - 1 + min(U)，其中 Nb 为实际使用容器数。 */
+    public double equivalentContainerCount;
+    /** 基于真实工件面积和等效容器数量的平均利用率 Uagv，取值为 [0, 1]。 */
+    public double actualAverageUtilization;
 
 
     public void setAvgUtilization() {
@@ -42,6 +70,46 @@ public class ExecutionResult {
         this.avgUtilization = totalBoardArea == 0
                 ? 0
                 : 100 * (totalWorkArea / totalBoardArea);
+    }
+
+    /**
+     * 计算不参与求解的真实面积统计指标 U、N 与 Uagv。
+     *
+     * <p>U 使用 NFP block 内所有原始多边形面积之和，不使用矩形外接框面积；
+     * N 按 {@code Nb - 1 + min(U)} 计算；Uagv 按 {@code sum(s)/(N*W*H)}
+     * 计算。当前优先/普通件混合流程已验证所有容器尺寸相同，因此 W*H 取
+     * 最终容器的共同面积。该方法只更新统计字段，不改变任何排样决策。</p>
+     */
+    public void setActualUtilizationMetrics() {
+        actualContainerUtilizations.clear();
+        actualTotalWorkpieceArea = 0.0;
+        double boardArea = 0.0;
+        double minimumUtilization = Double.POSITIVE_INFINITY;
+
+        for (Solution solution : solutions) {
+            double actualArea = 0.0;
+            for (PlacedCuboid placedCuboid : solution.getPlacedCuboid()) {
+                actualArea += Math.max(0.0, placedCuboid.getActualWorkpieceArea());
+            }
+            actualTotalWorkpieceArea += actualArea;
+            // BeamSearch 内部坐标按长度放大 10 倍，面积需除以 100 后才与
+            // NFP 顶点计算出的平方毫米真实面积处于同一单位。
+            double containerArea = Math.max(0.0, solution.getContainerArea() / 100.0);
+            if (boardArea <= 0.0 && containerArea > 0.0) {
+                boardArea = containerArea;
+            }
+            double utilization = containerArea <= 0.0 ? 0.0 : actualArea / containerArea;
+            actualContainerUtilizations.add(utilization);
+            minimumUtilization = Math.min(minimumUtilization, utilization);
+        }
+
+        int containerCount = solutions.size();
+        equivalentContainerCount = containerCount == 0
+                ? 0.0
+                : containerCount - 1.0 + minimumUtilization;
+        actualAverageUtilization = equivalentContainerCount <= 0.0 || boardArea <= 0.0
+                ? 0.0
+                : actualTotalWorkpieceArea / (equivalentContainerCount * boardArea);
     }
 }
 

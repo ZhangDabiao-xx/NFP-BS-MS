@@ -17,11 +17,18 @@ public class Box {
     public int[] size = new int[2];
     public double length;
     public double width;
+    /**
+     * 该矩形化 NFP 组块内真实多边形工件的面积和，单位与输入毫米坐标一致。
+     * {@link #volume} 始终保留外接矩形的内部面积，供原有 Beam Search 求解使用。
+     */
+    public double actualWorkpieceArea = Double.NaN;
 
     public ArrayList<Queue<String>> ids = new ArrayList<>(Arrays.asList(new LinkedList<String>(), new LinkedList<String>()));
 
     public Box copy() {
-        return new Box(typeNum, count, volume, scoreVolume, sizeVolume, color, name, id, orientId, containerOrientId, variation, size, length, width, ids);
+        Box copied = new Box(typeNum, count, volume, scoreVolume, sizeVolume, color, name, id, orientId, containerOrientId, variation, size, length, width, ids);
+        copied.actualWorkpieceArea = actualWorkpieceArea;
+        return copied;
     }
 
     public Box() {
@@ -114,6 +121,12 @@ public class Box {
                 variation[0][0] = (int) (10 * width);
                 variation[0][1] = (int) (10 * length);
             }
+        }
+
+        // 第 9 列（可选）：NFP 组块中真实多边形工件的面积和。旧版输入没有
+        // 此列时保持 NaN，统计层会回退到原有矩形面积，保证旧案例仍可运行。
+        if (lineData.size() > 8 && !lineData.get(8).isBlank()) {
+            actualWorkpieceArea = Double.parseDouble(lineData.get(8));
         }
 
         volume = 1.0 * (length * 10) * (width * 10);

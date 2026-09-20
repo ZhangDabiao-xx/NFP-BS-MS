@@ -1,6 +1,7 @@
 package org.example.beamsearch.algo;
 
 import org.example.beamsearch.blockgenerator.BlockGenerator;
+import org.example.beamsearch.application.PackingRuntimeConfig;
 import org.example.beamsearch.blockgenerator.GeneralBlock;
 import org.example.beamsearch.common.*;
 import org.example.beamsearch.spacemanager.SpaceManager;
@@ -18,14 +19,14 @@ public class BeamSearch {
      */
     private static final int MAX_NO_IMPROVEMENT_SWEEPS = 3;
 
-    /**
-     * 优先件板材插入普通件时的初始集束宽度。
-     * 后续搜索阶段会在此基础上按 2 倍逐步扩大，而不是固定使用该值。
-     */
-    private static final int ORDINARY_INSERTION_INITIAL_BEAM_WIDTH = 4;
-
     private long finishTime = 0;
 
+    /**
+     * 创建使用原有固定启发式候选排序的 Beam Search 求解器。
+     *
+     * @param spaceManager 初始板材空闲空间管理器。
+     * @param inst 当前待排样实例。
+     */
     public BeamSearch(SpaceManager spaceManager, Instance inst) {
         this.inst = inst;
         this.spaceManager = spaceManager;
@@ -121,28 +122,6 @@ public class BeamSearch {
     }
 
     /**
-     * 在已经存在的板材剩余空间中继续排样。
-     *
-     * <p>该方法专门服务于优先先排的流程。seedBoards 中的矩形会被转成
-     * 固定的初始放置块；allowedTypes 决定后续候选，只允许普通件类型进入
-     * 搜索。每张优先件板材依次尝试插入普通件，普通件数量在板材之间共享。</p>
-     *
-     * <p>这是一个阶段性实现：优先件布局本身只保留 BeamSearch 找到的一个
-     * 结果。后续若需要比较多个优先件布局，可以让调用方传入多组 seedBoards
-     * 并在外层选择最终结果。</p>
-     *
-     * @param seedBoards 优先件阶段产生的板材快照
-     * @param allowedTypes 与 inst.boxes 对应的可继续排样类型
-     * @param timeLimit 本次插入允许使用的相对时间，单位为毫秒
-     */
-    public ExecutionResult packIntoExistingBoards(List<BoardStateSnapshot> seedBoards,
-                                                   boolean[] allowedTypes,
-                                                   int timeLimit) {
-        long deadlineMillis = System.currentTimeMillis() + Math.max(1, timeLimit);
-        return packIntoExistingBoardsUntil(seedBoards, allowedTypes, deadlineMillis);
-    }
-
-    /**
      * 在已有优先件板材中插入普通件，并共享一个全局绝对截止时间。
      *
      * <p>普通件插入必须保持优先件板材数量不变，因此即使时间已经耗尽，
@@ -180,63 +159,7 @@ public class BeamSearch {
             return result;
         }
 
-        GeneralBlock[] availableBlocks = new BlockGenerator(inst)
-                .generateSingleBlock(true, allowedTypes);
-        // 修改原因：原候选顺序按 scoreVolume 排列，且此前仅按实际面积排序，
-        // 都不能体现“大件优先且兼顾其相对板材尺寸”的选择要求。插入阶段
-        // 改用公式 S_i=(w_i*h_i)*(1+w_i^2/W^2+h_i^2/H^2) 降序排列。
-        sortInsertionBlocksByPriorityScore(availableBlocks);
-
-        // 修改原因：原实现按 seedBoards 的输入顺序处理 Sp，无法优先使用
-        // 剩余空间更大的板材。这里每次从未处理板材中选取最大空隙所在的板材。
-        List<BoardStateSnapshot> remainingSeedBoards = new ArrayList<>(seedBoards);
-        while (!remainingSeedBoards.isEmpty()) {
-            int selectedBoardIndex = findLargestResidualSpaceBoard(remainingSeedBoards);
-            BoardStateSnapshot seedBoard = remainingSeedBoards.remove(selectedBoardIndex);
-
-            // 普通件已经全部放完时，后面的优先件板材仍然要保留在结果中。
-            // 如果全局时间已经耗尽，也必须原样保留当前和后续优先件板材，
-            // 不能用“至少 1 毫秒”的旧逻辑继续突破总预算。
-            if (availableBlocks.length == 0
-                    || hasNoAllowedBoxes(freeBoxes, allowedTypes)
-                    || System.currentTimeMillis() >= deadlineMillis) {
-                Solution unchangedSolution = seedBoard.toSolution(inst);
-                result.solutions.add(unchangedSolution);
-                result.boardStates.add(createBoardStateSnapshot(unchangedSolution));
-                continue;
-            }
-
-            SpaceManager residualSpaceManager = createResidualSpaceManager(seedBoard);
-            PlacedBlock[] fixedPriorityBlocks = createPlacedBlocks(seedBoard);
-            State initialState = State.createSeededState(
-                    inst,
-                    residualSpaceManager,
-                    freeBoxes,
-                    availableBlocks,
-                    fixedPriorityBlocks);
-
-            int remainingBoards = remainingSeedBoards.size() + 1;
-            long remainingTime = deadlineMillis - System.currentTimeMillis();
-            int boardTime = (int) Math.max(1, remainingTime / Math.max(1, remainingBoards));
-
-            // 插入阶段使用动态宽度的集束搜索。初始宽度为 4，根节点
-            // 生成 4*4 个候选，之后每层保留 4 个状态；完成当前宽度
-            // 搜索后再扩大为 8、16……，以兼顾搜索质量和求解时间。
-            State endState = searchInsertionBoard(
-                    initialState,
-                    boardTime,
-                    ORDINARY_INSERTION_INITIAL_BEAM_WIDTH);
-            Solution solution = endState.toSolution();
-            result.solutions.add(solution);
-            result.boardStates.add(createBoardStateSnapshot(solution));
-
-            freeBoxes = endState.getFreeBoxes().clone();
-            availableBlocks = BlockGenerator.retainFeasibleBlocks(freeBoxes, availableBlocks);
-        }
-
-        fillUnplacedBoxes(result, freeBoxes, allowedTypes);
-        result.setAvgUtilization();
-        return result;
+        return packByCandidateItemRepacking(new ArrayList<>(seedBoards), allowedTypes, deadlineMillis);
     }
 
     /**
@@ -251,7 +174,9 @@ public class BeamSearch {
         finishTime = startTime + Math.max(1, timeLimit);
 
         int availableBlockCount = initialState.availableBlocks.length;
-        for (int width = 4; System.currentTimeMillis() < finishTime; width <<= 1) {
+        for (int width = 4;
+             width <= PackingRuntimeConfig.maxBeamWidth() && System.currentTimeMillis() < finishTime;
+             width <<= 1) {
             if (width > availableBlockCount / 3 && width != 4 && minCon > 330) {
                 break;
             }
@@ -306,7 +231,9 @@ public class BeamSearch {
                 }
             }
 
-            if (width >= availableBlockCount) {
+            if (width >= availableBlockCount
+                    || width >= PackingRuntimeConfig.maxBeamWidth()
+                    || width > Integer.MAX_VALUE / 2) {
                 break;
             }
         }
@@ -316,116 +243,312 @@ public class BeamSearch {
     }
 
     /**
-     * 使用动态宽度的集束搜索向一张已有优先件板材中插入普通件。
+     * 使用“候选普通件整体重排”策略向既有 Sp 逐张插入普通件。
      *
-     * <p>该方法与普通新板求解分开，避免改变原有求解入口的搜索宽度。
-     * 对每个 beamWidth 阶段，根节点最多生成 beamWidth*beamWidth 个
-     * 候选，每层最终保留 beamWidth 个状态；阶段完成后将宽度扩大为
-     * 原来的两倍。候选状态使用普通件实际装载面积作为最终比较依据。</p>
+     * <p>每次选择当前最大连续空闲区所在的 Sp，再依次尝试一个普通件。候选件先通过
+     * 矩形占用面积上界：当前板材中全部已放工件面积加候选面积超过板材面积时必定失败；
+     * 未超过时，把该 Sp 内所有优先件、已插入普通件及候选件一起重新进行单板排样。
+     * 仅当全部工件重新装入同一张板材时，才提交新布局并扣减该普通件数量。</p>
      *
-     * @param initialBeamWidth 动态搜索的初始宽度
+     * @param seedBoards 优先件阶段输出的 Sp 板材快照；其中可能已含此前成功插入的普通件。
+     * @param allowedTypes 与 {@link #inst} 工件类型一一对应的普通件允许掩码。
+     * @param deadlineMillis 当前案例排样的全局绝对截止时间，单位为毫秒。
+     * @return 插入成功后的 Sp 布局及仍未插入的普通件数量。
      */
-    private State searchInsertionBoard(State initialState,
-                                       int timeLimit,
-                                       int initialBeamWidth) {
-        long startTime = System.currentTimeMillis();
-        finishTime = startTime + Math.max(1, timeLimit);
+    private ExecutionResult packByCandidateItemRepacking(List<BoardStateSnapshot> seedBoards,
+                                                          boolean[] allowedTypes,
+                                                          long deadlineMillis) {
+        ExecutionResult result = new ExecutionResult();
+        int[] freeBoxes = initialFreeBoxes(allowedTypes);
+        List<BoardStateSnapshot> remainingBoards = new ArrayList<>(seedBoards);
 
-        if (initialBeamWidth <= 0) {
-            // 防止错误参数造成无效的宽度循环，保持初始状态可用。
-            return initialState;
-        }
-
-        // availableBlocks 表示当前普通件候选（含不同方向）的数量，
-        // 是本搜索树实际可分支的数量，比普通件总件数更适合作为宽度上限。
-        int availableBlockCount = initialState.availableBlocks.length;
-        if (availableBlockCount == 0) {
-            return initialState;
-        }
-
-        Node bestNode = new Node();
-        bestNode.state = initialState;
-        // 固定优先件不计入分支差异，普通件已装载面积作为初始评分。
-        bestNode.score = initialState.getPackedVolume();
-
-        // 参考 solve() 的动态宽度策略：每个宽度阶段独立从根节点开始，
-        // 阶段内部保留 beamWidth 个状态，完成后再扩大宽度。
-        for (int beamWidth = initialBeamWidth;
-             beamWidth > 0 && System.currentTimeMillis() < finishTime;
-             beamWidth <<= 1) {
-
-            // 当保留宽度已经超过候选数量的约三分之一时，继续扩大宽度
-            // 会显著增加计算量，而候选差异有限，因此结束宽度扩展。
-            // 初始宽度无论如何都执行一次，保证小规模案例仍有基本搜索。
-            if (beamWidth > availableBlockCount / 3
-                    && beamWidth != initialBeamWidth) {
+        while (!remainingBoards.isEmpty()) {
+            if (System.currentTimeMillis() >= deadlineMillis) {
+                appendUnchangedBoards(result, remainingBoards);
                 break;
             }
 
-            Queue<Node> nodes = new LinkedList<>();
-            Node root = new Node();
-            root.state = initialState;
-            root.score = initialState.getPackedVolume();
-            nodes.add(root);
-
-            while (!nodes.isEmpty() && System.currentTimeMillis() < finishTime) {
-                int currentLevelSize = nodes.size();
-                TreeSet<Node> offspring = new TreeSet<>();
-
-                for (int i = 0; i < currentLevelSize; i++) {
-                    if (System.currentTimeMillis() >= finishTime) {
-                        break;
-                    }
-
-                    Node currentNode = nodes.poll();
-                    ArrayList<Node> children = new ArrayList<>();
-                    // 插入 Sp 时初始 State 已经包含固定的优先件，不能再用
-                    // countPlacedBlock()==0 判断根节点；按当前阶段创建的 root
-                    // 对象识别根节点，保证根节点始终生成 w*w 个候选。
-                    int childCount = currentNode == root
-                            ? beamWidth * beamWidth
-                            : beamWidth;
-                    blockSearch(currentNode.state, childCount, children, 1);
-
-                    if (children.isEmpty()) {
-                        // 当前状态没有可行普通件，使用实际装载面积更新
-                        // 当前宽度阶段和全局搜索的最佳结果。
-                        if (currentNode.state.getPackedVolume()
-                                >= bestNode.state.getPackedVolume()) {
-                            bestNode = currentNode;
-                        }
-                    } else {
-                        for (Node child : children) {
-                            // 修改原因：如果当前板材的时间片在搜索树到达
-                            // 叶节点前耗尽，不能丢弃已经找到的可行插入结果。
-                            // 这里保存实际已装载普通件面积最大的中间状态，
-                            // 作为时间耗尽时的安全返回结果。
-                            if (child.state.getPackedVolume()
-                                    > bestNode.state.getPackedVolume()) {
-                                bestNode = child;
-                            }
-                            // 每层全局只保留 beamWidth 个候选状态。
-                            update(offspring, beamWidth, child);
-                        }
-                    }
-                }
-
-                for (Node node : offspring) {
-                    nodes.add(node);
-                }
-            }
-
-            // 当前宽度已经覆盖了全部候选时，没有必要继续扩大。
-            if (beamWidth >= availableBlockCount) {
-                break;
-            }
-            // 防止极大候选数量导致左移溢出后重新进入负数循环。
-            if (beamWidth > Integer.MAX_VALUE / 2) {
-                break;
-            }
+            int boardIndex = findLargestResidualSpaceBoard(remainingBoards);
+            BoardStateSnapshot selectedBoard = remainingBoards.remove(boardIndex);
+            BoardStateSnapshot updatedBoard = tryInsertCandidatesByRepacking(
+                    selectedBoard,
+                    freeBoxes,
+                    allowedTypes,
+                    remainingBoards.size() + 1,
+                    deadlineMillis);
+            result.solutions.add(updatedBoard.toSolution(inst));
+            result.boardStates.add(updatedBoard);
         }
 
-        return bestNode.state == null ? initialState : bestNode.state;
+        fillUnplacedBoxes(result, freeBoxes, allowedTypes);
+        result.setAvgUtilization();
+        return result;
+    }
+
+    /**
+     * 将未处理的 Sp 原样写入插入结果，保证全局时间耗尽时优先件板材不会丢失。
+     *
+     * @param result 正在构建的插入阶段结果。
+     * @param boards 尚未进行普通件插入的 Sp 板材快照。
+     */
+    private void appendUnchangedBoards(ExecutionResult result, List<BoardStateSnapshot> boards) {
+        for (BoardStateSnapshot board : boards) {
+            result.solutions.add(board.toSolution(inst));
+            result.boardStates.add(board);
+        }
+    }
+
+    /**
+     * 在一张指定 Sp 中按普通件优先级逐件执行“面积筛选—整体重排—提交或拒绝”。
+     *
+     * @param original 当前选定的 Sp 板材快照。
+     * @param freeBoxes 混合实例中每种普通件尚未使用的数量；成功时会原地扣减。
+     * @param allowedTypes 普通件类型允许掩码。
+     * @param remainingBoardCount 包含当前 Sp 在内、尚待处理的 Sp 数量，用于均分候选验证时间。
+     * @param deadlineMillis 当前案例排样的全局绝对截止时间，单位为毫秒。
+     * @return 已提交零个或多个普通件后的 Sp 快照；失败候选不会改变布局。
+     */
+    private BoardStateSnapshot tryInsertCandidatesByRepacking(BoardStateSnapshot original,
+                                                              int[] freeBoxes,
+                                                              boolean[] allowedTypes,
+                                                              int remainingBoardCount,
+                                                              long deadlineMillis) {
+        BoardStateSnapshot currentBoard = original;
+        Set<Integer> rejectedTypeIndexes = new HashSet<>();
+
+        while (System.currentTimeMillis() < deadlineMillis) {
+            CandidateItem candidate = nextCandidateItem(freeBoxes, allowedTypes, rejectedTypeIndexes);
+            if (candidate == null) {
+                break;
+            }
+
+            if (!passesCandidateAreaBound(currentBoard, candidate.box())) {
+                rejectedTypeIndexes.add(candidate.typeIndex());
+                continue;
+            }
+
+            long remainingCandidateCount = remainingCandidateItemCount(
+                    freeBoxes, allowedTypes, rejectedTypeIndexes);
+            long candidateDeadline = candidateRepackDeadline(
+                    deadlineMillis, remainingCandidateCount, remainingBoardCount);
+            BoardStateSnapshot repackedBoard = repackBoardWithCandidate(
+                    currentBoard, candidate.box(), candidateDeadline);
+            if (repackedBoard == null) {
+                // 本候选已经在当前 Sp 的完整重排中失败；继续测试下一个普通件类型。
+                rejectedTypeIndexes.add(candidate.typeIndex());
+                continue;
+            }
+
+            currentBoard = repackedBoard;
+            freeBoxes[candidate.typeIndex()]--;
+            // 同一种普通件仍可能有多个副本。已成功一次后允许继续测试下一副本；
+            // 先前失败的其他类型仍保持跳过，避免对同一布局反复做无效验证。
+        }
+        return currentBoard;
+    }
+
+    /**
+     * 从当前剩余普通件中选出下一个待尝试的物品类型。
+     *
+     * <p>候选顺序沿用原插入阶段的面积与综合尺寸评分排序；同一类型的不同旋转只代表
+     * 同一个物品，因为整体重排时会重新枚举该物品全部允许方向。</p>
+     *
+     * @param freeBoxes 各工件类型当前尚未使用的数量。
+     * @param allowedTypes 普通件类型允许掩码。
+     * @param rejectedTypeIndexes 当前 Sp 已完整重排失败、无需再次测试的类型下标集合。
+     * @return 下一个普通件候选；没有可测试物品时返回 {@code null}。
+     */
+    private CandidateItem nextCandidateItem(int[] freeBoxes,
+                                            boolean[] allowedTypes,
+                                            Set<Integer> rejectedTypeIndexes) {
+        GeneralBlock[] candidateBlocks = new BlockGenerator(inst).generateSingleBlock(true, allowedTypes);
+        sortInsertionBlocksByPriorityScore(candidateBlocks);
+        Set<Integer> inspectedTypeIndexes = new HashSet<>();
+        for (GeneralBlock block : candidateBlocks) {
+            if (block.component == null || block.component.length != 1 || block.cuboid.isEmpty()) {
+                continue;
+            }
+            int typeIndex = block.component[0];
+            if (!inspectedTypeIndexes.add(typeIndex)
+                    || rejectedTypeIndexes.contains(typeIndex)
+                    || typeIndex < 0
+                    || typeIndex >= freeBoxes.length
+                    || freeBoxes[typeIndex] <= 0) {
+                continue;
+            }
+            return new CandidateItem(typeIndex, inst.boxes[typeIndex]);
+        }
+        return null;
+    }
+
+    /**
+     * 用当前 Sp 占用面积和候选普通件面积执行必要条件筛选。
+     *
+     * @param board 当前 Sp 布局，包含优先件及此前成功插入的普通件。
+     * @param candidate 待尝试的一个普通件。
+     * @return 两者矩形面积和不超过板材面积时返回 {@code true}；否则候选必定无法装入。
+     */
+    private boolean passesCandidateAreaBound(BoardStateSnapshot board, Box candidate) {
+        if (board == null || candidate == null) {
+            return false;
+        }
+        double occupiedArea = 0.0;
+        for (PlacedCuboid placedCuboid : board.getPlacedCuboids()) {
+            occupiedArea += Math.max(0.0, placedCuboid.getVolume());
+        }
+        double boardArea = Math.max(1.0, (double) inst.length * inst.width);
+        return occupiedArea + Math.max(0.0, candidate.volume) <= boardArea + 1e-6;
+    }
+
+    /**
+     * 将一张 Sp 内全部现有工件与一个普通件重新执行单板 Beam Search 验证。
+     *
+     * @param board 当前 Sp 快照，包含必须保留的优先件和已插入普通件。
+     * @param candidate 待插入的普通件；本方法只尝试一个物理副本。
+     * @param candidateDeadlineMillis 本次候选验证允许使用的绝对截止时间，单位为毫秒。
+     * @return 全部工件确实装入同一张板材时返回重排后的快照；不能完整装入时返回 {@code null}。
+     */
+    private BoardStateSnapshot repackBoardWithCandidate(BoardStateSnapshot board,
+                                                         Box candidate,
+                                                         long candidateDeadlineMillis) {
+        if (board == null || candidate == null || System.currentTimeMillis() >= candidateDeadlineMillis) {
+            return null;
+        }
+
+        List<Box> temporaryBoxes = new ArrayList<>();
+        IdentityHashMap<Box, Box> canonicalBoxes = new IdentityHashMap<>();
+        for (PlacedCuboid placedCuboid : board.getPlacedCuboids()) {
+            if (placedCuboid.box == null) {
+                return null;
+            }
+            Box copiedBox = placedCuboid.box.copy();
+            copiedBox.count = 1;
+            temporaryBoxes.add(copiedBox);
+            canonicalBoxes.put(copiedBox, placedCuboid.box);
+        }
+        Box copiedCandidate = candidate.copy();
+        copiedCandidate.count = 1;
+        temporaryBoxes.add(copiedCandidate);
+        canonicalBoxes.put(copiedCandidate, candidate);
+
+        Instance candidateInstance = new Instance(inst, new ArrayList<>(temporaryBoxes));
+        SpaceManager candidateSpaceManager = new SpaceManager(
+                SpaceComparator.getSpaceComparator(candidateInstance, 1));
+        BeamSearch candidateSearch = new BeamSearch(candidateSpaceManager, candidateInstance);
+        int minContainerCount = (int) Math.max(0L,
+                (long) (candidateInstance.totalBoxVolume
+                        / Math.max(1L, (long) candidateInstance.length * candidateInstance.width)));
+        ExecutionResult candidateResult = candidateSearch.solveUntil(
+                candidateDeadlineMillis, minContainerCount);
+        if (!isCompleteSingleBoardRepack(candidateResult, temporaryBoxes.size())) {
+            return null;
+        }
+
+        List<PlacedCuboid> canonicalPlacements = new ArrayList<>(temporaryBoxes.size());
+        for (PlacedCuboid placedCuboid : candidateResult.solutions.get(0).getPlacedCuboid()) {
+            Box canonicalBox = canonicalBoxes.get(placedCuboid.box);
+            if (canonicalBox == null) {
+                return null;
+            }
+            canonicalPlacements.add(new PlacedCuboid(
+                    placedCuboid.x,
+                    placedCuboid.y,
+                    placedCuboid.length,
+                    placedCuboid.width,
+                    canonicalBox,
+                    placedCuboid.ortIdx));
+        }
+        List<Space> remainingSpaces = SpaceManager.calculateResidualSpaces(
+                inst.length, inst.width, canonicalPlacements);
+        return new BoardStateSnapshot(canonicalPlacements, remainingSpaces);
+    }
+
+    /**
+     * 判断候选整体重排是否确实只使用一张板材并放入了全部待验证工件。
+     *
+     * @param result 单板候选验证的求解结果。
+     * @param expectedPieceCount 当前 Sp 工件数加一个候选普通件后的应放置总数。
+     * @return 仅一张板、没有未放工件且放置数量匹配时返回 {@code true}。
+     */
+    private boolean isCompleteSingleBoardRepack(ExecutionResult result, int expectedPieceCount) {
+        if (result == null || result.solutions.size() != 1 || result.unplacedCounts == null) {
+            return false;
+        }
+        for (int unplacedCount : result.unplacedCounts) {
+            if (unplacedCount > 0) {
+                return false;
+            }
+        }
+        return result.solutions.get(0).getPlacedCuboid().size() == expectedPieceCount;
+    }
+
+    /**
+     * 按剩余普通件数量估算当前和后续 Sp 仍可能执行的候选验证次数。
+     *
+     * @param freeBoxes 各普通件类型尚未使用的数量。
+     * @param allowedTypes 普通件类型允许掩码。
+     * @param rejectedTypeIndexes 当前 Sp 已失败、不会再次验证的类型下标。
+     * @return 至少为 1 的剩余物理候选件数量估计。
+     */
+    private long remainingCandidateItemCount(int[] freeBoxes,
+                                             boolean[] allowedTypes,
+                                             Set<Integer> rejectedTypeIndexes) {
+        long count = 0L;
+        for (int index = 0; index < freeBoxes.length; index++) {
+            boolean allowed = allowedTypes == null
+                    || (index < allowedTypes.length && allowedTypes[index]);
+            if (allowed && !rejectedTypeIndexes.contains(index)) {
+                count += Math.max(0, freeBoxes[index]);
+            }
+        }
+        return Math.max(1L, count);
+    }
+
+    /**
+     * 为一次候选整体重排分配时间片。
+     *
+     * @param globalDeadlineMillis 插入阶段的绝对截止时间，单位为毫秒；
+     *                             {@link Long#MAX_VALUE} 表示插入阶段不设总时限。
+     * @param remainingCandidateCount 当前和后续待尝试的物理普通件数量估计。
+     * @param remainingBoardCount 包含当前 Sp 在内的尚待处理 Sp 数量。
+     * @return 本次候选验证的绝对截止时间；无总时限时仅受单次验证上限约束。
+     */
+    private long candidateRepackDeadline(long globalDeadlineMillis,
+                                         long remainingCandidateCount,
+                                         int remainingBoardCount) {
+        long now = System.currentTimeMillis();
+        long configuredLimit = PackingRuntimeConfig.candidateRepackTimeLimitMs();
+        if (globalDeadlineMillis == Long.MAX_VALUE) {
+            return addMillisSaturated(now, configuredLimit);
+        }
+        long remainingMillis = Math.max(0L, globalDeadlineMillis - now);
+        long attemptCount = Math.max(1L, remainingCandidateCount * Math.max(1, remainingBoardCount));
+        long fairShareMillis = Math.max(1L, remainingMillis / attemptCount);
+        long allocatedMillis = Math.max(1L, Math.min(fairShareMillis, configuredLimit));
+        return Math.min(globalDeadlineMillis, addMillisSaturated(now, allocatedMillis));
+    }
+
+    /**
+     * 计算不发生 long 溢出的未来时间戳。
+     *
+     * @param currentMillis 当前时间戳，单位为毫秒。
+     * @param durationMillis 需要增加的时长，单位为毫秒。
+     * @return 饱和到 {@link Long#MAX_VALUE} 的未来时间戳。
+     */
+    private long addMillisSaturated(long currentMillis, long durationMillis) {
+        if (durationMillis <= 0L || currentMillis >= Long.MAX_VALUE - durationMillis) {
+            return Long.MAX_VALUE;
+        }
+        return currentMillis + durationMillis;
+    }
+
+    /**
+     * 表示一次候选整体重排待尝试的普通件类型。
+     *
+     * @param typeIndex 候选在混合实例 {@link Instance#boxes} 中的数组下标。
+     * @param box 该候选的规范 Box 对象；成功后用于扣减对应剩余数量。
+     */
+    private record CandidateItem(int typeIndex, Box box) {
     }
 
     private BoardStateSnapshot createBoardStateSnapshot(Solution solution) {
@@ -434,15 +557,6 @@ public class BeamSearch {
                 inst.width,
                 solution.getPlacedCuboid());
         return new BoardStateSnapshot(solution.getPlacedCuboid(), residualSpaces);
-    }
-
-    private SpaceManager createResidualSpaceManager(BoardStateSnapshot snapshot) {
-        // 修改原因：优先件插入阶段要求按剩余空隙面积降序选择空间，
-        // 不再使用原先“靠近板材边角优先、面积次优”的比较器。
-        Comparator<Space> comparator = new SpaceVolumeComparator();
-        SpaceManager manager = new SpaceManager(comparator);
-        manager.insert(new ArrayList<>(snapshot.getRemainingSpaces()));
-        return manager;
     }
 
     /**
@@ -516,43 +630,6 @@ public class BeamSearch {
         return largestArea;
     }
 
-    private PlacedBlock[] createPlacedBlocks(BoardStateSnapshot snapshot) {
-        List<PlacedCuboid> placedCuboids = snapshot.getPlacedCuboids();
-        PlacedBlock[] placedBlocks = new PlacedBlock[placedCuboids.size()];
-
-        for (int i = 0; i < placedCuboids.size(); i++) {
-            PlacedCuboid placedCuboid = placedCuboids.get(i);
-            int orientationIndex = findOrientationIndex(placedCuboid);
-            GeneralBlock block = new GeneralBlock(
-                    1,
-                    1,
-                    placedCuboid.box,
-                    orientationIndex,
-                    inst.boxes.length);
-            placedBlocks[i] = new PlacedBlock(placedCuboid.x, placedCuboid.y, block);
-        }
-        return placedBlocks;
-    }
-
-    private int findOrientationIndex(PlacedCuboid placedCuboid) {
-        if (placedCuboid.box.variation != null) {
-            for (int i = 0; i < placedCuboid.box.variation.length; i++) {
-                int length = placedCuboid.box.variation[i][1];
-                int width = placedCuboid.box.variation[i][0];
-                if (length == placedCuboid.length && width == placedCuboid.width) {
-                    return i;
-                }
-            }
-        }
-
-        if (placedCuboid.ortIdx >= 0
-                && placedCuboid.box.variation != null
-                && placedCuboid.ortIdx < placedCuboid.box.variation.length) {
-            return placedCuboid.ortIdx;
-        }
-        return 0;
-    }
-
     private int[] initialFreeBoxes(boolean[] allowedTypes) {
         int[] freeBoxes = new int[inst.boxes.length];
         for (int i = 0; i < inst.boxes.length; i++) {
@@ -561,17 +638,6 @@ public class BeamSearch {
             }
         }
         return freeBoxes;
-    }
-
-    private boolean hasNoAllowedBoxes(int[] freeBoxes, boolean[] allowedTypes) {
-        for (int i = 0; i < freeBoxes.length; i++) {
-            boolean allowed = allowedTypes == null
-                    || (i < allowedTypes.length && allowedTypes[i]);
-            if (allowed && freeBoxes[i] > 0) {
-                return false;
-            }
-        }
-        return true;
     }
 
     private void fillUnplacedBoxes(ExecutionResult result,
@@ -983,6 +1049,14 @@ public class BeamSearch {
         }
     }
 
+    /**
+     * 按固定启发式扩展一个 Beam Search 状态。
+     *
+     * @param state 当前待扩展状态。
+     * @param width 当前节点允许生成的最大子节点数量。
+     * @param child 下一层候选节点收集器。
+     * @param volumeType 完整度评估所使用的体积类型。
+     */
     private void blockSearch(State state, int width, ArrayList<Node> child, int volumeType) {
         if (state.hasFreeSpace()) {
             Space space = state.chooseBestSpace();

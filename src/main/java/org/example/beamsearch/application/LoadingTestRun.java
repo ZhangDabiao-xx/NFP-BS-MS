@@ -10,15 +10,17 @@ import java.nio.file.Paths;
 
 public class LoadingTestRun {
 
-    /** 排样与解优化的总时间预算，不包含 NFP 拼接和组块生成，单位为毫秒。 */
-    private static final long TOTAL_SOLVE_TIME_MS = PriorityFirstPacker.DEFAULT_TOTAL_SOLVE_TIME_MS;
+    /** 全局重排优化的总时间预算，不包含初始排样、普通件插入、NFP 拼接和组块生成，单位为毫秒。 */
+    private static final long TOTAL_SOLVE_TIME_MS = PackingRuntimeConfig.totalSolveTimeMs();
 
     /**
+     * 读取桥接层生成的板材与工件文件，执行优先级排样并写出排样结果文件。
      *
-     * @param materialInPath  Large Board File Path
-     * @param workPieceInPath Workpiece File Path
-     * @param outPath         Output Path
-     * @throws IOException
+     * @param materialInPath 板材 CSV 文件路径，包含板材长度、宽度和颜色组
+     * @param workPieceInPath 工件文件路径，包含矩形化后的 NFP 组块
+     * @param outPath 单案例排样结果目录，用于写入 CSV、统计和运行日志
+     * @return 案例名称、工件数、实际/等效容器数、真实平均利用率、Sp、So 和耗时组成的摘要；没有可排样工件时返回 {@code null}
+     * @throws IOException 当输入文件无法读取或结果文件无法写入时抛出
      */
     public static String[] runWithImprove(String materialInPath, String workPieceInPath, String outPath) throws IOException {
         long startTime = System.currentTimeMillis();
@@ -45,13 +47,15 @@ public class LoadingTestRun {
         System.out.println("total number of nestable workpieces：" + numOfWorkpiece);
 
         // 先求解优先件，再把优先件板材的剩余空间交给普通件。
-        // 600 秒由 PriorityFirstPacker 在各阶段之间统一分配，不能在这里
-        // 为每张板材重复传入一个独立搜索时间。
+        // 600 秒由 PriorityFirstPacker 在优先件和普通件全局重排阶段之间统一分配；
+        // 初始排样和普通件插入 Sp 独立计时，不扣减该预算。
         System.out.println("Start priority-first combined packing.");
         ExecutionResult exeResult = PriorityFirstPacker.solveWithTotalTime(
                 instances,
                 TOTAL_SOLVE_TIME_MS);
+        // 保留原近似矩形利用率，同时额外计算真实多边形面积口径的 U、N、Uagv。
         exeResult.setAvgUtilization();
+        exeResult.setActualUtilizationMetrics();
 
         int containerCount = exeResult.solutions.size();
         PrintWriter pw;
@@ -117,6 +121,8 @@ public class LoadingTestRun {
 
             FileWriter fw = new FileWriter(new File(dir, "container" + (j + 1) + ".txt"));
             fw.write(exeResult.solutions.get(j).toString());
+            fw.write("Actual workpiece utilization U: "
+                    + formatPercent(exeResult.actualContainerUtilizations.get(j)) + "%\n");
             fw.close();
 
             for (int k = 0; k < rectList.size(); k++) {
@@ -146,10 +152,13 @@ public class LoadingTestRun {
         pwTotal.println(workPieceInPath);
         pwTotal.println("Total number of nestable workpieces in this batch: " + numOfWorkpiece);
         pwTotal.println("Number of sheets used in this batch: " + containerCount);
+        pwTotal.println("Equivalent container count (N): " + formatDecimal(exeResult.equivalentContainerCount));
         pwTotal.println("Priority containers (Sp): " + exeResult.priorityBoardCount);
         pwTotal.println("Ordinary containers (So): " + exeResult.ordinaryBoardCount);
         pwTotal.println("S = Sp + So: " + (exeResult.priorityBoardCount + exeResult.ordinaryBoardCount));
         pwTotal.println("Average utilization rate of this batch: " + exeResult.avgUtilization + "%");
+        pwTotal.println("Actual average utilization (Uagv): "
+                + formatPercent(exeResult.actualAverageUtilization) + "%");
         writeSolveTiming(pwTotal, exeResult);
         pwTotal.println("Running time: " + ((System.currentTimeMillis() - startTime) / 1000d) + "s");
 
@@ -158,31 +167,66 @@ public class LoadingTestRun {
         pwTotal.close();
         System.setOut(oldout);
 
-        System.out.println("Total number of nestable workpieces in this batch: " + numOfWorkpiece);
-        System.out.println("Number of sheets used in this batch: " + containerCount);
-        System.out.println("Actual solve time: " + formatSeconds(exeResult.totalSolveTimeMs) + "s");
-        System.out.println("Average utilization rate of this batch: " + exeResult.avgUtilization + "%");
-        System.out.println("Running time: " + ((System.currentTimeMillis() - startTime) / 1000d) + "s");
+        System.out.printf(Locale.ROOT,
+                "结果: 工件数量 %d, 容器使用数量 %d, 容器数量 N %s, 平均利用率 Uagv %s%%, Sp %d, So %d, 初始排样耗时 %ss, 全局优化耗时 %ss, 插入耗时 %ss, 总排样耗时 %ss%n",
+                numOfWorkpiece,
+                containerCount,
+                formatDecimal(exeResult.equivalentContainerCount),
+                formatPercent(exeResult.actualAverageUtilization),
+                exeResult.priorityBoardCount,
+                exeResult.ordinaryBoardCount,
+                formatSeconds(exeResult.initialPackingTimeMs),
+                formatSeconds(exeResult.totalSolveTimeMs),
+                formatSeconds(exeResult.ordinaryInsertionTimeMs),
+                formatSeconds(exeResult.totalPackingTimeMs));
         if (numOfWorkpiece == workpieceNum) {
             System.out.println("The algorithm executed successfully and the optimization results have been output.");
         } else {
             System.out.println("The number of workpieces in the result does not match the input data!!!");
         }
-        return new String[]{firstPlacedName(exeResult), numOfWorkpiece + "", containerCount + "", exeResult.avgUtilization + "%", ((System.currentTimeMillis() - startTime) / 1000d) + "s"};
+        return new String[]{firstPlacedName(exeResult), numOfWorkpiece + "", containerCount + "",
+                formatDecimal(exeResult.equivalentContainerCount),
+                formatPercent(exeResult.actualAverageUtilization) + "%",
+                exeResult.priorityBoardCount + "", exeResult.ordinaryBoardCount + "",
+                formatSeconds(exeResult.totalPackingTimeMs) + "s"};
     }
 
-    /** 将排样阶段的实际耗时写入总结果文件，便于核对全局时间预算。 */
+    /** 将初始排样、全局优化、插入与总排样时间写入结果文件。 */
     private static void writeSolveTiming(PrintWriter writer, ExecutionResult result) {
-        writer.println("Actual solve time: " + formatSeconds(result.totalSolveTimeMs) + "s");
+        writer.println("Initial packing time: " + formatSeconds(result.initialPackingTimeMs) + "s");
+        writer.println("Actual optimization time: " + formatSeconds(result.totalSolveTimeMs) + "s");
+        writer.println("Optimization time scope: global repacking only; initial packing and ordinary insertion excluded.");
         writer.println("Priority solve time: " + formatSeconds(result.prioritySolveTimeMs) + "s");
         writer.println("Priority optimize time: " + formatSeconds(result.priorityOptimizeTimeMs) + "s");
         writer.println("Ordinary insertion time: " + formatSeconds(result.ordinaryInsertionTimeMs) + "s");
         writer.println("Ordinary solve time: " + formatSeconds(result.ordinarySolveTimeMs) + "s");
         writer.println("Ordinary optimize time: " + formatSeconds(result.ordinaryOptimizeTimeMs) + "s");
+        writer.println("Total packing time (including ordinary insertion): "
+                + formatSeconds(result.totalPackingTimeMs) + "s");
     }
 
     private static String formatSeconds(long timeMs) {
         return String.format(Locale.ROOT, "%.3f", timeMs / 1000.0);
+    }
+
+    /**
+     * 将比率形式的利用率转换为固定小数位的百分数文本，不附加百分号。
+     *
+     * @param utilization 取值通常为 [0, 1] 的利用率比率。
+     * @return 适合写入结果文本或控制台的百分数数值。
+     */
+    private static String formatPercent(double utilization) {
+        return String.format(Locale.ROOT, "%.4f", utilization * 100.0);
+    }
+
+    /**
+     * 将统计数值格式化为固定小数位文本。
+     *
+     * @param value 待输出的统计数值。
+     * @return 保留四位小数的文本。
+     */
+    private static String formatDecimal(double value) {
+        return String.format(Locale.ROOT, "%.4f", value);
     }
 
     /**
@@ -230,31 +274,4 @@ public class LoadingTestRun {
         return "unknown";
     }
 
-    public static void main(String[] args) throws IOException {
-        BufferedWriter bw = new BufferedWriter(new FileWriter("F:\\binpack_2D\\AI_result\\total.csv"));
-        bw.write("BathName,NumOfWorkpiece,NumOfBoard,Utilization,Time");
-        bw.newLine();
-        bw.flush();
-
-        String resultPath = "C:\\Users\\DaBiao\\Desktop\\TEST\\0-500";
-        String materialPath = "F:\\binpack_2D\\testData\\material.csv";
-        File datas = new File("F:\\binpack_2D\\testData\\0-500");
-
-        for (File data : datas.listFiles()) {
-            if (data.getName().contains(".txt")) {
-                String batchName = data.getName();
-                File resultDir = new File(resultPath + "\\" + batchName);
-                resultDir.mkdir();
-                String workpiecePath = data.getAbsolutePath();
-                String[] result = runWithImprove(materialPath, workpiecePath, resultDir.getAbsolutePath() + "\\");
-                bw.write(result[0] + "," + result[1] + "," + result[2] + "," + result[3] + "," + result[4]);
-                bw.newLine();
-                bw.flush();
-            }
-        }
-
-
-
-        bw.close();
-    }
 }

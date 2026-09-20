@@ -55,7 +55,23 @@ public class Space extends HyperCuboid {
     }
 
     public PlacedBlock packBlock(GeneralBlock b) {
+        return packBlock(b, PlacementAnchor.NEAREST_BOARD_CORNER);
+    }
+
+    /**
+     * 将一个已经确认能放入本空间的块放到指定锚点。
+     *
+     * @param b 待放置的可行矩形块。
+     * @param placementAnchor 坐标锚点；为空时保持原有靠近板材外角的行为。
+     * @return 带有最终左下角坐标的放置块。
+     */
+    public PlacedBlock packBlock(GeneralBlock b, PlacementAnchor placementAnchor) {
         PlacedBlock pb = new PlacedBlock(0, 0, b);
+        if (placementAnchor == PlacementAnchor.SPACE_LOWER_LEFT) {
+            pb.x = x1;
+            pb.y = y1;
+            return pb;
+        }
         if (cornerId == 0) {
             pb.x = x1;
             pb.y = y1;

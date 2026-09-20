@@ -22,8 +22,6 @@ import java.util.Set;
 
 public class BatchBlockStitcher {
 
-    private static final Path INPUT_DIRECTORY = Path.of("data", "inputData");
-    private static final Path OUTPUT_DIRECTORY = Path.of("data", "NFPJoint1");
     private static final Gson GSON = new Gson();
 
     // 组合块外接矩形长边超过板材长度时无法进入第二阶段排样，因此这类候选不保留。
@@ -53,44 +51,98 @@ public class BatchBlockStitcher {
     // 机会成本只作为普通候选的调节项，不能抵消关键凹腔的直接填充收益。
     private static final double OPPORTUNITY_COST_WEIGHT = 0.35;
 
-    public static void main(String[] args) throws IOException {
-        Path inputDirectory = args.length > 0 ? Path.of(args[0]) : INPUT_DIRECTORY;
-        Path outputDirectory = args.length > 1 ? Path.of(args[1]) : OUTPUT_DIRECTORY;
-        int beamWidth = args.length > 2
-                ? parsePositiveInt(args[2], DEFAULT_BEAM_WIDTH)
-                : DEFAULT_BEAM_WIDTH;
-        processDirectory(inputDirectory, outputDirectory, beamWidth);
+    /**
+     * 对一个案例 JSON 文件或包含多个案例 JSON 文件的目录执行 NFP 拼接。
+     *
+     * @param casePath 案例输入；可以是单个 {@code .json} 文件，也可以是存放案例文件的目录
+     * @param outputDirectory NFP 拼接文本结果的输出目录；每个案例生成一个同名 {@code .txt} 文件
+     * @return 已写入的 NFP 拼接结果文件，顺序与案例文件名的字典序一致
+     * @throws IOException 当输入路径不可读、不是 JSON 案例，或结果文件无法写入时抛出
+     */
+    public static List<Path> stitchCases(Path casePath, Path outputDirectory) throws IOException {
+        return stitchCases(casePath, outputDirectory, DEFAULT_BEAM_WIDTH);
     }
 
-    public static void processDirectory(Path inputDirectory, Path outputDirectory) throws IOException {
-        processDirectory(inputDirectory, outputDirectory, DEFAULT_BEAM_WIDTH);
-    }
-
-    public static void processDirectory(Path inputDirectory, Path outputDirectory, int beamWidth) throws IOException {
+    /**
+     * 对一个案例 JSON 文件或目录执行 NFP 拼接，并允许调用方指定集束搜索宽度。
+     *
+     * @param casePath 案例输入；可以是单个 {@code .json} 文件，也可以是存放案例文件的目录
+     * @param outputDirectory NFP 拼接文本结果的输出目录
+     * @param beamWidth 每轮 NFP 集束搜索保留的状态数量，必须为正数
+     * @return 已写入的 NFP 拼接结果文件
+     * @throws IOException 当输入或输出路径不可用时抛出
+     */
+    public static List<Path> stitchCases(Path casePath,
+                                          Path outputDirectory,
+                                          int beamWidth) throws IOException {
+        if (casePath == null || !Files.exists(casePath)) {
+            throw new IOException("案例路径不存在: " + casePath);
+        }
+        if (beamWidth <= 0) {
+            throw new IllegalArgumentException("beamWidth 必须为正数: " + beamWidth);
+        }
         Files.createDirectories(outputDirectory);
+
+        //判断是否为单个案例，如果是当案例，这按照单个案例求解。
+        if (Files.isRegularFile(casePath)) {
+            if (!casePath.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".json")) {
+                throw new IOException("案例文件必须是 .json: " + casePath);
+            }
+            return List.of(stitchCase(casePath, outputDirectory, beamWidth));
+        }
+        if (!Files.isDirectory(casePath)) {
+            throw new IOException("案例路径既不是文件也不是目录: " + casePath);
+        }
+
         List<Path> inputFiles;
-        try (var stream = Files.list(inputDirectory)) {
+        try (var stream = Files.list(casePath)) {
             inputFiles = stream
                     .filter(path -> path.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".json"))
                     .sorted(Comparator.comparing(path -> path.getFileName().toString()))
                     .toList();
         }
 
+        List<Path> outputFiles = new ArrayList<>();
         for (Path inputFile : inputFiles) {
-            List<PolygonItem> items = readItems(inputFile);
-            // 仅统计第一阶段组块搜索耗时，避免文件写入时间干扰每个案例的求解时间判断。
-            long solveStartNanos = System.nanoTime();
-            List<Block> blocks = buildBlocks(items, beamWidth);
-            long solveElapsedNanos = System.nanoTime() - solveStartNanos;
-            Path outputFile = outputDirectory.resolve(replaceExtension(inputFile.getFileName().toString(), ".txt"));
-            writeBlocks(outputFile, blocks);
-            System.out.printf(Locale.ROOT,
-                    "%s -> %s, blocks=%d, solveTime=%.3f ms%n",
-                    inputFile.getFileName(),
-                    outputFile,
-                    blocks.size(),
-                    nanosToMillis(solveElapsedNanos));
+            outputFiles.add(stitchCase(inputFile, outputDirectory, beamWidth));
         }
+        return outputFiles;
+    }
+
+    /**
+     * 对单个 JSON 案例执行 NFP 拼接并写出同名结果文件。
+     *
+     * @param inputFile 单个案例的 JSON 文件
+     * @param outputDirectory NFP 拼接文本结果目录
+     * @param beamWidth 每轮 NFP 集束搜索保留的状态数量，必须为正数
+     * @return 写出的 NFP 拼接结果文件路径
+     * @throws IOException 当案例读取或结果写入失败时抛出
+     */
+    public static Path stitchCase(Path inputFile,
+                                   Path outputDirectory,
+                                   int beamWidth) throws IOException {
+        if (inputFile == null || !Files.isRegularFile(inputFile)) {
+            throw new IOException("案例文件不存在: " + inputFile);
+        }
+        if (beamWidth <= 0) {
+            throw new IllegalArgumentException("beamWidth 必须为正数: " + beamWidth);
+        }
+
+        Files.createDirectories(outputDirectory);
+        List<PolygonItem> items = readItems(inputFile);//读取物品信息
+        // 仅统计第一阶段组块搜索耗时，避免文件写入时间干扰每个案例的求解时间判断。
+        long solveStartNanos = System.nanoTime();
+        List<Block> blocks = buildBlocks(items, beamWidth);
+        long solveElapsedNanos = System.nanoTime() - solveStartNanos;
+        Path outputFile = outputDirectory.resolve(replaceExtension(inputFile.getFileName().toString(), ".txt"));
+        writeBlocks(outputFile, blocks);
+        System.out.printf(Locale.ROOT,
+                "%s -> %s, blocks=%d, solveTime=%.3f ms%n",
+                inputFile.getFileName(),
+                outputFile,
+                blocks.size(),
+                nanosToMillis(solveElapsedNanos));
+        return outputFile;
     }
 
     public static List<PolygonItem> readItems(Path inputFile) throws IOException {
@@ -183,8 +235,13 @@ public class BatchBlockStitcher {
      * 无法再尝试已经被前一个 Block 占用的工件；即使允许回池，每个根只保留一个候选
      * 也会让大凹腔方案在局部填充率竞争中被小件高填充组合压掉。新的外层策略同时
      * 保留根级替代方案，并在全局状态中优先保护关键凹腔的填充收益。
+     *
+     * @param initialBlocks 需要参与 NFP 拼接的初始单件块。
+     * @param beamWidth 每轮根 Beam 保留的状态数量。
+     * @return 完成拼接或回退为单件后的结果块。
      */
-    private static List<Block> stitchByBeamSearch(List<Block> initialBlocks, int beamWidth) {
+    private static List<Block> stitchByBeamSearch(List<Block> initialBlocks,
+                                                   int beamWidth) {
         List<PolygonItem> availableItems = collectItems(initialBlocks);
         List<Block> result = new ArrayList<>();
 
@@ -241,6 +298,12 @@ public class BatchBlockStitcher {
      * 修改理由：原方法每个根只返回一个最佳块。若该块消耗了本应填入大凹腔的小件，
      * 全局冲突处理就没有该根的替代方案可选；现在保留 Top-K，后续全局 Beam 可以
      * 同时比较“凹腔 + 多个小件”和“小件互补高填充块”。
+     *
+     * @param availableItems 当前轮仍可参与拼接的工件。
+     * @param beamWidth 每个根内部的 Beam 宽度。
+     * @param candidateLimit 每个根最终保留的候选块数量。
+     * @param nfpCache NFP 几何计算缓存。
+     * @return 所有根工件生成的、尚未提交的候选块集合。
      */
     private static List<CandidateBlock> buildAllRootCandidates(
             List<PolygonItem> availableItems,
@@ -568,6 +631,13 @@ public class BatchBlockStitcher {
      * 修改理由：旧方法把不同根节点和无关 Block 的合并放进同一个状态，无法保证
      * ACG 与 AB 在同一个根节点下竞争。这里保留原有 NFP、旋转、重叠、连通性和
      * 尺寸检查，同时让同一工件对的多个位置也进入根级 Beam 竞争。
+     *
+     * @param rootItem 当前 NFP 根工件。
+     * @param remainingItems 当前轮可作为后继加入根块的工件。
+     * @param beamWidth 每层根 Beam 保留的状态数量。
+     * @param candidateLimit 当前根最终保留的候选块数量。
+     * @param nfpCache NFP 几何计算缓存。
+     * @return 当前根工件可输出的 Top-K 单件或组合块。
      */
     private static List<Block> searchTopBlocksFromRoot(
             PolygonItem rootItem,
@@ -627,6 +697,14 @@ public class BatchBlockStitcher {
      * 功能说明：将“搜索”和“失败首层分支收集”拆开，便于外层在一批 AB、AC、AD
      * 等分支全部无效时施加局部惩罚，然后继续尝试下一批候选。只有进入当前 Beam
      * 的首层物品才会记录为失败，避免把尚未搜索的候选提前淘汰。
+     *
+     * @param rootItem 当前 NFP 根工件。
+     * @param remainingItems 当前轮可作为后继加入根块的工件。
+     * @param beamWidth 每层根 Beam 保留的状态数量。
+     * @param candidateLimit 当前根最终保留的候选块数量。
+     * @param penalizedFirstItemIds 当前根已确认失败、应暂时跳过的首层工件 ID。
+     * @param nfpCache NFP 几何计算缓存。
+     * @return 已完成状态和实际探索首层工件组成的根搜索结果。
      */
     private static RootSearchResult runRootBeamSearch(
             PolygonItem rootItem,
@@ -680,7 +758,9 @@ public class BatchBlockStitcher {
 
             // 在同一层的全部后继中统一排序，只保留足够产生 Top-K 终止方案的根 A 分支。
             // 修改理由：若根内只保留一个分支，外层即使使用全局 Beam 也看不到该根的替代方案。
-            beam = selectBestRootStates(nextBeamCandidates, Math.max(beamWidth, candidateLimit));
+            beam = selectBestRootStates(
+                    nextBeamCandidates,
+                    Math.max(beamWidth, candidateLimit));
         }
 
         // 正常情况下每条路径最终都会进入 completedStates；这里保留防御性回退，
@@ -794,11 +874,16 @@ public class BatchBlockStitcher {
      * 修改理由：若完全按当前填充率排序，A+B 这种暂时填充率较低、但仍有后续
      * 扩展机会的大件方案，可能被“当前填充率较高但已经消耗小件”的方案挤出 Beam。
      * 因此为可继续扩展的大件外扩状态保留少量固定名额，避免提前丢失 A+B+C 路径。
+     *
+     * @param states 当前层中已经通过 NFP 几何校验的根 Beam 状态。
+     * @param beamWidth 当前层最多保留的根 Beam 状态数量。
+     * @return 去重并保留必要大件外扩名额后的下一层根 Beam 状态。
      */
     private static List<RootBeamState> selectBestRootStates(List<RootBeamState> states,
                                                             int beamWidth) {
         int normalizedBeamWidth = Math.max(1, beamWidth);
         List<RootBeamState> orderedStates = new ArrayList<>(states);
+        // NFP 阶段始终使用综合评分和几何特征的固定比较器。
         orderedStates.sort(BatchBlockStitcher::compareRootStates);
         List<RootBeamState> selectedStates = new ArrayList<>();
         Set<String> signatures = new HashSet<>();
@@ -832,6 +917,7 @@ public class BatchBlockStitcher {
                 break;
             }
         }
+
         return selectedStates;
     }
 
@@ -1269,6 +1355,10 @@ public class BatchBlockStitcher {
         // 显式输出 Sbox 别名；candidateScore2 保留用于兼容历史结果读取程序。
         writer.write(String.format(Locale.ROOT, "    candidateSBox=%.6f", placement.candidateScore2));
         writer.newLine();
+        // 输出归一化 Sbox，便于复核综合评分采用的无量纲输入。
+        writer.write(String.format(Locale.ROOT, "    candidateNormalizedSBox=%.6f",
+                placement.candidateNormalizedSBox));
+        writer.newLine();
         // 输出 Sarea 和综合 Score，便于检查权重变化是否真正影响了最终候选位置。
         writer.write(String.format(Locale.ROOT, "    candidateSArea=%.6f", placement.candidateSArea));
         writer.newLine();
@@ -1366,15 +1456,6 @@ public class BatchBlockStitcher {
             return fileName + extension;
         }
         return fileName.substring(0, dotIndex) + extension;
-    }
-
-    private static int parsePositiveInt(String value, int fallback) {
-        try {
-            int parsedValue = Integer.parseInt(value);
-            return parsedValue > 0 ? parsedValue : fallback;
-        } catch (NumberFormatException ignored) {
-            return fallback;
-        }
     }
 
     /**

@@ -34,8 +34,8 @@ public final class PriorityFirstPacker {
     /** 桥接层约定：1 表示优先件，0 表示普通件。 */
     private static final String PRIORITY_COLOR = "1";
 
-    /** 默认的排样与解优化总预算，不包含 NFP 拼接和组块生成阶段。 */
-    public static final long DEFAULT_TOTAL_SOLVE_TIME_MS = 600_000L;
+    /** 默认的全局重排优化总预算，不包含初始排样、普通件插入、NFP 拼接和组块生成阶段。 */
+    public static final long DEFAULT_TOTAL_SOLVE_TIME_MS = PackingRuntimeConfig.DEFAULT_TOTAL_SOLVE_TIME_MS;
 
     private PriorityFirstPacker() {
     }
@@ -44,32 +44,32 @@ public final class PriorityFirstPacker {
      * 执行优先先排的完整流程。
      *
      * @param groupedInstances 当前输入按颜色拆出的 Instance 列表
-     * @param totalTimeMs 本次排样和解优化的总时间，单位为毫秒
+     * @param totalTimeMs 本次全局重排优化的总时间，单位为毫秒；初始排样和普通件插入不占用该预算
      * @return 合并后的最终排样结果
      */
     public static ExecutionResult solve(List<Instance> groupedInstances,
                                         int totalTimeMs) {
         // 保留原有 int 入口，避免其他调用方需要同时修改；参数现在表示
-        // 整个流程的总预算，而不是每张板材的重复预算。
+        // 全局重排优化的总预算，而不是每张板材的重复预算。
         return solveWithTotalTime(groupedInstances, Math.max(1L, totalTimeMs));
     }
 
     /**
-     * 执行优先先排的完整流程，并在所有阶段之间共享一个总截止时间。
+     * 执行优先先排的完整流程，并在两个全局重排阶段之间共享一个总时间预算。
      *
      * <p>阶段顺序和时间分配如下：</p>
      * <ol>
-     *     <li>优先件新板求解，直到当前全局截止时间；</li>
+     *     <li>优先件新板求解，必须完整结束，不使用优化预算；</li>
      *     <li>按优先件数量占比的 0.8 次幂分配优先件全局优化时间；</li>
-     *     <li>在已经确定的优先件板材中插入普通件；</li>
-     *     <li>为剩余普通件开新板求解，并用最后剩余时间优化这些新板。</li>
+     *     <li>在已经确定的优先件板材中插入普通件，并单独统计但不扣减正式预算；</li>
+     *     <li>为剩余普通件开新板求解，必须完整结束，再用优化预算的剩余时间优化这些新板。</li>
      * </ol>
      *
      * <p>普通件插入阶段只修改板材内的普通件布局，不会增加或减少第一阶段
      * 已经确定的优先件板材，因此 Sp 在第二阶段保持不变。</p>
      *
      * @param groupedInstances 当前输入按颜色拆出的 Instance 列表
-     * @param totalTimeMs 排样和解优化的总时间，单位为毫秒
+     * @param totalTimeMs 全局重排优化的总时间，单位为毫秒；初始排样和普通件插入不占用该预算
      * @return 合并后的最终排样结果，并包含各阶段实际耗时
      */
     public static ExecutionResult solveWithTotalTime(List<Instance> groupedInstances,
@@ -106,23 +106,22 @@ public final class PriorityFirstPacker {
         // 避免构造无意义的优先件种子板材。
         if (priorityBoxes.isEmpty()) {
             Instance ordinaryInstance = new Instance(new ArrayList<>(allBoxes), mixedContainer);
-            // 时间预算从真正开始排样的时刻开始计算，因此不包含前面的
+            // 总墙钟时间从真正开始排样的时刻开始计算，因此不包含前面的
             // NFP 拼接、组块转换以及 Instance 整理工作。
             long solveStartNanos = System.nanoTime();
             long totalBudgetMs = Math.max(1L, totalTimeMs);
-            long deadlineMillis = System.currentTimeMillis() + totalBudgetMs;
 
             long ordinarySolveStartNanos = System.nanoTime();
             ExecutionResult ordinaryResult = solveNewBoardsUntil(
                     ordinaryInstance,
-                    deadlineMillis);
+                    Long.MAX_VALUE);
             long ordinarySolveTimeMs = elapsedMillis(ordinarySolveStartNanos);
 
             long ordinaryOptimizeStartNanos = System.nanoTime();
             ordinaryResult = GlobalRepackOptimizer.optimize(
                     ordinaryInstance,
                     ordinaryResult,
-                    remainingMillis(deadlineMillis));
+                    PackingRuntimeConfig.capRepackTimeMs(totalBudgetMs));
             long ordinaryOptimizeTimeMs = elapsedMillis(ordinaryOptimizeStartNanos);
 
             ordinaryResult.priorityBoardCount = 0;
@@ -133,6 +132,7 @@ public final class PriorityFirstPacker {
                     0,
                     ordinarySolveTimeMs,
                     ordinaryOptimizeTimeMs,
+                    ordinaryOptimizeTimeMs,
                     elapsedMillis(solveStartNanos));
             return ordinaryResult;
         }
@@ -140,34 +140,31 @@ public final class PriorityFirstPacker {
         // 第一阶段只建立优先件 Instance。Box 对象仍然复用同一份，便于
         // 后面把优先件放置记录转换到混合 Instance 中。
         Instance priorityInstance = new Instance(new ArrayList<>(priorityBoxes), mixedContainer);
-        // 优先件 Instance 建立完成后才启动总时钟，确保统计范围只覆盖
-        // 排样和解优化，不把前面的 NFP 或输入整理时间算进去。
+        // 优先件 Instance 建立完成后才启动总墙钟，确保统计范围只覆盖
+        // 排样流程，不把前面的 NFP 或输入整理时间算进去。
         long solveStartNanos = System.nanoTime();
         long totalBudgetMs = Math.max(1L, totalTimeMs);
-        long deadlineMillis = System.currentTimeMillis() + totalBudgetMs;
         long priorityWorkpieceCount = countWorkpieces(priorityBoxes);
         long totalWorkpieceCount = countWorkpieces(allBoxes);
 
         long prioritySolveStartNanos = System.nanoTime();
         ExecutionResult priorityResult = solveNewBoardsUntil(
                 priorityInstance,
-                deadlineMillis);
+                Long.MAX_VALUE);
         long prioritySolveTimeMs = elapsedMillis(prioritySolveStartNanos);
 
         // 目标函数首先最小化 Sp，因此必须在普通件插入前完成优先件全局优化。
         // 优化结束后 GlobalRepackOptimizer 会重新生成 boardStates，第二阶段
         // 只接收这批最终优先件板材，不会因为普通件插入而新增优先件板材。
         long priorityOptimizeTimeLimitMs = calculatePriorityOptimizeTime(
-                Math.min(
-                        Math.max(0L, totalBudgetMs - prioritySolveTimeMs),
-                        remainingMillis(deadlineMillis)),
+                totalBudgetMs,
                 priorityWorkpieceCount,
                 totalWorkpieceCount);
         long priorityOptimizeStartNanos = System.nanoTime();
         priorityResult = GlobalRepackOptimizer.optimize(
                 priorityInstance,
                 priorityResult,
-                priorityOptimizeTimeLimitMs);
+                PackingRuntimeConfig.capRepackTimeMs(priorityOptimizeTimeLimitMs));
         long priorityOptimizeTimeMs = elapsedMillis(priorityOptimizeStartNanos);
 
         // 重新建立混合 Instance，统一重编号 typeNum，使 freeBoxes 和
@@ -175,14 +172,14 @@ public final class PriorityFirstPacker {
         Instance mixedInstance = new Instance(new ArrayList<>(allBoxes), mixedContainer);
         boolean[] ordinaryTypes = buildOrdinaryTypeMask(mixedInstance);
 
-        BeamSearch insertionSearch = new BeamSearch(
-                createSpaceManager(mixedInstance),
-                mixedInstance);
+        BeamSearch insertionSearch = new BeamSearch(createSpaceManager(mixedInstance), mixedInstance);
         long insertionStartNanos = System.nanoTime();
+        // 普通件插入是独立阶段：不扣减全局重排优化的时间预算。候选整体
+        // 重排仍通过 candidateRepackTimeLimitMs 限制单次验证，避免不可行候选无限搜索。
         ExecutionResult insertionResult = insertionSearch.packIntoExistingBoardsUntil(
                 priorityResult.boardStates,
                 ordinaryTypes,
-                deadlineMillis);
+                Long.MAX_VALUE);
         long insertionTimeMs = elapsedMillis(insertionStartNanos);
 
         // 第二阶段只允许在已有优先件板材中继续排样，板材数量必须与
@@ -204,19 +201,23 @@ public final class PriorityFirstPacker {
         long ordinarySolveTimeMs = 0;
         long ordinaryOptimizeTimeMs = 0;
         if (remainingOrdinaryInstance != null) {
+            long usedOptimizationTimeMs = priorityOptimizeTimeMs;
             long ordinarySolveStartNanos = System.nanoTime();
             remainingResult = solveNewBoardsUntil(
                     remainingOrdinaryInstance,
-                    deadlineMillis);
+                    Long.MAX_VALUE);
             ordinarySolveTimeMs = elapsedMillis(ordinarySolveStartNanos);
 
             // 这里只优化普通件新开的板材。由于优先件板材已经在上一步锁定，
-            // 该优化不会改变 Sp，只会尽量减少 So。
+            // 该优化不会改变 Sp，只会尽量减少 So。普通件初始排样耗时不扣减
+            // 此处预算，剩余时间只由已经发生的优先件全局优化决定。
             long ordinaryOptimizeStartNanos = System.nanoTime();
             remainingResult = GlobalRepackOptimizer.optimize(
                     remainingOrdinaryInstance,
                     remainingResult,
-                    remainingMillis(deadlineMillis));
+                    PackingRuntimeConfig.capRepackTimeMs(remainingOptimizationBudget(
+                            totalBudgetMs,
+                            usedOptimizationTimeMs)));
             ordinaryOptimizeTimeMs = elapsedMillis(ordinaryOptimizeStartNanos);
         }
 
@@ -233,11 +234,18 @@ public final class PriorityFirstPacker {
                 insertionTimeMs,
                 ordinarySolveTimeMs,
                 ordinaryOptimizeTimeMs,
+                priorityOptimizeTimeMs + ordinaryOptimizeTimeMs,
                 elapsedMillis(solveStartNanos));
         return finalResult;
     }
 
-    /** 在全局截止时间前求解一个独立 Instance 的新板排样。 */
+    /**
+     * 在给定截止时间前求解一个独立 Instance 的新板排样。
+     *
+     * @param instance 当前阶段待排的矩形实例。
+     * @param deadlineMillis 新板排样的绝对截止时间戳；传入 {@link Long#MAX_VALUE} 表示必须完整排样。
+     * @return 当前实例的排样结果。
+     */
     private static ExecutionResult solveNewBoardsUntil(Instance instance,
                                                        long deadlineMillis) {
         Comparator<Space> comparator = SpaceComparator.getSpaceComparator(instance, 1);
@@ -254,6 +262,7 @@ public final class PriorityFirstPacker {
         result.setAvgUtilization();
         return result;
     }
+
 
     private static List<Box> collectBoxes(List<Instance> instances) {
         List<Box> boxes = new ArrayList<>();
@@ -291,8 +300,7 @@ public final class PriorityFirstPacker {
     }
 
     /**
-     * 按“剩余总预算 × 优先件数量占比的 0.8 次幂”计算优先件优化预算。
-     * maxAvailableMs 用于同时遵守 System.currentTimeMillis() 的绝对截止时间。
+     * 按“全局优化预算 × 优先件数量占比的 0.8 次幂”计算优先件优化预算。
      */
     private static long calculatePriorityOptimizeTime(long maxAvailableMs,
                                                        long priorityWorkpieceCount,
@@ -309,9 +317,16 @@ public final class PriorityFirstPacker {
         return Math.max(0, Math.min(maxAvailableMs, (long) allocatedTime));
     }
 
-    /** 返回距全局截止时间的剩余毫秒数，不返回负数。 */
-    private static long remainingMillis(long deadlineMillis) {
-        return Math.max(0L, deadlineMillis - System.currentTimeMillis());
+    /**
+     * 根据已经累计的全局重排耗时，计算当前阶段还可使用的优化预算。
+     *
+     * @param totalBudgetMs 一个案例全局重排优化允许使用的总毫秒数。
+     * @param consumedOptimizationTimeMs 已完成的全局重排优化阶段累计耗时，单位为毫秒。
+     * @return 非负的剩余全局重排优化预算，单位为毫秒。
+     */
+    private static long remainingOptimizationBudget(long totalBudgetMs,
+                                                    long consumedOptimizationTimeMs) {
+        return Math.max(0L, totalBudgetMs - Math.max(0L, consumedOptimizationTimeMs));
     }
 
     /** 使用单调时钟统计阶段实际耗时，避免系统时间校准影响结果。 */
@@ -326,13 +341,16 @@ public final class PriorityFirstPacker {
                                   long ordinaryInsertionTimeMs,
                                   long ordinarySolveTimeMs,
                                   long ordinaryOptimizeTimeMs,
-                                  long totalSolveTimeMs) {
+                                  long totalSolveTimeMs,
+                                  long totalPackingTimeMs) {
         result.prioritySolveTimeMs = prioritySolveTimeMs;
         result.priorityOptimizeTimeMs = priorityOptimizeTimeMs;
         result.ordinaryInsertionTimeMs = ordinaryInsertionTimeMs;
         result.ordinarySolveTimeMs = ordinarySolveTimeMs;
         result.ordinaryOptimizeTimeMs = ordinaryOptimizeTimeMs;
         result.totalSolveTimeMs = totalSolveTimeMs;
+        result.initialPackingTimeMs = prioritySolveTimeMs + ordinarySolveTimeMs;
+        result.totalPackingTimeMs = totalPackingTimeMs;
     }
 
     private static void validateSameBoardSize(List<Instance> instances,
