@@ -21,9 +21,9 @@ public final class IntegratedPackingApplication {
     /** 未传入命令行参数时使用的默认案例目录；需要时只修改这一处路径即可。 */
     private static final Path DEFAULT_CASE_PATH = Path.of("data", "inputData");
     /** NFP 拼接结果目录名称。 */
-    private static final String NFP_RESULT_DIRECTORY_NAME = "NFPJoint10_evaluate";
+    private static final String NFP_RESULT_DIRECTORY_NAME = "BA01_NFP";
     /** 矩形排样结果目录名称。 */
-    private static final String PACKING_RESULT_DIRECTORY_NAME = "Result10_evaluate";
+    private static final String PACKING_RESULT_DIRECTORY_NAME = "BA01_Packing";
     /** NFP 到排样的中间文件目录名称。 */
     private static final String BRIDGE_DIRECTORY_NAME = "material";
 

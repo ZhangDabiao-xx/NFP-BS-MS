@@ -22,11 +22,11 @@ public final class DeepSeekAnalysisApplication {
      * 验证 LLM 接入。后续接入真实报告后，只需要修改这一处路径即可。</p>
      */
     private static final Path DEFAULT_RUN_REPORT_PATH =
-            Path.of("examples", "agent", "run-report-example.json");
+            Path.of("data","BA01_Packing", "Cabinet1", "run-report.json");
 
     /** 直接运行时的默认分析结果保存位置。 */
     private static final Path DEFAULT_ANALYSIS_PATH =
-            Path.of("tmp", "agent-analysis.json");
+            Path.of("data","BA01_Packing", "Cabinet1","analysis.json");
 
     private DeepSeekAnalysisApplication() {
     }

@@ -165,6 +165,15 @@ public class LoadingTestRun {
         pw.close();
         pwStatistics.close();
         pwTotal.close();
+
+        // 每次排样完成后写出同目录的 JSON 报告，供结果分析 Agent 直接读取。
+        // 写报告只读取最终结果，不影响既有 CSV、日志或算法决策。
+        Path runReportPath = RunReportWriter.write(
+                oPath,
+                oPath.getFileName() == null ? "unknown" : oPath.getFileName().toString(),
+                exeResult,
+                numOfWorkpiece,
+                workpieceNum);
         System.setOut(oldout);
 
         System.out.printf(Locale.ROOT,
@@ -179,6 +188,7 @@ public class LoadingTestRun {
                 formatSeconds(exeResult.totalSolveTimeMs),
                 formatSeconds(exeResult.ordinaryInsertionTimeMs),
                 formatSeconds(exeResult.totalPackingTimeMs));
+        System.out.println("运行报告: " + runReportPath.toAbsolutePath());
         if (numOfWorkpiece == workpieceNum) {
             System.out.println("The algorithm executed successfully and the optimization results have been output.");
         } else {
