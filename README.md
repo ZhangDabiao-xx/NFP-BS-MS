@@ -66,3 +66,13 @@ mvn exec:java `
 
 `examples/agent/run-report-example.json` 是一个可直接复制的输入示例；模型参数始终
 在 `DeepSeekConfig.java` 的代码常量中配置，不通过命令行传入。真实 API Key 不要提交到公开仓库。
+
+## 5. 优化方案生成 Agent（第二步接入）
+
+`org.example.agent.DeepSeekOptimizationProposalApplication` 读取同一案例的
+`run-report.json` 与 `analysis.json`，生成 `optimization-proposal.json`。它只提出
+待审查的修改方案，不会自动修改排样代码。
+
+默认案例路径已写在该类顶部，直接从 IDE 运行即可。切换案例时，只修改
+`RUN_REPORT_PATH`、`ANALYSIS_PATH` 和 `PROPOSAL_PATH` 三个常量。下一阶段将由
+可行性审查 Agent 结合具体代码检查这些方案，再决定是否允许生成修改补丁。
