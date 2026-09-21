@@ -35,3 +35,29 @@ mvn exec:java -Dexec.mainClass=org.example.nfp.visual.OutputDataVisualizer -Dexe
 ```powershell
 mvn exec:java -Dexec.mainClass=org.example.visualizer.PackingResultVisualizer -Dexec.args="data/Result1 data/visualResult1"
 ```
+
+## 4. DeepSeek 结果分析 Agent（第一步接入）
+
+当前版本只接入“读取运行报告并分析结果”的 Agent，不会自动修改求解代码，
+也不会替代现有的排样流程。
+
+请先打开 `src/main/java/org/example/agent/DeepSeekConfig.java`，填写：
+
+```java
+private static final String API_KEY = "请在这里输入你的 DeepSeek API Key";
+private static final String API_URL = "https://api.deepseek.com/chat/completions";
+private static final String MODEL = "deepseek-flash";
+private static final long TIMEOUT_SECONDS = 120L;
+```
+
+然后运行：
+
+```powershell
+mvn exec:java `
+  -Dexec.mainClass=org.example.agent.DeepSeekAnalysisApplication `
+  -Dexec.args="examples/agent/run-report-example.json tmp/agent-analysis.json"
+```
+
+`examples/agent/run-report-example.json` 是一个可直接复制的输入示例；实际使用时，
+将其替换为后续运行器生成的 JSON 报告。第二个参数可选；不填写时，
+分析结果直接输出到终端。真实 API Key 不要提交到公开仓库。
