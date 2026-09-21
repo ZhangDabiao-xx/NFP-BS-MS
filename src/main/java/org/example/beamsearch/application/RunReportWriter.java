@@ -19,7 +19,10 @@ import java.nio.file.Path;
  */
 public final class RunReportWriter {
 
-    /** 每个案例结果目录下固定的运行报告文件名。 */
+    /** 每个案例结果目录下保存 LLM 输入、输出和审查记录的子目录。 */
+    public static final String LLM_DIRECTORY_NAME = "llm";
+
+    /** LLM 工作流使用的运行报告文件名。 */
     public static final String FILE_NAME = "run-report.json";
 
     private RunReportWriter() {
@@ -28,7 +31,7 @@ public final class RunReportWriter {
     /**
      * 写入一个案例的运行报告。
      *
-     * @param outputDirectory 当前案例的排样结果目录
+     * @param outputDirectory 当前案例的排样结果目录；报告写入其 {@code llm} 子目录
      * @param caseName 案例名称
      * @param result 最终排样结果
      * @param inputWorkpieceCount 输入的可排样工件总数
@@ -63,8 +66,9 @@ public final class RunReportWriter {
         report.add("timingMs", timing(result));
         report.add("verification", verification(result, inputWorkpieceCount, placedWorkpieceCount));
 
-        Files.createDirectories(outputDirectory);
-        Path reportPath = outputDirectory.resolve(FILE_NAME);
+        Path llmDirectory = outputDirectory.resolve(LLM_DIRECTORY_NAME);
+        Files.createDirectories(llmDirectory);
+        Path reportPath = llmDirectory.resolve(FILE_NAME);
         String json = new GsonBuilder().setPrettyPrinting().create().toJson(report);
         Files.writeString(reportPath, json, StandardCharsets.UTF_8);
         return reportPath;

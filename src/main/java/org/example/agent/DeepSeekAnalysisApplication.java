@@ -18,15 +18,15 @@ public final class DeepSeekAnalysisApplication {
     /**
      * 直接从 IDE 运行时使用的默认报告。
      *
-     * <p>排样程序暂未自动生成 Agent 所需的汇总报告，因此先使用项目内示例报告
-     * 验证 LLM 接入。后续接入真实报告后，只需要修改这一处路径即可。</p>
+     * <p>排样程序会在案例结果目录的 {@code llm} 子目录生成该报告；
+     * 需要切换案例时，只修改这一处路径即可。</p>
      */
     private static final Path DEFAULT_RUN_REPORT_PATH =
-            Path.of("data","BA01_Packing", "Cabinet1", "run-report.json");
+            Path.of("data", "BA01_Packing", "Cabinet1", "llm", "run-report.json");
 
     /** 直接运行时的默认分析结果保存位置。 */
     private static final Path DEFAULT_ANALYSIS_PATH =
-            Path.of("data","BA01_Packing", "Cabinet1","analysis.json");
+            Path.of("data", "BA01_Packing", "Cabinet1", "llm", "analysis.json");
 
     private DeepSeekAnalysisApplication() {
     }

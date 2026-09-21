@@ -15,15 +15,15 @@ public final class DeepSeekOptimizationProposalApplication {
 
     /** 当前要分析的案例运行报告。 */
     private static final Path RUN_REPORT_PATH =
-            Path.of("data", "BA01_Packing", "Cabinet1", "run-report.json");
+            Path.of("data", "BA01_Packing", "Cabinet1", "llm", "run-report.json");
 
     /** 结果分析 Agent 已生成的诊断文件。 */
     private static final Path ANALYSIS_PATH =
-            Path.of("data", "BA01_Packing", "Cabinet1", "analysis.json");
+            Path.of("data", "BA01_Packing", "Cabinet1", "llm", "analysis.json");
 
     /** 本 Agent 生成的待审查方案文件。 */
     private static final Path PROPOSAL_PATH =
-            Path.of("data", "BA01_Packing", "Cabinet1", "optimization-proposal.json");
+            Path.of("data", "BA01_Packing", "Cabinet1", "llm", "optimization-proposal.json");
 
     private DeepSeekOptimizationProposalApplication() {
     }

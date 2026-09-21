@@ -17,15 +17,15 @@ public final class DeepSeekProposalReviewLoopApplication {
 
     /** 当前案例的事实依据。 */
     private static final Path RUN_REPORT_PATH =
-            Path.of("data", "BA01_Packing", "Cabinet1", "run-report.json");
+            Path.of("data", "BA01_Packing", "Cabinet1", "llm", "run-report.json");
 
     /** 结果分析 Agent 自动生成的诊断文件。 */
     private static final Path ANALYSIS_PATH =
-            Path.of("data", "BA01_Packing", "Cabinet1", "analysis.json");
+            Path.of("data", "BA01_Packing", "Cabinet1", "llm", "analysis.json");
 
     /** 方案生成 Agent 自动生成的第一版候选方案。 */
     private static final Path INITIAL_PROPOSAL_PATH =
-            Path.of("data", "BA01_Packing", "Cabinet1", "optimization-proposal.json");
+            Path.of("data", "BA01_Packing", "Cabinet1", "llm", "optimization-proposal.json");
 
     /** 仅允许审查本项目的 Java 业务源码。 */
     private static final Path SOURCE_ROOT = Path.of("src", "main", "java");
