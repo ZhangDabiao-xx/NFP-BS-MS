@@ -1,14 +1,8 @@
 package org.example.agent;
 
-import com.google.gson.GsonBuilder;
-import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import com.google.gson.JsonParseException;
-import com.google.gson.JsonParser;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 
 /**
@@ -41,19 +35,14 @@ public final class DeepSeekOptimizationProposalApplication {
         }
 
         try {
-            JsonObject runReport = readJsonObject(RUN_REPORT_PATH, "运行报告");
-            JsonObject analysis = readJsonObject(ANALYSIS_PATH, "分析结果");
+            JsonObject runReport = AgentJsonFiles.readObject(RUN_REPORT_PATH, "运行报告");
+            JsonObject analysis = AgentJsonFiles.readObject(ANALYSIS_PATH, "分析结果");
 
             DeepSeekClient client = new DeepSeekClient(DeepSeekConfig.fromCode());
             OptimizationProposalAgent agent = new OptimizationProposalAgent(client);
             JsonObject proposal = agent.createProposal(runReport, analysis);
 
-            Path parent = PROPOSAL_PATH.getParent();
-            if (parent != null) {
-                Files.createDirectories(parent);
-            }
-            String formatted = new GsonBuilder().setPrettyPrinting().create().toJson(proposal);
-            Files.writeString(PROPOSAL_PATH, formatted, StandardCharsets.UTF_8);
+            AgentJsonFiles.writeObject(PROPOSAL_PATH, proposal);
             System.out.println("优化方案已写入: " + PROPOSAL_PATH.toAbsolutePath());
         } catch (IllegalArgumentException | IllegalStateException exception) {
             // 对路径、JSON 或模型配置错误给出简短提示，避免直接输出冗长堆栈。
@@ -62,19 +51,4 @@ public final class DeepSeekOptimizationProposalApplication {
         }
     }
 
-    /** 读取并确认输入文件是 JSON 对象，防止把错误文件发送给模型。 */
-    private static JsonObject readJsonObject(Path path, String description) throws IOException {
-        if (!Files.isRegularFile(path)) {
-            throw new IllegalArgumentException(description + "不存在: " + path.toAbsolutePath());
-        }
-        try {
-            JsonElement element = JsonParser.parseString(Files.readString(path, StandardCharsets.UTF_8));
-            if (!element.isJsonObject()) {
-                throw new IllegalArgumentException(description + "必须是 JSON 对象: " + path.toAbsolutePath());
-            }
-            return element.getAsJsonObject();
-        } catch (JsonParseException | IllegalStateException exception) {
-            throw new IllegalArgumentException(description + "不是合法 JSON: " + path.toAbsolutePath(), exception);
-        }
-    }
 }

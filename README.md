@@ -76,3 +76,18 @@ mvn exec:java `
 默认案例路径已写在该类顶部，直接从 IDE 运行即可。切换案例时，只修改
 `RUN_REPORT_PATH`、`ANALYSIS_PATH` 和 `PROPOSAL_PATH` 三个常量。下一阶段将由
 可行性审查 Agent 结合具体代码检查这些方案，再决定是否允许生成修改补丁。
+
+## 6. 完整优化工作流主入口（第三步接入）
+
+直接运行 `org.example.agent.DeepSeekProposalReviewLoopApplication` 即可完成整个
+LLM 工作流：`run-report.json → analysis.json → optimization-proposal.json → 可行性审查`。
+它不需要命令行参数；切换案例时只修改该类顶部的路径常量。
+
+审查只读取方案列出的 `src/main/java` Java 文件片段。若没有方案通过，审查反馈会
+返还给方案生成 Agent，产生 `optimization-proposal-v2.json` 等修订版。
+
+每轮都会生成 `feasibility-review-v1.json` 等审查记录。只要存在明确标记为
+`approved`、且没有待补证据或拒绝原因的方案，循环就停止并生成
+`approved-proposals.json`。后续代码修改 Agent 只能读取这一文件；否则审查反馈会
+返还给方案生成 Agent。三轮后仍未通过则生成 `needs-human-decision.json`，不会
+自动修改任何排样代码。
