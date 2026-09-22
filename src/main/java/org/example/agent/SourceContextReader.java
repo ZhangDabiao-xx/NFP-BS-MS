@@ -12,6 +12,8 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * 从候选方案中提取目标 Java 文件的有限代码片段，供可行性审查使用。
@@ -22,8 +24,10 @@ import java.util.Set;
 final class SourceContextReader {
 
     private static final int MAX_FILE_COUNT = 6;
-    private static final int MAX_TOTAL_CHARS = 24_000;
-    private static final int MAX_CHARS_PER_FILE = 12_000;
+    private static final int MAX_TOTAL_CHARS = 40_000;
+    private static final int MAX_CHARS_PER_FILE = 30_000;
+    /** 目标方法前保留少量字段和常量，帮助代码 Agent 理解方法依赖。 */
+    private static final int METHOD_CONTEXT_CHARS = 2_000;
 
     private final Path sourceRoot;
     private final Path projectRoot;
@@ -71,9 +75,13 @@ final class SourceContextReader {
                 break;
             }
             Path file = resolveJavaSource(target.getKey());
-            String snippet = Files.isRegularFile(file)
+            boolean sourceExists = Files.isRegularFile(file);
+            String snippet = sourceExists
                     ? extractSnippet(file, target.getValue(), remainingChars)
                     : "[该目标是计划新建的 Java 文件，当前没有可供审查的源码。]";
+            if (sourceExists) {
+                ensureTargetMethodsIncluded(snippet, target.getValue(), target.getKey());
+            }
             context.append("\n--- ").append(projectRoot.relativize(file)).append(" ---\n");
             context.append(snippet).append('\n');
             remainingChars -= snippet.length();
@@ -165,21 +173,85 @@ final class SourceContextReader {
             return source;
         }
 
-        int targetIndex = findTargetIndex(source, targetMethods);
-        int start = targetIndex < 0 ? 0 : Math.max(0, targetIndex - 2_000);
-        int end = Math.min(source.length(), start + maxChars);
+        int declarationIndex = findTargetDeclaration(source, targetMethods);
+        if (declarationIndex < 0) {
+            throw new IllegalArgumentException("无法在目标文件中定位真实方法声明: " + file);
+        }
+
+        int openingBrace = source.indexOf('{', declarationIndex);
+        int methodEnd = findMatchingBrace(source, openingBrace);
+        if (openingBrace < 0 || methodEnd < 0) {
+            throw new IllegalArgumentException("无法定位目标方法的完整边界: " + file);
+        }
+
+        int start = Math.max(0, declarationIndex - METHOD_CONTEXT_CHARS);
+        int end = methodEnd + 1;
+        String snippet = source.substring(start, end);
+        if (snippet.length() > maxChars) {
+            throw new IllegalArgumentException("目标方法超过源码上下文长度限制: " + file);
+        }
+
         String prefix = start == 0 ? "" : "[省略前文]\n";
         String suffix = end == source.length() ? "" : "\n[省略后文]";
-        return prefix + source.substring(start, end) + suffix;
+        return prefix + snippet + suffix;
     }
 
-    private int findTargetIndex(String source, Set<String> targetMethods) {
+    /**
+     * 匹配 Java 方法声明，而不是查找方法名的首次文字出现位置。
+     *
+     * <p>例如 ImproveByRepack 在类顶部注释中也会出现；若只用 indexOf，
+     * 会错误截取文件开头，导致代码修改 Agent 看不到真正方法体。</p>
+     */
+    private int findTargetDeclaration(String source, Set<String> targetMethods) {
         for (String method : targetMethods) {
-            int index = source.indexOf(method);
-            if (index >= 0) {
-                return index;
+            String methodName = methodName(method);
+            Pattern declaration = Pattern.compile(
+                    "(?m)^\\s*(?:public|protected|private)\\s+(?:static\\s+)?[^\\n{;]*\\b"
+                            + Pattern.quote(methodName) + "\\s*\\(");
+            Matcher matcher = declaration.matcher(source);
+            if (matcher.find()) {
+                return matcher.start();
             }
         }
         return -1;
+    }
+
+    /** 使用简单的括号计数确定一个已定位 Java 方法的结尾。 */
+    private int findMatchingBrace(String source, int openingBrace) {
+        if (openingBrace < 0) {
+            return -1;
+        }
+        int depth = 0;
+        for (int index = openingBrace; index < source.length(); index++) {
+            char current = source.charAt(index);
+            if (current == '{') {
+                depth++;
+            } else if (current == '}') {
+                depth--;
+                if (depth == 0) {
+                    return index;
+                }
+            }
+        }
+        return -1;
+    }
+
+    /** 在调用代码修改 Agent 前确认片段中确实有请求的目标方法声明。 */
+    private void ensureTargetMethodsIncluded(String snippet,
+                                             Set<String> targetMethods,
+                                             String declaredFile) {
+        for (String method : targetMethods) {
+            String methodName = methodName(method);
+            Pattern declaration = Pattern.compile("\\b" + Pattern.quote(methodName) + "\\s*\\(");
+            if (!declaration.matcher(snippet).find()) {
+                throw new IllegalArgumentException("源码片段未包含目标方法 "
+                        + method + ": " + declaredFile);
+            }
+        }
+    }
+
+    private String methodName(String method) {
+        int separator = method.lastIndexOf('.');
+        return separator >= 0 ? method.substring(separator + 1) : method;
     }
 }

@@ -93,6 +93,10 @@ Decision Agent 只接收运行报告，选择一个最小、可验证的待实�
 `ready_for_implementation` 时，代码修改 Agent 才会读取方案明确列出的有限 Java 源码片段，
 生成精确文本替换。替换原文必须唯一匹配、文件必须在 `targetFiles` 中，且修改前会自动备份。
 
+为避免模型虚构 Java 路径，主入口会先向 Decision Agent 提供并在本地校验真实代码地图。当前
+允许选择的优化入口为 `GlobalRepackOptimizer.optimize` 与 `BeamSearch.ImproveByRepack`；模型不能
+返回地图以外的文件或方法。
+
 `decision.json` 的 `status` 表示下一步：
 
 - `ready_for_implementation`：存在唯一的 `selectedPlan`，可交给后续代码修改阶段。
