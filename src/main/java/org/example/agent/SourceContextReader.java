@@ -43,8 +43,24 @@ final class SourceContextReader {
      */
     String readForProposal(JsonObject proposal) throws IOException {
         Map<String, Set<String>> targets = collectTargets(proposal);
+        return readTargets(targets, "候选方案未声明 targetFiles，无法进行代码审查。");
+    }
+
+    /**
+     * 读取单一决策方案涉及的代码片段，供代码修改 Agent 使用。
+     */
+    String readForDecision(JsonObject decision) throws IOException {
+        JsonObject selectedPlan = decision.getAsJsonObject("selectedPlan");
+        if (selectedPlan == null) {
+            throw new IllegalArgumentException("决策未包含 selectedPlan，无法准备代码上下文。");
+        }
+        Map<String, Set<String>> targets = collectSingleTarget(selectedPlan);
+        return readTargets(targets, "selectedPlan 未声明 targetFiles，无法准备代码上下文。");
+    }
+
+    private String readTargets(Map<String, Set<String>> targets, String emptyMessage) throws IOException {
         if (targets.isEmpty()) {
-            throw new IllegalArgumentException("候选方案未声明 targetFiles，无法进行代码审查。");
+            throw new IllegalArgumentException(emptyMessage);
         }
 
         StringBuilder context = new StringBuilder();
@@ -92,6 +108,23 @@ final class SourceContextReader {
                     targets.computeIfAbsent(file.getAsString(), ignored -> new LinkedHashSet<>())
                             .addAll(methods);
                 }
+            }
+        }
+        return targets;
+    }
+
+    /** 将一个 selectedPlan 转换为与旧方案相同的目标文件结构。 */
+    private Map<String, Set<String>> collectSingleTarget(JsonObject selectedPlan) {
+        Map<String, Set<String>> targets = new LinkedHashMap<>();
+        JsonArray files = selectedPlan.getAsJsonArray("targetFiles");
+        if (files == null) {
+            return targets;
+        }
+        Set<String> methods = stringValues(selectedPlan.getAsJsonArray("targetMethods"));
+        for (JsonElement file : files) {
+            if (file.isJsonPrimitive()) {
+                targets.computeIfAbsent(file.getAsString(), ignored -> new LinkedHashSet<>())
+                        .addAll(methods);
             }
         }
         return targets;

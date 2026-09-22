@@ -80,13 +80,18 @@ mvn exec:java `
 ## 6. 精简优化工作流主入口（当前推荐）
 
 新的主入口是 `org.example.agent.DeepSeekOptimizationWorkflowApplication`。它将原先的
-“分析 Agent、方案生成 Agent、可行性审查 Agent”收敛为一次决策调用：
+“分析 Agent、方案生成 Agent、可行性审查 Agent”收敛为一次决策调用，并在同一入口完成
+代码修改与非 LLM 验证：
 
-`llm/run-report.json → Decision Agent → llm/iteration-01/decision.json`
+`run-report.json → Decision Agent → Code Modification Agent → 编译 → 候选排样重跑 → 验证`
 
 直接从 IDE 运行即可，不需要命令行参数。切换案例时只修改该类顶部的
-`CASE_OUTPUT_DIRECTORY`。Decision Agent 只接收运行报告，选择一个最小、可验证的
-待实施方案；它不读取源码、不生成补丁，也不会修改排样程序。
+`CASE_OUTPUT_DIRECTORY`。运行前必须已经完成该案例的一次排样，使
+`run-report.json`、`material.csv` 和 `workpiece` 已存在。
+
+Decision Agent 只接收运行报告，选择一个最小、可验证的待实施方案。只有当它返回
+`ready_for_implementation` 时，代码修改 Agent 才会读取方案明确列出的有限 Java 源码片段，
+生成精确文本替换。替换原文必须唯一匹配、文件必须在 `targetFiles` 中，且修改前会自动备份。
 
 `decision.json` 的 `status` 表示下一步：
 
@@ -94,6 +99,18 @@ mvn exec:java `
 - `collect_evidence`：报告证据不足，应先补充计时或统计数据。
 - `no_change`：当前结果没有值得修改的方向。
 
-后续会在同一个主入口按固定顺序接入：代码修改 Agent、确定性代码/运行验证、再次运行
-排样程序，以及最多三轮的反馈循环。旧的 `DeepSeekProposalReviewLoopApplication` 仅保留
-为早期多 Agent 实验入口，不再作为推荐流程。
+每次代码修改会在新的 `llm/iteration-XX` 目录写入：
+
+- `decision.json`：本轮唯一的已选方案；
+- `code-changes.json`：代码 Agent 的机器可读替换内容；
+- `modification-report.md`：面向阅读的“本次修改了哪些代码、为何修改”说明；
+- `backups/`：修改前的原始源码；
+- `validation.json`：Java 编译、候选案例运行和基线指标比较结果；
+- `candidate-output/`：候选代码产生的独立排样结果，不覆盖原案例结果。
+- `result-analysis.json`：验证通过后，对候选排样结果进行的新一轮分析。
+
+验证不调用 LLM：它会编译全部主源码，使用已有 bridge 输入重跑当前案例，并保护既有的
+可行性校验、未排工件数、板数和真实平均利用率。验证失败会自动恢复本轮源码，并把错误原因
+反馈给代码修改 Agent；最多尝试三次。成功时，修改会保留，汇总状态写入 `llm/final-result.json`。
+成功后的候选运行报告会成为下一次启动主入口时的分析基线，因此不需要手动移动 JSON 文件。
+旧的 `DeepSeekProposalReviewLoopApplication` 仅保留为早期多 Agent 实验入口，不再作为推荐流程。
