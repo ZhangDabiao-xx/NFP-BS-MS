@@ -84,6 +84,8 @@ public class OptimizationDecisionAgent {
                 5. 当输入含 availableCodeTargets 时，ready_for_implementation 的 targetFiles
                    与 targetMethods 必须逐项、完全对应其中的 file 与 method；绝不编造类、
                    路径或方法。若没有合适入口，使用 collect_evidence。
+                6. 最终回复的第一个字符必须是 {、最后一个字符必须是 }；禁止使用 JSON 数组、
+                   Markdown 代码块或在 JSON 前后添加说明文字。
                 """;
 
         JsonObject response = client.chatJson(systemPrompt, request.toString());

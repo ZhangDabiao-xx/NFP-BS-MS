@@ -46,15 +46,67 @@ public final class DeepSeekClient {
     public JsonObject chatJson(String systemPrompt,
                                String userPrompt) throws IOException, InterruptedException {
         String content = send(systemPrompt, userPrompt, true);
+        return parseJsonObject(content);
+    }
+
+    /**
+     * 将模型常见的 JSON 包装形式统一还原成对象。
+     *
+     * <p>接口要求对象，但部分模型偶尔会返回单元素数组、Markdown JSON 代码块，
+     * 或把 JSON 再包装成字符串。这里仅处理能无歧义还原为一个对象的形式。</p>
+     */
+    private JsonObject parseJsonObject(String content) throws IOException {
+        String normalized = stripCodeFence(content);
         try {
-            JsonElement element = JsonParser.parseString(content);
-            if (!element.isJsonObject()) {
-                throw new IOException("DeepSeek 返回的 JSON 不是对象。");
+            JsonElement element = JsonParser.parseString(normalized);
+            if (element.isJsonObject()) {
+                return element.getAsJsonObject();
             }
-            return element.getAsJsonObject();
+            if (element.isJsonArray()) {
+                JsonArray values = element.getAsJsonArray();
+                if (values.size() == 1 && values.get(0).isJsonObject()) {
+                    return values.get(0).getAsJsonObject();
+                }
+                throw new IOException("DeepSeek 返回的 JSON 根节点是数组，元素数量为 "
+                        + values.size() + "，无法无歧义转换为对象。");
+            }
+            if (element.isJsonPrimitive() && element.getAsJsonPrimitive().isString()) {
+                // 某些兼容接口会把完整 JSON 放入一个 JSON 字符串中。
+                return parseJsonObject(element.getAsString());
+            }
+            throw new IOException("DeepSeek 返回的 JSON 根节点类型为 " + jsonType(element)
+                    + "，期望对象。");
         } catch (JsonParseException exception) {
-            throw new IOException("DeepSeek 返回内容不是合法 JSON：" + content, exception);
+            throw new IOException("DeepSeek 返回内容不是合法 JSON 对象。", exception);
         }
+    }
+
+    /** 去除 UTF-8 BOM 和完整 Markdown JSON 代码块。 */
+    private String stripCodeFence(String content) {
+        String value = content == null ? "" : content.strip();
+        if (value.startsWith("\uFEFF")) {
+            value = value.substring(1).strip();
+        }
+        if (!value.startsWith("```")) {
+            return value;
+        }
+
+        int firstLineEnd = value.indexOf('\n');
+        int closingFence = value.lastIndexOf("```");
+        if (firstLineEnd >= 0 && closingFence > firstLineEnd) {
+            return value.substring(firstLineEnd + 1, closingFence).strip();
+        }
+        return value;
+    }
+
+    private String jsonType(JsonElement element) {
+        if (element.isJsonNull()) {
+            return "null";
+        }
+        if (element.isJsonPrimitive()) {
+            return "primitive";
+        }
+        return "unknown";
     }
 
     private String send(String systemPrompt,
