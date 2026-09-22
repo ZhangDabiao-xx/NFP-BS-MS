@@ -4,6 +4,7 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
 import org.example.beamsearch.common.ExecutionResult;
 import org.example.beamsearch.common.PlacedCuboid;
+import org.example.beamsearch.common.RepackStatistics;
 import org.example.beamsearch.common.Solution;
 
 import java.io.IOException;
@@ -52,7 +53,7 @@ public final class RunReportWriter {
         }
 
         JsonObject report = new JsonObject();
-        report.addProperty("schemaVersion", "1.0");
+        report.addProperty("schemaVersion", "1.1");
         report.addProperty("caseName", caseName == null || caseName.isBlank() ? "unknown" : caseName);
         report.addProperty("priorityBoardCount", Math.max(0, result.priorityBoardCount));
         report.addProperty("ordinaryBoardCount", Math.max(0, result.ordinaryBoardCount));
@@ -64,6 +65,7 @@ public final class RunReportWriter {
         report.addProperty("unplacedWorkpieceCount", countUnplacedWorkpieces(result));
 
         report.add("timingMs", timing(result));
+        report.add("repackMonitoring", repackMonitoring(result));
         report.add("verification", verification(result, inputWorkpieceCount, placedWorkpieceCount));
 
         Path llmDirectory = outputDirectory.resolve(LLM_DIRECTORY_NAME);
@@ -86,6 +88,40 @@ public final class RunReportWriter {
         timing.addProperty("totalOptimization", nonNegative(result.totalSolveTimeMs));
         timing.addProperty("totalPacking", nonNegative(result.totalPackingTimeMs));
         return timing;
+    }
+
+    /**
+     * 写入优先件和普通件全局重排的轻量统计，便于定位耗时是否来自候选数量、
+     * 重排尝试次数或时间上限。所有字段均在求解过程中只读采集。
+     */
+    private static JsonObject repackMonitoring(ExecutionResult result) {
+        JsonObject monitoring = new JsonObject();
+        monitoring.add("priority", repackStatistics(result.priorityRepackStatistics));
+        monitoring.add("ordinary", repackStatistics(result.ordinaryRepackStatistics));
+        return monitoring;
+    }
+
+    private static JsonObject repackStatistics(RepackStatistics statistics) {
+        RepackStatistics value = statistics == null
+                ? RepackStatistics.notRun("not_recorded") : statistics;
+        JsonObject report = new JsonObject();
+        report.addProperty("executed", value.executed);
+        report.addProperty("stopReason", value.stopReason);
+        report.addProperty("requestedTimeLimitMs", nonNegative(value.requestedTimeLimitMs));
+        report.addProperty("elapsedTimeMs", nonNegative(value.elapsedTimeMs));
+        report.addProperty("unusedTimeLimitMs", Math.max(0L,
+                value.requestedTimeLimitMs - value.elapsedTimeMs));
+        report.addProperty("boardCountBefore", Math.max(0, value.boardCountBefore));
+        report.addProperty("boardCountAfter", Math.max(0, value.boardCountAfter));
+        report.addProperty("outerLoopIterations", nonNegative(value.outerLoopIterations));
+        report.addProperty("noImprovementSweeps", Math.max(0, value.noImprovementSweeps));
+        report.addProperty("candidateBoardAttempts", nonNegative(value.candidateBoardAttempts));
+        report.addProperty("pairCandidatesGenerated", nonNegative(value.pairCandidatesGenerated));
+        report.addProperty("pairRepackAttempts", nonNegative(value.pairRepackAttempts));
+        report.addProperty("successfulPairRepackAttempts", nonNegative(value.successfulPairRepackAttempts));
+        report.addProperty("boardReductions", nonNegative(value.boardReductions));
+        report.addProperty("timeLimitReached", value.timeLimitReached);
+        return report;
     }
 
     /**

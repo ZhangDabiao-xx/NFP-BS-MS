@@ -114,3 +114,13 @@ Decision Agent 只接收运行报告，选择一个最小、可验证的待实�
 反馈给代码修改 Agent；最多尝试三次。成功时，修改会保留，汇总状态写入 `llm/final-result.json`。
 成功后的候选运行报告会成为下一次启动主入口时的分析基线，因此不需要手动移动 JSON 文件。
 旧的 `DeepSeekProposalReviewLoopApplication` 仅保留为早期多 Agent 实验入口，不再作为推荐流程。
+
+## 7. 全局重排轻量监控
+
+每次排样完成后，`RunReportWriter` 都会确保在当前案例结果目录创建 `llm` 子目录，并写入
+`llm/run-report.json`。报告的 `repackMonitoring.priority` 和 `repackMonitoring.ordinary`
+分别记录两个全局重排阶段的：时间上限、实际耗时、开始/结束板数、外层循环次数、候选板材数、
+组合候选数、实际重排次数、成功改进次数、减板次数和停止原因。
+
+监控只增加计数与计时，不改变 Beam Search、随机种子、约束条件或十分钟重排预算。重新运行
+对应案例的排样程序后，新的字段会自动出现在该案例的 `run-report.json` 中。

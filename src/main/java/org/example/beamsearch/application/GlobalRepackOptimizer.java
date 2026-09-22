@@ -6,6 +6,7 @@ import org.example.beamsearch.common.Box;
 import org.example.beamsearch.common.ExecutionResult;
 import org.example.beamsearch.common.Instance;
 import org.example.beamsearch.common.PlacedCuboid;
+import org.example.beamsearch.common.RepackStatistics;
 import org.example.beamsearch.common.Solution;
 import org.example.beamsearch.common.Space;
 import org.example.beamsearch.common.SpaceComparator;
@@ -51,11 +52,16 @@ public final class GlobalRepackOptimizer {
             return result;
         }
 
+        long startNanos = System.nanoTime();
+        RepackStatistics statistics = new RepackStatistics();
+        statistics.requestedTimeLimitMs = Math.max(0L, timeLimitMs);
+
         // solve() 生成的 Box 通常已经是原对象，但重排过程中会使用 Box.copy()。
         // 先统一一次，保证重排和后续快照都使用同一组工件定义。
         normalizeResult(instance, result);
 
         int boardCountBefore = result.solutions.size();
+        statistics.boardCountBefore = boardCountBefore;
         if (boardCountBefore >= 2 && timeLimitMs > 0) {
             Comparator<Space> comparator = SpaceComparator.getSpaceComparator(instance, 1);
             SpaceManager spaceManager = new SpaceManager(comparator);
@@ -75,9 +81,14 @@ public final class GlobalRepackOptimizer {
             if (optimized != null) {
                 result = optimized;
             }
+            statistics = beamSearch.getLastRepackStatistics();
 
             System.out.println("Global repack result: "
                     + boardCountBefore + " -> " + result.solutions.size() + " boards.");
+        } else {
+            statistics.stopReason = boardCountBefore < 2
+                    ? "insufficient_boards"
+                    : "non_positive_time_limit";
         }
 
         // ImproveByRepack() 可能替换 Solution 和 PlacedCuboid，旧 boardStates
@@ -85,7 +96,16 @@ public final class GlobalRepackOptimizer {
         normalizeResult(instance, result);
         rebuildBoardStates(instance, result);
         result.setAvgUtilization();
+        statistics.boardCountBefore = boardCountBefore;
+        statistics.boardCountAfter = result.solutions.size();
+        statistics.elapsedTimeMs = elapsedMillis(startNanos);
+        result.repackStatistics = statistics;
         return result;
+    }
+
+    /** 使用单调时钟记录监控耗时，不影响全局重排的既有时间判断。 */
+    private static long elapsedMillis(long startNanos) {
+        return Math.max(0L, (System.nanoTime() - startNanos) / 1_000_000L);
     }
 
     /**

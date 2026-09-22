@@ -5,6 +5,7 @@ import org.example.beamsearch.common.Box;
 import org.example.beamsearch.common.Container;
 import org.example.beamsearch.common.ExecutionResult;
 import org.example.beamsearch.common.Instance;
+import org.example.beamsearch.common.RepackStatistics;
 import org.example.beamsearch.common.Space;
 import org.example.beamsearch.common.SpaceComparator;
 import org.example.beamsearch.spacemanager.SpaceManager;
@@ -126,6 +127,8 @@ public final class PriorityFirstPacker {
 
             ordinaryResult.priorityBoardCount = 0;
             ordinaryResult.ordinaryBoardCount = ordinaryResult.solutions.size();
+            ordinaryResult.priorityRepackStatistics = RepackStatistics.notRun("no_priority_workpieces");
+            ordinaryResult.ordinaryRepackStatistics = ordinaryResult.repackStatistics;
             setTiming(ordinaryResult,
                     0,
                     0,
@@ -166,6 +169,7 @@ public final class PriorityFirstPacker {
                 priorityResult,
                 PackingRuntimeConfig.capRepackTimeMs(priorityOptimizeTimeLimitMs));
         long priorityOptimizeTimeMs = elapsedMillis(priorityOptimizeStartNanos);
+        RepackStatistics priorityRepackStatistics = priorityResult.repackStatistics;
 
         // 重新建立混合 Instance，统一重编号 typeNum，使 freeBoxes 和
         // GeneralBlock.typeCount 在后续阶段使用同一套下标。
@@ -198,6 +202,8 @@ public final class PriorityFirstPacker {
                 mixedContainer);
 
         ExecutionResult remainingResult = null;
+        RepackStatistics ordinaryRepackStatistics =
+                RepackStatistics.notRun("no_remaining_ordinary_workpieces");
         long ordinarySolveTimeMs = 0;
         long ordinaryOptimizeTimeMs = 0;
         if (remainingOrdinaryInstance != null) {
@@ -219,6 +225,7 @@ public final class PriorityFirstPacker {
                             totalBudgetMs,
                             usedOptimizationTimeMs)));
             ordinaryOptimizeTimeMs = elapsedMillis(ordinaryOptimizeStartNanos);
+            ordinaryRepackStatistics = remainingResult.repackStatistics;
         }
 
         ExecutionResult finalResult = mergeResults(
@@ -236,6 +243,8 @@ public final class PriorityFirstPacker {
                 ordinaryOptimizeTimeMs,
                 priorityOptimizeTimeMs + ordinaryOptimizeTimeMs,
                 elapsedMillis(solveStartNanos));
+        finalResult.priorityRepackStatistics = priorityRepackStatistics;
+        finalResult.ordinaryRepackStatistics = ordinaryRepackStatistics;
         return finalResult;
     }
 

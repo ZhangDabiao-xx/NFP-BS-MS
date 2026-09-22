@@ -27,6 +27,12 @@ public class ExecutionResult {
     public long ordinarySolveTimeMs;
     /** 普通件新板全局优化阶段实际耗时，单位为毫秒。 */
     public long ordinaryOptimizeTimeMs;
+    /** 优先件全局重排的轻量监控数据；未执行时记录明确原因。 */
+    public RepackStatistics priorityRepackStatistics = RepackStatistics.notRun("not_recorded");
+    /** 普通件新板全局重排的轻量监控数据；未执行时记录明确原因。 */
+    public RepackStatistics ordinaryRepackStatistics = RepackStatistics.notRun("not_recorded");
+    /** 当前独立阶段最近一次全局重排的原始监控数据，供协调器合并到最终结果。 */
+    public RepackStatistics repackStatistics = RepackStatistics.notRun("not_called");
     /**
      * 优先件与普通件全局重排优化的累计耗时，单位为毫秒。
      *

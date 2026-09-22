@@ -20,6 +20,8 @@ public class BeamSearch {
     private static final int MAX_NO_IMPROVEMENT_SWEEPS = 3;
 
     private long finishTime = 0;
+    /** 最近一次 ImproveByRepack 的只读监控结果。 */
+    private RepackStatistics lastRepackStatistics = RepackStatistics.notRun("not_called");
 
     /**
      * 创建使用原有固定启发式候选排序的 Beam Search 求解器。
@@ -30,6 +32,11 @@ public class BeamSearch {
     public BeamSearch(SpaceManager spaceManager, Instance inst) {
         this.inst = inst;
         this.spaceManager = spaceManager;
+    }
+
+    /** 返回最近一次全局重排的统计数据，供运行报告汇总使用。 */
+    public RepackStatistics getLastRepackStatistics() {
+        return lastRepackStatistics;
     }
 
     /**
@@ -750,6 +757,11 @@ public class BeamSearch {
         System.out.println("Start improving solution by repacking.");
         long startTime = System.currentTimeMillis();
         int containerNum = executionResult.solutions.size();
+        RepackStatistics statistics = new RepackStatistics();
+        statistics.executed = true;
+        statistics.requestedTimeLimitMs = Math.max(0L, Math.round(maxTime * 1000.0));
+        statistics.boardCountBefore = containerNum;
+        lastRepackStatistics = statistics;
         List<Integer> locations = new ArrayList<>();
 
         int location;
@@ -758,14 +770,18 @@ public class BeamSearch {
         int noImprovementSweeps = 0;
 
         while (true) {
+            statistics.outerLoopIterations++;
             // 时间上限仍然是全局优化的第一停止条件。
             if ((System.currentTimeMillis() - startTime) * 0.001 >= maxTime) {
+                statistics.timeLimitReached = true;
+                statistics.stopReason = "time_limit_reached";
                 break;
             }
 
             // 双重停止条件：连续完成多轮完整扫描且没有减少板材数量时，
             // 即使尚未耗尽时间，也停止对当前结果继续进行无效重排。
             if (noImprovementSweeps >= MAX_NO_IMPROVEMENT_SWEEPS) {
+                statistics.stopReason = "no_improvement_sweeps";
                 break;
             }
 
@@ -774,6 +790,7 @@ public class BeamSearch {
             containerNum = executionResult.solutions.size();
             if (containerNum <= 1) {
                 // 只剩一张板材时没有继续减板的可能。
+                statistics.stopReason = "single_board_remaining";
                 break;
             }
 
@@ -814,11 +831,13 @@ public class BeamSearch {
                 // 因为某一次局部尝试无效就直接停止整个优化。
                 locations.clear();
                 noImprovementSweeps++;
+                statistics.noImprovementSweeps = noImprovementSweeps;
                 System.out.println("Completed repack sweep without reducing board count. "
                         + "No-reduction sweeps: " + noImprovementSweeps
                         + "/" + MAX_NO_IMPROVEMENT_SWEEPS);
                 if (noImprovementSweeps >= MAX_NO_IMPROVEMENT_SWEEPS) {
                     // 这是无改进保护，不替代前面的时间限制。
+                    statistics.stopReason = "no_improvement_sweeps";
                     break;
                 }
                 continue;
@@ -827,6 +846,7 @@ public class BeamSearch {
             // 只有确认当前板材满足低利用率条件后才记录，避免把 -1
             // 或不符合条件的索引混入本轮已尝试集合。
             locations.add(location);
+            statistics.candidateBoardAttempts++;
 
             for (int i = 0; i < executionResult.solutions.get(location).getPlacedCuboid().size(); i++) {
                 unplacedBox.add(executionResult.solutions.get(location).getPlacedCuboid().get(i).box.copy());
@@ -862,6 +882,7 @@ public class BeamSearch {
                 }
 
             }
+            statistics.pairCandidatesGenerated += pairSet.size();
 
             // 修改原因：当前板材已经计入 locations，候选为空时只应跳过
             // 当前板材，继续扫描本轮其他低利用率板材。
@@ -886,6 +907,7 @@ public class BeamSearch {
                 }
 
                 iteration++;
+                statistics.pairRepackAttempts++;
                 int a = pairSet.get(index) / containerNum;
                 int b = pairSet.get(index) % containerNum;
 
@@ -909,6 +931,7 @@ public class BeamSearch {
                 }
 
                 if (newSol.unplacedBoxesVol < unplacedBoxVol) {
+                    statistics.successfulPairRepackAttempts++;
                     System.out.println("iter" + iteration +
                             "\t\t Improve solution by repack " + unplacedBoxVol / inst.length / inst.width
                             + "->" + newSol.unplacedBoxesVol / inst.length / inst.width + " , unplacedBoxesSize:"
@@ -946,6 +969,7 @@ public class BeamSearch {
             if (unplacedBox.size() == 0) {
                 System.out.println("Improved success. Continue searching for another removable board.");
                 executionResult.solutions = newSolutions;
+                statistics.boardReductions++;
 
                 // 修改原因：减板后平均利用率和板材数量都已变化，立即
                 // 更新状态并清空旧索引，下一轮必须基于新解重新选择板材。
@@ -975,6 +999,12 @@ public class BeamSearch {
                 executionResult.setAvgUtilization();
             }
         }
+        if ("not_started".equals(statistics.stopReason)) {
+            statistics.stopReason = "completed";
+        }
+        statistics.noImprovementSweeps = noImprovementSweeps;
+        statistics.boardCountAfter = executionResult.solutions.size();
+        statistics.elapsedTimeMs = Math.max(0L, System.currentTimeMillis() - startTime);
         return executionResult;
     }
 
