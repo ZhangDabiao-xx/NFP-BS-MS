@@ -862,6 +862,7 @@ public class BeamSearch {
                 }
             }
 
+            long pairGenerationStartNanos = System.nanoTime();
             ArrayList<Integer> pairSet = new ArrayList<>();
             for (int i = 0; i < newSolutions.size(); i++) {
                 if (newSolutions.get(i).getUtilization() > maxUtilization) {
@@ -883,6 +884,7 @@ public class BeamSearch {
 
             }
             statistics.pairCandidatesGenerated += pairSet.size();
+            statistics.pairGenerationTimeMs += elapsedMillis(pairGenerationStartNanos);
 
             // 修改原因：当前板材已经计入 locations，候选为空时只应跳过
             // 当前板材，继续扫描本轮其他低利用率板材。
@@ -923,15 +925,21 @@ public class BeamSearch {
                 }
 
                 Instance newInst = new Instance(inst, boxs);
+                long pairRepackStartNanos = System.nanoTime();
                 ExecutionResult newSol;
                 if (a == b) {
                     newSol = multipSolve(newInst, 1, decNode);
                 } else {
                     newSol = multipSolve(newInst, 2, decNode);
                 }
+                long pairRepackElapsedMs = elapsedMillis(pairRepackStartNanos);
+                statistics.pairRepackTimeMs += pairRepackElapsedMs;
+                statistics.longestPairRepackTimeMs = Math.max(
+                        statistics.longestPairRepackTimeMs, pairRepackElapsedMs);
 
                 if (newSol.unplacedBoxesVol < unplacedBoxVol) {
                     statistics.successfulPairRepackAttempts++;
+                    statistics.successfulPairRepackTimeMs += pairRepackElapsedMs;
                     System.out.println("iter" + iteration +
                             "\t\t Improve solution by repack " + unplacedBoxVol / inst.length / inst.width
                             + "->" + newSol.unplacedBoxesVol / inst.length / inst.width + " , unplacedBoxesSize:"
@@ -987,7 +995,10 @@ public class BeamSearch {
                 continue;
             }
 
+            long rebuildStartNanos = System.nanoTime();
             ArrayList<Solution> solutions = getSolutions(unplacedBox);
+            statistics.sameBoardRebuildAttempts++;
+            statistics.sameBoardRebuildTimeMs += elapsedMillis(rebuildStartNanos);
             if (solutions.size() == 1) {
                 executionResult.solutions = newSolutions;
                 executionResult.solutions.add(location, solutions.get(0));
@@ -1006,6 +1017,11 @@ public class BeamSearch {
         statistics.boardCountAfter = executionResult.solutions.size();
         statistics.elapsedTimeMs = Math.max(0L, System.currentTimeMillis() - startTime);
         return executionResult;
+    }
+
+    /** 统一将纳秒级监控时间转换为非负毫秒，不参与任何排样决策。 */
+    private static long elapsedMillis(long startNanos) {
+        return Math.max(0L, (System.nanoTime() - startNanos) / 1_000_000L);
     }
 
     public void update(TreeSet<Node> offspring, int WIDTH, Node v) {

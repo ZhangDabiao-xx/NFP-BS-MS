@@ -53,7 +53,7 @@ public final class RunReportWriter {
         }
 
         JsonObject report = new JsonObject();
-        report.addProperty("schemaVersion", "1.1");
+        report.addProperty("schemaVersion", "1.2");
         report.addProperty("caseName", caseName == null || caseName.isBlank() ? "unknown" : caseName);
         report.addProperty("priorityBoardCount", Math.max(0, result.priorityBoardCount));
         report.addProperty("ordinaryBoardCount", Math.max(0, result.ordinaryBoardCount));
@@ -117,8 +117,15 @@ public final class RunReportWriter {
         report.addProperty("noImprovementSweeps", Math.max(0, value.noImprovementSweeps));
         report.addProperty("candidateBoardAttempts", nonNegative(value.candidateBoardAttempts));
         report.addProperty("pairCandidatesGenerated", nonNegative(value.pairCandidatesGenerated));
+        report.addProperty("pairGenerationTimeMs", nonNegative(value.pairGenerationTimeMs));
         report.addProperty("pairRepackAttempts", nonNegative(value.pairRepackAttempts));
+        report.addProperty("pairRepackTimeMs", nonNegative(value.pairRepackTimeMs));
         report.addProperty("successfulPairRepackAttempts", nonNegative(value.successfulPairRepackAttempts));
+        report.addProperty("successfulPairRepackTimeMs",
+                nonNegative(value.successfulPairRepackTimeMs));
+        report.addProperty("longestPairRepackTimeMs", nonNegative(value.longestPairRepackTimeMs));
+        report.addProperty("sameBoardRebuildAttempts", nonNegative(value.sameBoardRebuildAttempts));
+        report.addProperty("sameBoardRebuildTimeMs", nonNegative(value.sameBoardRebuildTimeMs));
         report.addProperty("boardReductions", nonNegative(value.boardReductions));
         report.addProperty("timeLimitReached", value.timeLimitReached);
         return report;

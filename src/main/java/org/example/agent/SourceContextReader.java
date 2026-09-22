@@ -62,6 +62,32 @@ final class SourceContextReader {
         return readTargets(targets, "selectedPlan 未声明 targetFiles，无法准备代码上下文。");
     }
 
+    /**
+     * 在决策前读取代码地图中的真实方法上下文。
+     *
+     * <p>这一步只读取框架预先确认的优化入口，因此 Decision Agent 能依据实际实现
+     * 选择方案，不需要请求用户手工粘贴源码。</p>
+     */
+    String readForCodeTargets(JsonArray codeTargets) throws IOException {
+        Map<String, Set<String>> targets = new LinkedHashMap<>();
+        if (codeTargets != null) {
+            for (JsonElement element : codeTargets) {
+                if (!element.isJsonObject()) {
+                    continue;
+                }
+                JsonObject target = element.getAsJsonObject();
+                JsonElement file = target.get("file");
+                JsonElement method = target.get("method");
+                if (file != null && file.isJsonPrimitive()
+                        && method != null && method.isJsonPrimitive()) {
+                    targets.computeIfAbsent(file.getAsString(), ignored -> new LinkedHashSet<>())
+                            .add(method.getAsString());
+                }
+            }
+        }
+        return readTargets(targets, "代码地图未声明可读取的真实优化入口。");
+    }
+
     private String readTargets(Map<String, Set<String>> targets, String emptyMessage) throws IOException {
         if (targets.isEmpty()) {
             throw new IllegalArgumentException(emptyMessage);

@@ -25,9 +25,18 @@ public final class RepackStatistics {
     /** 被选为待移出板材的次数，以及生成的板材组合候选数量。 */
     public long candidateBoardAttempts;
     public long pairCandidatesGenerated;
+    /** 生成组合候选与执行组合重排的累计耗时，单位为毫秒。 */
+    public long pairGenerationTimeMs;
+    public long pairRepackTimeMs;
+    /** 严格改进的组合重排累计耗时，以及单次组合重排的最长耗时。 */
+    public long successfulPairRepackTimeMs;
+    public long longestPairRepackTimeMs;
     /** 实际执行的组合重排次数及其中产生严格改进的次数。 */
     public long pairRepackAttempts;
     public long successfulPairRepackAttempts;
+    /** 未减板时重建单张板材的次数及累计耗时，单位为毫秒。 */
+    public long sameBoardRebuildAttempts;
+    public long sameBoardRebuildTimeMs;
     /** 成功减少板材数量的次数。 */
     public long boardReductions;
     /** 是否因达到本阶段时间上限退出。 */

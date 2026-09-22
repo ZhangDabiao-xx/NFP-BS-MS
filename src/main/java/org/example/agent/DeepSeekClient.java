@@ -22,6 +22,9 @@ import java.time.Duration;
  */
 public final class DeepSeekClient {
 
+    /** 降低方案与代码文本的随机性，便于同一运行报告得到稳定的流程结果。 */
+    private static final double STABLE_TEMPERATURE = 0.1;
+
     private final DeepSeekConfig config;
     private final HttpClient httpClient;
 
@@ -116,6 +119,7 @@ public final class DeepSeekClient {
         requestBody.addProperty("model", config.model());
         requestBody.add("messages", createMessages(systemPrompt, userPrompt));
         requestBody.addProperty("stream", false);
+        requestBody.addProperty("temperature", STABLE_TEMPERATURE);
 
         // 结果分析 Agent 需要稳定的机器可读结果，因此开启 JSON Output。
         if (jsonOutput) {
