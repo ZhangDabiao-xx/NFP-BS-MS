@@ -8,7 +8,10 @@ import com.google.gson.JsonParser;
 import com.google.gson.JsonSyntaxException;
 
 import java.io.IOException;
+import java.net.ConnectException;
+import java.net.SocketException;
 import java.net.http.HttpClient;
+import java.net.http.HttpTimeoutException;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
@@ -25,14 +28,18 @@ public final class DeepSeekClient {
     /** 降低方案与代码文本的随机性，便于同一运行报告得到稳定的流程结果。 */
     private static final double STABLE_TEMPERATURE = 0.1;
 
+    /** 一次初始请求加两次重试，避免网络短暂中断时直接终止整个优化流程。 */
+    private static final int MAX_NETWORK_ATTEMPTS = 3;
+
+    /** 重试前的短暂等待时间，避免立即复用服务端刚关闭的连接。 */
+    private static final long RETRY_DELAY_MILLIS = 500L;
+
     private final DeepSeekConfig config;
-    private final HttpClient httpClient;
+    private HttpClient httpClient;
 
     public DeepSeekClient(DeepSeekConfig config) {
         this.config = config;
-        this.httpClient = HttpClient.newBuilder()
-                .connectTimeout(config.requestTimeout())
-                .build();
+        this.httpClient = createHttpClient();
     }
 
     /**
@@ -139,9 +146,12 @@ public final class DeepSeekClient {
                         StandardCharsets.UTF_8))
                 .build();
 
-        HttpResponse<String> response = httpClient.send(
-                request,
-                HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        HttpResponse<String> response = executeWithTransientNetworkRetry(
+                () -> httpClient.send(
+                        request,
+                        HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)),
+                () -> httpClient = createHttpClient(),
+                retryNumber -> Thread.sleep(RETRY_DELAY_MILLIS * retryNumber));
 
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
             throw new IOException(
@@ -152,6 +162,67 @@ public final class DeepSeekClient {
         }
 
         return extractContent(response.body());
+    }
+
+    /** 创建新客户端，以便重试时不再复用已经被服务端关闭的旧连接。 */
+    private HttpClient createHttpClient() {
+        return HttpClient.newBuilder()
+                .connectTimeout(config.requestTimeout())
+                .build();
+    }
+
+    /**
+     * 仅重试可确认的瞬时网络错误，例如长时间计算后旧连接被服务端重置。
+     *
+     * <p>HTTP 非 2xx 响应和模型输出格式错误发生在本方法之外，均不会重试，
+     * 避免把配置、鉴权或提示词错误误判成网络故障。</p>
+     *
+     * <p>此方法为包内可见，测试可用模拟请求验证重试过程，无需真实调用 API。</p>
+     */
+    static <T> T executeWithTransientNetworkRetry(NetworkRequest<T> request,
+                                                   Runnable refreshHttpClient,
+                                                   RetryPause retryPause)
+            throws IOException, InterruptedException {
+        for (int attempt = 1; attempt <= MAX_NETWORK_ATTEMPTS; attempt++) {
+            try {
+                return request.execute();
+            } catch (IOException exception) {
+                if (!isTransientNetworkError(exception) || attempt == MAX_NETWORK_ATTEMPTS) {
+                    throw exception;
+                }
+
+                // 重新创建客户端，防止下一次仍使用失效的连接池连接。
+                refreshHttpClient.run();
+                retryPause.pause(attempt);
+            }
+        }
+        throw new IOException("DeepSeek 瞬时网络请求未能完成。");
+    }
+
+    /** 判断异常原因链中是否包含可安全重试的连接或超时错误。 */
+    private static boolean isTransientNetworkError(IOException exception) {
+        Throwable cause = exception;
+        while (cause != null) {
+            if (cause instanceof SocketException
+                    || cause instanceof ConnectException
+                    || cause instanceof HttpTimeoutException) {
+                return true;
+            }
+            cause = cause.getCause();
+        }
+        return false;
+    }
+
+    /** 可抛出网络异常的单次 HTTP 请求，供重试逻辑和测试共同使用。 */
+    @FunctionalInterface
+    interface NetworkRequest<T> {
+        T execute() throws IOException, InterruptedException;
+    }
+
+    /** 重试等待策略，测试时可替换为空实现，避免真实等待。 */
+    @FunctionalInterface
+    interface RetryPause {
+        void pause(int retryNumber) throws InterruptedException;
     }
 
     private JsonArray createMessages(String systemPrompt, String userPrompt) {
