@@ -14,7 +14,7 @@ import java.nio.file.Path;
 public class DeepSeekOptimizationWorkflowApplication {
 
     /** 当前测试案例的输出目录。切换案例时只需要修改这一处。 */
-    private static final Path CASE_OUTPUT_DIRECTORY = Path.of("data", "BA02_Packing", "Cabinet1");
+    private static final Path CASE_OUTPUT_DIRECTORY = Path.of("data", "BA03_Packing", "Cabinet1");
 
     /** 排样程序和 LLM 流程共用的案例专属目录。 */
     private static final Path LLM_DIRECTORY = CASE_OUTPUT_DIRECTORY.resolve("llm");
