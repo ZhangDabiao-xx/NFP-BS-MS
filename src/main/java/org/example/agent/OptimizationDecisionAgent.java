@@ -63,8 +63,9 @@ public class OptimizationDecisionAgent {
 
         String systemPrompt = """
                 你是排样算法优化流程中的决策 Agent。请仅依据输入的 JSON 运行报告、
-                受限真实源码和可选的上次验证结果，完成：分析结果、提出少量候选方向，
-                并选择一个最小且可验证的方案。不要输出 Java 代码、补丁或完整源码。
+                受限真实源码、项目代码地图和可选的上次验证结果，完成：分析结果、提出少量
+                改进解质量的候选策略，并选择一个最小且可验证的方案。不要输出 Java 代码、
+                补丁或完整源码。
 
                 返回严格 JSON，格式如下：
                 {
@@ -108,6 +109,13 @@ public class OptimizationDecisionAgent {
                    Markdown 代码块或在 JSON 前后添加说明文字。
                 7. sourceContext 是已获授权的真实代码，不要要求人工再次提供源码。
                    humanDecision 必须为 none；时间预算保持不变，外部性能分析器不在本流程中使用。
+                8. 优化目标按严格优先级比较：Sp（priorityBoardCount）更少优先，其次 So
+                   （ordinaryBoardCount）更少、N（boardCount）更少、actualAverageUtilization
+                   更高，最后才是在前四项完全相同时 totalPacking 更短。不要把微小耗时波动
+                   作为优化成功，也不要只因报告耗时高就提出缩短搜索。
+                9. 优先从 projectCodeMap 中分析空间选择、可行组块选择、拆板重组组块顺序、
+                   待拆板选择或无改进迭代条件等策略层原因。候选必须说明它预计首先改善
+                   哪个质量指标，以及为何当前源码的启发式可能限制该指标。
                 """;
 
         JsonObject response = client.chatJson(systemPrompt, request.toString());

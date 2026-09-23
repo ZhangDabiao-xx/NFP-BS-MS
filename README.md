@@ -97,9 +97,14 @@ mvn exec:java `
 只能输出 `editPointId + replacementText`。程序根据 `editPointId` 的唯一开始/结束锚点定位真实源码，
 因此模型不需要复写大段原文，也不会因 Windows 换行符或缩进差异导致匹配失败。修改前仍会自动备份。
 
-当前代码地图登记的可修改目标是 `beam-repack-improve`，对应 `BeamSearch.ImproveByRepack` 的
-`beam-repack-pair-candidates` 修改点。代码地图同时明确：`Instance` 只有 `length`、`width`，
+代码地图面向排样策略层，当前登记的可修改目标包括：空闲空间排序、可行组块排序、拆板重组时的
+组块排序，以及 `BeamSearch.ImproveByRepack` 中的待拆板选择、候选生成/遍历顺序和无改进停止条件。
+每个目标会附带真实方法源码及相关类型源码。代码地图同时明确：`Instance` 只有 `length`、`width`，
 `Box.volume` 是二维矩形面积；模型不能再把它误认为三维体积。
+
+候选结果不再只要求“不退化”。确定性验证器按 `Sp → So → N → 平均利用率 → 总排样时间` 的
+字典序判断收益：候选必须先通过可行性保护，并且必须在前四项解质量上严格提升；只有解质量完全
+相同时，至少缩短 3% 总排样时间才会被保留。没有收益的候选源码会自动恢复，而不是成为下一轮基线。
 
 `decision.json` 的 `status` 表示下一步：
 
@@ -120,7 +125,8 @@ mvn exec:java `
 
 验证不调用 LLM：它会编译全部主源码，使用已有 bridge 输入重跑当前案例，并保护既有的
 可行性校验、未排工件数、板数和真实平均利用率。验证失败会自动恢复本轮源码，并把错误原因
-反馈给代码修改 Agent；最多尝试三次。成功时，修改会保留，汇总状态写入 `llm/final-result.json`。
+反馈给代码修改 Agent；若候选安全但没有收益，则重新调用 Decision Agent 选择不同的策略目标。
+整个入口最多尝试三次候选代码。成功时，修改会保留，汇总状态写入 `llm/final-result.json`。
 成功后的候选运行报告会成为下一次启动主入口时的分析基线，因此不需要手动移动 JSON 文件。
 旧的 `DeepSeekProposalReviewLoopApplication` 仅保留为早期多 Agent 实验入口，不再作为推荐流程。
 

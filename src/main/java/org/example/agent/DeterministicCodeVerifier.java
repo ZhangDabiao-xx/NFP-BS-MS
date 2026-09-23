@@ -27,6 +27,8 @@ final class DeterministicCodeVerifier {
 
     /** 利用率比较的浮点容差，避免显示精度造成误判。 */
     private static final double UTILIZATION_TOLERANCE = 0.0001d;
+    /** 解质量相同才比较时间；至少缩短该比例才认为存在稳定的时间收益。 */
+    private static final double MIN_RELATIVE_TIME_IMPROVEMENT = 0.03d;
 
     private final Path projectRoot;
 
@@ -64,9 +66,11 @@ final class DeterministicCodeVerifier {
         JsonObject candidateReport = candidateRun.getAsJsonObject("runReport");
         JsonObject qualityChecks = compareReports(baselineReport, candidateReport);
         report.add("qualityChecks", qualityChecks);
-        report.addProperty("passed", qualityChecks.get("passed").getAsBoolean());
-        if (!qualityChecks.get("passed").getAsBoolean()) {
-            report.addProperty("failureReason", "候选结果未满足既有可行性或质量保护条件。");
+        boolean passed = qualityChecks.get("safetyPassed").getAsBoolean()
+                && qualityChecks.get("effectivenessPassed").getAsBoolean();
+        report.addProperty("passed", passed);
+        if (!passed) {
+            report.addProperty("failureReason", "候选结果没有通过可行性保护或未产生可衡量的优化收益。");
         }
         return report;
     }
@@ -146,7 +150,13 @@ final class DeterministicCodeVerifier {
         return result;
     }
 
-    /** 比较基线和候选结果，保护已有的可行性、板数、未排件数和利用率。 */
+    /**
+     * 按排样目标的字典序比较基线与候选。
+     *
+     * <p>优先级依次为 Sp（优先件板数）、So（普通件板数）、N（总板数）、平均利用率、
+     * 时间。候选必须可行，且必须在解质量上严格更好；只有解质量完全相同时，时间缩短
+     * 至少 3% 才能作为有效改进。</p>
+     */
     private JsonObject compareReports(JsonObject baseline, JsonObject candidate) {
         JsonObject result = new JsonObject();
         JsonArray failures = new JsonArray();
@@ -162,27 +172,86 @@ final class DeterministicCodeVerifier {
             failures.add("未排工件数从 " + baselineUnplaced + " 增加到 " + candidateUnplaced + "。");
         }
 
+        int baselinePriorityBoards = intValue(baseline, "priorityBoardCount");
+        int candidatePriorityBoards = intValue(candidate, "priorityBoardCount");
+        int baselineOrdinaryBoards = intValue(baseline, "ordinaryBoardCount");
+        int candidateOrdinaryBoards = intValue(candidate, "ordinaryBoardCount");
         int baselineBoards = intValue(baseline, "boardCount");
         int candidateBoards = intValue(candidate, "boardCount");
-        if (candidateBoards > baselineBoards) {
-            failures.add("板材数从 " + baselineBoards + " 增加到 " + candidateBoards + "。");
-        }
-
         double baselineUtilization = doubleValue(baseline, "actualAverageUtilization");
         double candidateUtilization = doubleValue(candidate, "actualAverageUtilization");
-        if (candidateUtilization + UTILIZATION_TOLERANCE < baselineUtilization) {
-            failures.add("真实平均利用率从 " + baselineUtilization + " 降低到 " + candidateUtilization + "。");
+
+        int qualityComparison = compareQuality(
+                baselinePriorityBoards, candidatePriorityBoards,
+                baselineOrdinaryBoards, candidateOrdinaryBoards,
+                baselineBoards, candidateBoards,
+                baselineUtilization, candidateUtilization);
+        if (qualityComparison > 0) {
+            failures.add("候选解按 Sp、So、N、平均利用率的优先级低于基线。");
         }
 
+        long baselineTime = timingValue(baseline, "totalPacking");
+        long candidateTime = timingValue(candidate, "totalPacking");
+        boolean timeImproved = baselineTime > 0
+                && candidateTime <= Math.floor(baselineTime * (1.0d - MIN_RELATIVE_TIME_IMPROVEMENT));
+        boolean effectivenessPassed = qualityComparison < 0
+                || (qualityComparison == 0 && timeImproved);
+
+        result.addProperty("baselinePriorityBoardCount", baselinePriorityBoards);
+        result.addProperty("candidatePriorityBoardCount", candidatePriorityBoards);
+        result.addProperty("baselineOrdinaryBoardCount", baselineOrdinaryBoards);
+        result.addProperty("candidateOrdinaryBoardCount", candidateOrdinaryBoards);
         result.addProperty("baselineBoardCount", baselineBoards);
         result.addProperty("candidateBoardCount", candidateBoards);
         result.addProperty("baselineUnplacedWorkpieceCount", baselineUnplaced);
         result.addProperty("candidateUnplacedWorkpieceCount", candidateUnplaced);
         result.addProperty("baselineActualAverageUtilization", baselineUtilization);
         result.addProperty("candidateActualAverageUtilization", candidateUtilization);
+        result.addProperty("baselineTotalPackingTimeMs", baselineTime);
+        result.addProperty("candidateTotalPackingTimeMs", candidateTime);
+        result.addProperty("qualityComparison", comparisonName(qualityComparison));
+        result.addProperty("timeImprovedAtLeastThreePercent", timeImproved);
         result.add("failures", failures);
-        result.addProperty("passed", failures.isEmpty());
+        result.addProperty("safetyPassed", failures.isEmpty());
+        result.addProperty("effectivenessPassed", effectivenessPassed);
+        result.addProperty("passed", failures.isEmpty() && effectivenessPassed);
         return result;
+    }
+
+    /**
+     * @return -1 表示候选质量更好，0 表示质量相同，1 表示候选质量更差。
+     */
+    private int compareQuality(int baselineSp,
+                               int candidateSp,
+                               int baselineSo,
+                               int candidateSo,
+                               int baselineN,
+                               int candidateN,
+                               double baselineUtilization,
+                               double candidateUtilization) {
+        int comparison = Integer.compare(candidateSp, baselineSp);
+        if (comparison != 0) {
+            return comparison;
+        }
+        comparison = Integer.compare(candidateSo, baselineSo);
+        if (comparison != 0) {
+            return comparison;
+        }
+        comparison = Integer.compare(candidateN, baselineN);
+        if (comparison != 0) {
+            return comparison;
+        }
+        if (candidateUtilization > baselineUtilization + UTILIZATION_TOLERANCE) {
+            return -1;
+        }
+        if (candidateUtilization + UTILIZATION_TOLERANCE < baselineUtilization) {
+            return 1;
+        }
+        return 0;
+    }
+
+    private String comparisonName(int comparison) {
+        return comparison < 0 ? "better" : comparison > 0 ? "worse" : "equal";
     }
 
     private List<Path> listJavaFiles(Path sourceDirectory) throws IOException {
@@ -221,6 +290,11 @@ final class DeterministicCodeVerifier {
 
     private double doubleValue(JsonObject object, String name) {
         return object.has(name) ? object.get(name).getAsDouble() : 0d;
+    }
+
+    private long timingValue(JsonObject report, String name) {
+        JsonObject timing = report.getAsJsonObject("timingMs");
+        return timing != null && timing.has(name) ? Math.max(0L, timing.get(name).getAsLong()) : 0L;
     }
 
     private String safeMessage(Exception exception) {

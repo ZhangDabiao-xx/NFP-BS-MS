@@ -76,6 +76,20 @@ final class SourceContextReader {
     }
 
     /**
+     * 读取代码地图声明的相关类型源码。
+     *
+     * <p>这些文件由程序登记，例如 SpaceComparator 所依赖的 Space 和 Instance；
+     * 模型不能自行扩展读取范围。</p>
+     */
+    String readForFiles(Iterable<String> declaredFiles) throws IOException {
+        Map<String, Set<String>> targets = new LinkedHashMap<>();
+        for (String declaredFile : declaredFiles) {
+            targets.put(declaredFile, new LinkedHashSet<>());
+        }
+        return readTargets(targets, "代码地图未提供相关类型源码。");
+    }
+
+    /**
      * 在决策前读取代码地图中的真实方法上下文。
      *
      * <p>这一步只读取框架预先确认的优化入口，因此 Decision Agent 能依据实际实现

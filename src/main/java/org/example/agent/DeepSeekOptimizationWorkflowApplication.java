@@ -71,6 +71,8 @@ public class DeepSeekOptimizationWorkflowApplication {
             int iteration = firstIteration + attempt - 1;
             Path iterationDirectory = iterationDirectory(iteration);
             Files.createDirectories(iterationDirectory);
+            // 每轮保存实际使用的策略；安全但无收益时，下一轮可能切换 targetId。
+            AgentJsonFiles.writeObject(iterationDirectory.resolve("decision.json"), decision);
             JsonObject implementationContext = codeMap.implementationContext(
                     decision, sourceContextReader);
             JsonObject changeSet = modificationAgent.createChanges(
@@ -132,7 +134,25 @@ public class DeepSeekOptimizationWorkflowApplication {
             }
 
             previousValidation = validation;
-            System.out.println("第 " + iteration + " 轮验证失败，已恢复源文件，将反馈给代码修改 Agent。");
+            boolean safeButIneffective = isSafeButIneffective(validation);
+            if (safeButIneffective) {
+                // 编译和可行性均通过却没有收益，说明问题在策略而不是补丁语法。
+                // 此时重新选择 targetId，避免让代码 Agent 在同一无效方向反复微调。
+                String sourceContext = codeMap.readDecisionSourceContext(sourceContextReader);
+                JsonObject nextDecision = decisionAgent.decide(
+                        runReport, validation, codeMap, sourceContext);
+                AgentJsonFiles.writeObject(iterationDirectory.resolve("next-decision.json"), nextDecision);
+                if (!"ready_for_implementation".equals(stringValue(nextDecision, "status"))) {
+                    writeFinalResult("no_effective_strategy", iteration,
+                            nextDecision, changeSet, validation, null);
+                    System.out.println("候选代码安全但未产生收益，且没有新的可实施策略，工作流已结束。");
+                    return;
+                }
+                decision = nextDecision;
+                System.out.println("第 " + iteration + " 轮安全但无收益，下一轮将尝试新的策略目标。");
+            } else {
+                System.out.println("第 " + iteration + " 轮验证失败，已恢复源文件，将反馈给代码修改 Agent。");
+            }
         }
 
         writeFinalResult("modification_attempts_exhausted",
@@ -156,7 +176,7 @@ public class DeepSeekOptimizationWorkflowApplication {
     }
 
     /**
-     * 优先使用最近一次通过验证的候选运行报告，使下一次启动能够从改进后的结果继续分析。
+     * 优先使用最近一次安全且有效的候选运行报告，使下一次启动只从真实改进继续分析。
      */
     private static JsonObject readLatestRunReport() throws Exception {
         if (Files.isRegularFile(FINAL_RESULT_PATH)) {
@@ -164,7 +184,11 @@ public class DeepSeekOptimizationWorkflowApplication {
             JsonObject validation = finalResult.getAsJsonObject("validation");
             JsonObject candidateRun = validation == null ? null : validation.getAsJsonObject("candidateRun");
             JsonObject candidateReport = candidateRun == null ? null : candidateRun.getAsJsonObject("runReport");
+            JsonObject qualityChecks = validation == null ? null : validation.getAsJsonObject("qualityChecks");
             if ("applied_and_validated".equals(stringValue(finalResult, "status"))
+                    && qualityChecks != null
+                    && qualityChecks.has("effectivenessPassed")
+                    && qualityChecks.get("effectivenessPassed").getAsBoolean()
                     && candidateReport != null) {
                 return candidateReport;
             }
@@ -241,5 +265,15 @@ public class DeepSeekOptimizationWorkflowApplication {
     private static String stringValue(JsonObject object, String field) {
         return object.has(field) && !object.get(field).isJsonNull()
                 ? object.get(field).getAsString() : "";
+    }
+
+    /** 判断失败是否来自“策略没有收益”，而不是编译、运行或可行性错误。 */
+    private static boolean isSafeButIneffective(JsonObject validation) {
+        JsonObject qualityChecks = validation.getAsJsonObject("qualityChecks");
+        return qualityChecks != null
+                && qualityChecks.has("safetyPassed")
+                && qualityChecks.get("safetyPassed").getAsBoolean()
+                && qualityChecks.has("effectivenessPassed")
+                && !qualityChecks.get("effectivenessPassed").getAsBoolean();
     }
 }

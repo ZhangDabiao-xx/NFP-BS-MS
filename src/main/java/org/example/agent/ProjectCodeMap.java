@@ -25,7 +25,7 @@ import java.util.Set;
 final class ProjectCodeMap {
 
     /** 保存给用户查看的代码地图版本。 */
-    static final String SCHEMA_VERSION = "1.0";
+    static final String SCHEMA_VERSION = "2.0";
 
     private final Path projectRoot;
     private final Map<String, Target> targets;
@@ -51,16 +51,91 @@ final class ProjectCodeMap {
     static ProjectCodeMap create(Path projectRoot) throws IOException {
         Path root = projectRoot.toAbsolutePath().normalize();
 
+        Target spaceOrdering = new Target(
+                "space-ordering",
+                "src/main/java/org/example/beamsearch/common/SpaceComparator.java",
+                "SpaceComparator.compare",
+                "初始解和局部搜索中选择下一个空闲空间的比较规则。",
+                List.of(
+                        "SpaceManager.chooseBestSpace 通过此 Comparator 在所有空闲空间中选最优空间。",
+                        "当前规则优先角点距离，再优先空闲面积。",
+                        "Comparator 必须保持确定性、传递性，且相同空间必须返回 0。"),
+                List.of("space-comparator-order"),
+                List.of(
+                        "src/main/java/org/example/beamsearch/common/Space.java",
+                        "src/main/java/org/example/beamsearch/common/Instance.java"));
+
+        Target blockOrdering = new Target(
+                "block-ordering",
+                "src/main/java/org/example/beamsearch/state/State.java",
+                "State.chooseBestBlocks",
+                "给定空闲空间后，选择进入 Beam Search 扩展的可行组块顺序。",
+                List.of(
+                        "当前方法按 availableBlocks 的既有顺序返回前 count 个可行组块。",
+                        "组块顺序会影响初始解与后续 Beam Search 分支的质量。",
+                        "不得修改 freeBoxes、空间切分、组块可行性判断或 State 的不可变复制语义。"),
+                List.of("state-feasible-block-order"),
+                List.of(
+                        "src/main/java/org/example/beamsearch/blockgenerator/GeneralBlock.java",
+                        "src/main/java/org/example/beamsearch/common/Space.java"));
+
+        Target repackBlockOrdering = new Target(
+                "repack-block-ordering",
+                "src/main/java/org/example/beamsearch/algo/BeamSearch.java",
+                "BeamSearch.multipSolve",
+                "拆板重组时，局部多板 Beam Search 使用的组块排序规则。",
+                List.of(
+                        "当前 multipSolve 按 boxVolume、length 排序 allBlocks，并以固定宽度扩展候选节点。",
+                        "此目标直接影响重组后能否减少 So，但不允许改变 multipSolve 的容器数量语义。",
+                        "不得修改 WIDTH、容器数量、可行性检查或未排工件统计。"),
+                List.of("multip-solve-block-order"),
+                List.of("src/main/java/org/example/beamsearch/blockgenerator/GeneralBlock.java"));
+
         Target beamRepack = new Target(
                 "beam-repack-improve",
                 "src/main/java/org/example/beamsearch/algo/BeamSearch.java",
                 "BeamSearch.ImproveByRepack",
-                "普通件和优先件共用的全局重排循环。",
+                "普通件和优先件共用的全局重排循环，包括待拆板选择、候选对顺序与停止条件。",
                 List.of(
                         "当前方法已有 MAX_NO_IMPROVEMENT_SWEEPS 无减板停止保护，不能重复添加。",
-                        "不得修改时间上限、随机种子、multipSolve 或现有可行性校验。",
-                        "当前候选对在 pairSet 中生成，pairRepackAttempts 的主要计算发生在后续 multipSolve 调用。"),
-                List.of("beam-repack-pair-candidates"));
+                        "不得增加时间上限、改变问题约束、删除可行性校验或修改 multipSolve 的调用语义。",
+                        "当前候选对在 pairSet 中生成，pairRepackAttempts 的主要计算发生在后续 multipSolve 调用。",
+                        "优先目标是提高 Sp、So、N 和利用率；时间只在解质量不下降时作为次级目标。"),
+                List.of(
+                        "repack-board-selection",
+                        "beam-repack-pair-candidates",
+                        "repack-candidate-order",
+                        "repack-stop-condition"),
+                List.of(
+                        "src/main/java/org/example/beamsearch/common/Solution.java",
+                        "src/main/java/org/example/beamsearch/common/Box.java",
+                        "src/main/java/org/example/beamsearch/common/Instance.java"));
+
+        EditPoint spaceComparatorOrder = new EditPoint(
+                "space-comparator-order",
+                spaceOrdering.id(),
+                spaceOrdering.file(),
+                "    @Override",
+                "    public static Comparator<Space> getSpaceComparator",
+                "replace_between",
+                "替换 SpaceComparator.compare 方法体。保留 @Override 与工厂方法锚点。",
+                List.of(
+                        "只能调整空闲空间的排序评分和确定性 tie-break，不能改变 Space 几何或删除空间。",
+                        "比较器必须满足 Comparator 契约；不得使用随机数、全局状态或时间。",
+                        "可使用角点距离、空闲面积、长宽比等已存在的 Space 信息。"));
+
+        EditPoint feasibleBlockOrder = new EditPoint(
+                "state-feasible-block-order",
+                blockOrdering.id(),
+                blockOrdering.file(),
+                "    public ArrayList<GeneralBlock> chooseBestBlocks(Space s, int count) {",
+                "    public double getScoreVolume() {",
+                "replace_between",
+                "替换 chooseBestBlocks 的方法体，设计给定空间内的可行组块选择顺序。",
+                List.of(
+                        "返回结果不得超过 count，且只能包含 length、width 均可放入空间的组块。",
+                        "不得修改 availableBlocks 或 freeBoxes；方法只能创建局部候选列表。",
+                        "优先依据空间填充率、形状匹配和组块 scoreVolume 等真实字段设计启发式。"));
 
         EditPoint pairCandidates = new EditPoint(
                 "beam-repack-pair-candidates",
@@ -77,11 +152,79 @@ final class ProjectCodeMap {
                         "Box.volume 在本项目中表示矩形面积，可用于必要但非充分的面积上界过滤。",
                         "过滤条件只能跳过面积已超过目标板材总面积的候选，不能排除面积仍可能可行的候选。"));
 
-        Map<String, Target> targets = Map.of(beamRepack.id(), beamRepack);
-        Map<String, EditPoint> editPoints = Map.of(pairCandidates.id(), pairCandidates);
+        EditPoint multipSolveBlockOrder = new EditPoint(
+                "multip-solve-block-order",
+                repackBlockOrdering.id(),
+                repackBlockOrdering.file(),
+                "        Arrays.sort(allBlocks, (o1, o2) -> {",
+                "        int WIDTH = 10;",
+                "replace_between",
+                "替换拆板重组 allBlocks 的排序区域；结束锚点后的 Beam 宽度和搜索流程由程序保留。",
+                List.of(
+                        "只能改变 allBlocks 排序，不能删除组块、改变 containerNum 或调用随机数。",
+                        "排序必须提供稳定的 tie-break，避免 Comparator 对不同组块返回不一致结果。",
+                        "可依据 boxVolume、blockVolume、scoreVolume、长度和宽度设计重组优先级。"));
+
+        EditPoint repackBoardSelection = new EditPoint(
+                "repack-board-selection",
+                beamRepack.id(),
+                beamRepack.file(),
+                "            System.out.println(\"Selecting boards with low utilization for repacking...\");",
+                "            if (location == -1 || executionResult.solutions.get(location).getUtilization() > allAvgUtilization) {",
+                "replace_between",
+                "替换待拆板选择区域；结束锚点后的低利用率保护由程序保留。",
+                List.of(
+                        "必须为 location 赋予有效板材下标，或在没有候选时保留 -1。",
+                        "不得修改 executionResult.solutions，不得提前删除板材。",
+                        "可依据利用率、空闲面积、已放工件数等 Solution 的真实信息评分。"));
+
+        EditPoint repackCandidateOrder = new EditPoint(
+                "repack-candidate-order",
+                beamRepack.id(),
+                beamRepack.file(),
+                "            // 修改原因：当前板材已经计入 locations，候选为空时只应跳过",
+                "            int iteration = 0;",
+                "replace_between",
+                "替换 pairSet 为空处理与候选遍历顺序区域。",
+                List.of(
+                        "pairSet 为空时必须继续外层循环，不能访问 pairSet 下标。",
+                        "可以直接排序或保留 shuffle，但不得通过 AbstractList、no-op set 或其他方式破坏 Java 集合契约。",
+                        "不得删除 pairSet 元素；排序只影响尝试顺序。"));
+
+        EditPoint repackStopCondition = new EditPoint(
+                "repack-stop-condition",
+                beamRepack.id(),
+                beamRepack.file(),
+                "            // 双重停止条件：连续完成多轮完整扫描且没有减少板材数量时，",
+                "            // 修改原因：减板后 solutions 数量会变化，不能继续使用初始板材数。",
+                "replace_between",
+                "替换全局重排的无改进停止条件区域。",
+                List.of(
+                        "不得增加 maxTime 或跳过最前面的时间上限检查。",
+                        "停止条件必须由已有统计或当前循环状态决定，不能使用随机数。",
+                        "只有证据表明无收益扫描过多时才应收紧停止策略；不能简单减少搜索轮数。"));
+
+        Map<String, Target> targets = new LinkedHashMap<>();
+        targets.put(spaceOrdering.id(), spaceOrdering);
+        targets.put(blockOrdering.id(), blockOrdering);
+        targets.put(repackBlockOrdering.id(), repackBlockOrdering);
+        targets.put(beamRepack.id(), beamRepack);
+
+        Map<String, EditPoint> editPoints = new LinkedHashMap<>();
+        editPoints.put(spaceComparatorOrder.id(), spaceComparatorOrder);
+        editPoints.put(feasibleBlockOrder.id(), feasibleBlockOrder);
+        editPoints.put(multipSolveBlockOrder.id(), multipSolveBlockOrder);
+        editPoints.put(repackBoardSelection.id(), repackBoardSelection);
+        editPoints.put(pairCandidates.id(), pairCandidates);
+        editPoints.put(repackCandidateOrder.id(), repackCandidateOrder);
+        editPoints.put(repackStopCondition.id(), repackStopCondition);
         verifyDataContracts(root);
-        verifyTarget(root, beamRepack);
-        verifyEditPoint(root, pairCandidates);
+        for (Target target : targets.values()) {
+            verifyTarget(root, target);
+        }
+        for (EditPoint point : editPoints.values()) {
+            verifyEditPoint(root, point);
+        }
 
         JsonObject mapJson = buildMapJson(root, targets, editPoints);
         return new ProjectCodeMap(root, targets, editPoints, mapJson);
@@ -143,6 +286,10 @@ final class ProjectCodeMap {
         target.knownFacts().forEach(facts::add);
         selectedTarget.add("knownFacts", facts);
         selectedTarget.addProperty("sourceContext", reader.readForTarget(target.file(), target.method()));
+        if (!target.relatedContextFiles().isEmpty()) {
+            selectedTarget.addProperty("relatedSourceContext",
+                    reader.readForFiles(target.relatedContextFiles()));
+        }
         context.add("selectedTarget", selectedTarget);
 
         JsonArray points = new JsonArray();
@@ -339,6 +486,7 @@ final class ProjectCodeMap {
         architecture.add("排样调度：PriorityFirstPacker 调用 GlobalRepackOptimizer.optimize。");
         architecture.add("全局重排：GlobalRepackOptimizer.optimize 调用 BeamSearch.ImproveByRepack。");
         architecture.add("局部求解：BeamSearch.ImproveByRepack 对候选 pairSet 调用 multipSolve。");
+        architecture.add("初始解策略：SpaceManager 通过 SpaceComparator 选择空间，State 选择可行 GeneralBlock。");
         result.add("architecture", architecture);
         result.add("moduleOverview", moduleOverview(root));
 
@@ -346,6 +494,7 @@ final class ProjectCodeMap {
         contracts.add("项目是二维排样；Instance 的容器尺寸字段为 length 与 width。");
         contracts.add("Box.volume 是外接矩形面积；容器面积为 Instance.length * Instance.width。");
         contracts.add("RunReportWriter 只读写运行统计，不参与 Beam Search 搜索决策。");
+        contracts.add("优化目标按字典序比较：Sp、So、N、平均利用率、总排样时间。");
         result.add("dataContracts", contracts);
 
         JsonArray targetArray = new JsonArray();
@@ -361,6 +510,9 @@ final class ProjectCodeMap {
             JsonArray pointIds = new JsonArray();
             target.editPointIds().forEach(pointIds::add);
             item.add("editPointIds", pointIds);
+            JsonArray relatedFiles = new JsonArray();
+            target.relatedContextFiles().forEach(relatedFiles::add);
+            item.add("relatedContextFiles", relatedFiles);
             targetArray.add(item);
         }
         result.add("optimizationTargets", targetArray);
@@ -395,7 +547,8 @@ final class ProjectCodeMap {
                   String method,
                   String purpose,
                   List<String> knownFacts,
-                  List<String> editPointIds) {
+                  List<String> editPointIds,
+                  List<String> relatedContextFiles) {
     }
 
     record EditPoint(String id,
