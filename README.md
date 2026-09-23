@@ -83,19 +83,23 @@ mvn exec:java `
 “分析 Agent、方案生成 Agent、可行性审查 Agent”收敛为一次决策调用，并在同一入口完成
 代码修改与非 LLM 验证：
 
-`run-report.json → Decision Agent → Code Modification Agent → 编译 → 候选排样重跑 → 验证`
+`run-report.json → 代码地图 → Decision Agent → Code Modification Agent → 结构化写入 → 编译 → 候选排样重跑 → 验证`
 
 直接从 IDE 运行即可，不需要命令行参数。切换案例时只修改该类顶部的
 `CASE_OUTPUT_DIRECTORY`。运行前必须已经完成该案例的一次排样，使
 `run-report.json`、`material.csv` 和 `workpiece` 已存在。
 
-Decision Agent 只接收运行报告，选择一个最小、可验证的待实施方案。只有当它返回
-`ready_for_implementation` 时，代码修改 Agent 才会读取方案明确列出的有限 Java 源码片段，
-生成精确文本替换。替换原文必须唯一匹配、文件必须在 `targetFiles` 中，且修改前会自动备份。
+主入口会先从当前项目源码构建确定性的 `code-map.json`。代码地图包含模块概览、调用链、二维排样
+数据约束、允许优化的 `targetId` 和预登记的 `editPointId`。Decision Agent 只接收运行报告、代码地图
+和真实目标方法源码，并且只能选择一个 `targetId`；它不再输出文件路径或方法名。
 
-为避免模型虚构 Java 路径，主入口会先向 Decision Agent 提供并在本地校验真实代码地图。当前
-允许选择的优化入口为 `GlobalRepackOptimizer.optimize` 与 `BeamSearch.ImproveByRepack`；模型不能
-返回地图以外的文件或方法。
+当决策为 `ready_for_implementation` 时，代码修改 Agent 会收到该目标方法、数据约束和可修改区域，
+只能输出 `editPointId + replacementText`。程序根据 `editPointId` 的唯一开始/结束锚点定位真实源码，
+因此模型不需要复写大段原文，也不会因 Windows 换行符或缩进差异导致匹配失败。修改前仍会自动备份。
+
+当前代码地图登记的可修改目标是 `beam-repack-improve`，对应 `BeamSearch.ImproveByRepack` 的
+`beam-repack-pair-candidates` 修改点。代码地图同时明确：`Instance` 只有 `length`、`width`，
+`Box.volume` 是二维矩形面积；模型不能再把它误认为三维体积。
 
 `decision.json` 的 `status` 表示下一步：
 
@@ -103,10 +107,11 @@ Decision Agent 只接收运行报告，选择一个最小、可验证的待实�
 - `collect_evidence`：报告证据不足，应先补充计时或统计数据。
 - `no_change`：当前结果没有值得修改的方向。
 
-每次代码修改会在新的 `llm/iteration-XX` 目录写入：
+每次主入口启动会更新案例目录的 `llm/code-map.json`。每次代码修改会在新的
+`llm/iteration-XX` 目录写入：
 
 - `decision.json`：本轮唯一的已选方案；
-- `code-changes.json`：代码 Agent 的机器可读替换内容；
+- `code-changes.json`：代码 Agent 输出的 `editPointId` 与替换内容；
 - `modification-report.md`：面向阅读的“本次修改了哪些代码、为何修改”说明；
 - `backups/`：修改前的原始源码；
 - `validation.json`：Java 编译、候选案例运行和基线指标比较结果；

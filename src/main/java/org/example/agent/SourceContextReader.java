@@ -63,6 +63,19 @@ final class SourceContextReader {
     }
 
     /**
+     * 按代码地图提供的真实路径和方法读取源码。
+     *
+     * <p>该入口不读取任何模型输出的路径，供新的“代码地图 + 修改点”流程使用。</p>
+     */
+    String readForTarget(String declaredFile, String declaredMethod) throws IOException {
+        Map<String, Set<String>> targets = new LinkedHashMap<>();
+        Set<String> methods = new LinkedHashSet<>();
+        methods.add(declaredMethod);
+        targets.put(declaredFile, methods);
+        return readTargets(targets, "代码地图未提供可读取的真实方法。");
+    }
+
+    /**
      * 在决策前读取代码地图中的真实方法上下文。
      *
      * <p>这一步只读取框架预先确认的优化入口，因此 Decision Agent 能依据实际实现

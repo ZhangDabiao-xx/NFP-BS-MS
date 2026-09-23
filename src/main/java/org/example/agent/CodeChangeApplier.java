@@ -10,34 +10,29 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 /**
- * 将代码修改 Agent 输出的精确文本替换安全地应用到工作区。
+ * 根据代码地图的 editPointId 确定性写入代码修改。
  *
- * <p>所有替换都会先在内存中校验：目标文件必须已被决策授权，原文必须唯一匹配。
- * 写入前会在当前迭代目录保存原文件，因此验证失败时可以恢复。</p>
+ * <p>模型不会提供文件路径、方法名或原文片段。本类只接受代码地图中已验证的唯一
+ * 锚点，因此既避免换行符造成的误匹配，也不会把修改写到未授权位置。</p>
  */
 final class CodeChangeApplier {
 
     private final Path projectRoot;
-    private final Path mainSourceRoot;
-    private final Path testSourceRoot;
 
     CodeChangeApplier(Path projectRoot) {
         this.projectRoot = projectRoot.toAbsolutePath().normalize();
-        this.mainSourceRoot = this.projectRoot.resolve("src/main/java").normalize();
-        this.testSourceRoot = this.projectRoot.resolve("src/test/java").normalize();
     }
 
     /** 应用一个 changeSet，并把每个原文件备份到 iterationDirectory/backups。 */
-    ApplicationResult apply(JsonObject decision,
+    ApplicationResult apply(ProjectCodeMap codeMap,
+                            JsonObject decision,
                             JsonObject changeSet,
                             Path iterationDirectory) throws IOException {
-        Set<String> allowedFiles = allowedFiles(decision);
+        codeMap.validateChangeSet(decision, changeSet);
         JsonArray changes = changeSet.getAsJsonArray("changes");
         if (changes == null || changes.isEmpty()) {
             throw new IllegalArgumentException("没有可应用的代码修改。");
@@ -47,13 +42,16 @@ final class CodeChangeApplier {
         Map<Path, String> updatedSources = new LinkedHashMap<>();
         List<AppliedChange> appliedChanges = new ArrayList<>();
 
-        // 先在内存中完成所有替换；任何一项不匹配时都不会写入源文件。
+        // 先在内存中完成全部修改；任何锚点异常都不会写入生产源码。
         for (JsonElement element : changes) {
             JsonObject change = element.getAsJsonObject();
-            String declaredFile = change.get("file").getAsString();
-            Path sourceFile = resolveAllowedFile(declaredFile, allowedFiles);
-            String originalText = change.get("originalText").getAsString();
-            String replacementText = change.get("replacementText").getAsString();
+            String pointId = stringValue(change, "editPointId");
+            ProjectCodeMap.EditPoint point = codeMap.editPoint(decision, pointId);
+            Path sourceFile = codeMap.sourceFile(point);
+            String replacementText = stringValue(change, "replacementText");
+            if (replacementText.isBlank()) {
+                throw new IllegalArgumentException("replacementText 不能为空: " + pointId);
+            }
 
             String current = updatedSources.get(sourceFile);
             if (current == null) {
@@ -61,19 +59,17 @@ final class CodeChangeApplier {
                 originalSources.put(sourceFile, current);
             }
 
-            int matchIndex = uniqueMatchIndex(current, originalText, declaredFile);
-            int startLine = lineNumberAt(current, matchIndex);
-            int endLine = lineNumberAt(current, matchIndex + originalText.length());
-            String updated = current.substring(0, matchIndex)
-                    + replacementText
-                    + current.substring(matchIndex + originalText.length());
+            TextRange range = editableRange(current, point);
+            String updated = current.substring(0, range.start())
+                    + withTrailingLineBreak(replacementText)
+                    + current.substring(range.end());
             updatedSources.put(sourceFile, updated);
             appliedChanges.add(new AppliedChange(
                     relativePath(sourceFile),
-                    startLine,
-                    endLine,
-                    change.get("description").getAsString(),
-                    change.get("reason").getAsString()));
+                    range.startLine(),
+                    range.endLine(),
+                    stringValue(change, "description"),
+                    stringValue(change, "reason")));
         }
 
         Path backupDirectory = iterationDirectory.resolve("backups");
@@ -104,49 +100,30 @@ final class CodeChangeApplier {
         }
     }
 
-    private Set<String> allowedFiles(JsonObject decision) {
-        JsonObject selectedPlan = decision.getAsJsonObject("selectedPlan");
-        JsonArray files = selectedPlan == null ? null : selectedPlan.getAsJsonArray("targetFiles");
-        if (files == null || files.isEmpty()) {
-            throw new IllegalArgumentException("selectedPlan 未声明允许修改的 targetFiles。");
+    /**
+     * 用预登记锚点确定本次可替换范围。
+     *
+     * <p>范围不包含开始或结束锚点；这样模型只需返回实际修改区域，
+     * 程序会保留后续监控语句。锚点是短而唯一的源码事实，不受模型换行格式影响。</p>
+     */
+    private TextRange editableRange(String source, ProjectCodeMap.EditPoint point) {
+        int start = uniqueMatchIndex(source, point.startAnchor(), point.id(), "开始");
+        int end = uniqueMatchIndex(source, point.endAnchor(), point.id(), "结束");
+        if (end <= start) {
+            throw new IllegalArgumentException("修改点锚点顺序错误: " + point.id());
         }
-
-        Set<String> result = new LinkedHashSet<>();
-        for (JsonElement file : files) {
-            if (file.isJsonPrimitive()) {
-                result.add(normalizeDeclaredPath(file.getAsString()));
-            }
-        }
-        return result;
+        int contentStart = afterLineBreak(source, start + point.startAnchor().length());
+        return new TextRange(contentStart, end,
+                lineNumberAt(source, contentStart), lineNumberAt(source, end));
     }
 
-    private Path resolveAllowedFile(String declaredFile, Set<String> allowedFiles) {
-        String normalized = normalizeDeclaredPath(declaredFile);
-        if (!allowedFiles.contains(normalized)) {
-            throw new IllegalArgumentException("代码修改目标不在 selectedPlan.targetFiles 中: " + declaredFile);
-        }
-        if (normalized.startsWith("src/main/java/org/example/agent/")) {
-            throw new IllegalArgumentException("代码修改阶段不允许改动 LLM 框架自身: " + declaredFile);
-        }
-
-        Path resolved = projectRoot.resolve(Path.of(normalized)).normalize();
-        boolean inSourceDirectory = resolved.startsWith(mainSourceRoot) || resolved.startsWith(testSourceRoot);
-        if (!normalized.endsWith(".java") || !inSourceDirectory || !Files.isRegularFile(resolved)) {
-            throw new IllegalArgumentException("代码修改目标必须是已有的项目 Java 源文件: " + declaredFile);
-        }
-        return resolved;
-    }
-
-    private int uniqueMatchIndex(String source, String originalText, String declaredFile) {
-        if (originalText == null || originalText.isEmpty()) {
-            throw new IllegalArgumentException("原文不能为空: " + declaredFile);
-        }
-        int first = source.indexOf(originalText);
+    private int uniqueMatchIndex(String source, String anchor, String pointId, String position) {
+        int first = source.indexOf(anchor);
         if (first < 0) {
-            throw new IllegalArgumentException("原文未在目标文件中匹配: " + declaredFile);
+            throw new IllegalArgumentException(position + "锚点未在目标文件中匹配: " + pointId);
         }
-        if (source.indexOf(originalText, first + 1) >= 0) {
-            throw new IllegalArgumentException("原文在目标文件中出现多次，拒绝模糊替换: " + declaredFile);
+        if (source.indexOf(anchor, first + 1) >= 0) {
+            throw new IllegalArgumentException(position + "锚点在目标文件中出现多次: " + pointId);
         }
         return first;
     }
@@ -161,15 +138,20 @@ final class CodeChangeApplier {
         return line;
     }
 
-    private String normalizeDeclaredPath(String path) {
-        if (path == null || path.isBlank()) {
-            throw new IllegalArgumentException("代码修改目标路径不能为空。");
+    /** 模型若省略末尾换行，也不能让结束锚点与最后一行代码粘连。 */
+    private String withTrailingLineBreak(String replacementText) {
+        return replacementText.endsWith("\n") || replacementText.endsWith("\r")
+                ? replacementText : replacementText + System.lineSeparator();
+    }
+
+    private int afterLineBreak(String source, int index) {
+        if (index < source.length() && source.charAt(index) == '\r') {
+            index++;
         }
-        Path normalized = Path.of(path).normalize();
-        if (normalized.isAbsolute() || normalized.startsWith("..")) {
-            throw new IllegalArgumentException("代码修改目标必须是项目内相对路径: " + path);
+        if (index < source.length() && source.charAt(index) == '\n') {
+            index++;
         }
-        return normalized.toString().replace('\\', '/');
+        return index;
     }
 
     private String relativePath(Path path) {
@@ -181,9 +163,15 @@ final class CodeChangeApplier {
             try {
                 Files.writeString(source.getKey(), source.getValue(), StandardCharsets.UTF_8);
             } catch (IOException ignored) {
-                // 原始写入异常会被调用方接收；此处仅尽力避免半写入状态。
+                // 原始写入异常会被调用方接收；这里仅尽力避免半写入状态。
             }
         }
+    }
+
+    private String stringValue(JsonObject object, String field) {
+        JsonElement value = object.get(field);
+        return value == null || value.isJsonNull() || !value.isJsonPrimitive()
+                ? "" : value.getAsString();
     }
 
     /** 一项已写入源码的修改，用于生成面向用户的 Markdown 文档。 */
@@ -196,5 +184,8 @@ final class CodeChangeApplier {
 
     /** 本轮写入的修改和对应备份文件。 */
     record ApplicationResult(List<AppliedChange> appliedChanges, Map<Path, Path> backups) {
+    }
+
+    private record TextRange(int start, int end, int startLine, int endLine) {
     }
 }

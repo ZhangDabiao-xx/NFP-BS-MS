@@ -31,6 +31,7 @@ final class ModificationReportWriter {
         markdown.append("# 代码修改说明\n\n");
         markdown.append("- 迭代轮次：").append(iteration).append('\n');
         markdown.append("- 方案编号：").append(planId).append('\n');
+        markdown.append("- 代码地图目标：").append(stringValue(selectedPlan, "targetId")).append('\n');
         markdown.append("- 方案摘要：").append(planSummary).append('\n');
         markdown.append("- 修改 Agent 摘要：").append(stringValue(changeSet, "summary")).append("\n\n");
         markdown.append("## 实际修改的代码\n\n");
@@ -43,7 +44,7 @@ final class ModificationReportWriter {
         }
 
         markdown.append("## 安全与验证\n\n");
-        markdown.append("- 每个替换都要求原文在目标文件中唯一匹配。\n");
+        markdown.append("- 每项修改都只能使用代码地图中预登记的唯一修改点。\n");
         markdown.append("- 修改前的源文件已保存至本轮 `backups` 目录。\n");
         markdown.append("- 验证失败时，工作流会从备份恢复源文件。\n");
         markdown.append("- 详细机器可读修改内容见同目录 `code-changes.json`。\n");

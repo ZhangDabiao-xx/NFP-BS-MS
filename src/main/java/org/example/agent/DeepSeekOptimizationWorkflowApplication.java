@@ -37,16 +37,18 @@ public class DeepSeekOptimizationWorkflowApplication {
     public static void main(String[] args) throws Exception {
         JsonObject runReport = readLatestRunReport();
         Path projectRoot = Path.of("").toAbsolutePath().normalize();
-        OptimizationTargetCatalog targetCatalog = OptimizationTargetCatalog.create(projectRoot);
+        ProjectCodeMap codeMap = ProjectCodeMap.create(projectRoot);
         SourceContextReader sourceContextReader = new SourceContextReader(
                 projectRoot.resolve("src/main/java"));
+        // 每次启动都保存当前源码对应的代码地图，方便人工审计 Agent 的可见范围。
+        AgentJsonFiles.writeObject(LLM_DIRECTORY.resolve("code-map.json"), codeMap.asJson());
 
         DeepSeekClient client = new DeepSeekClient(DeepSeekConfig.fromCode());
         OptimizationDecisionAgent decisionAgent = new OptimizationDecisionAgent(client);
-        // 决策前自动提供已登记入口的真实方法，避免模型再请求人工粘贴源码。
-        String decisionSourceContext = sourceContextReader.readForCodeTargets(targetCatalog.asJson());
+        // 决策前自动提供代码地图和真实目标方法，避免模型猜测项目结构。
+        String decisionSourceContext = codeMap.readDecisionSourceContext(sourceContextReader);
         JsonObject decision = decisionAgent.decide(
-                runReport, null, targetCatalog, decisionSourceContext);
+                runReport, null, codeMap, decisionSourceContext);
         int firstIteration = nextIterationNumber();
         Path firstIterationDirectory = iterationDirectory(firstIteration);
         AgentJsonFiles.writeObject(firstIterationDirectory.resolve("decision.json"), decision);
@@ -69,9 +71,10 @@ public class DeepSeekOptimizationWorkflowApplication {
             int iteration = firstIteration + attempt - 1;
             Path iterationDirectory = iterationDirectory(iteration);
             Files.createDirectories(iterationDirectory);
-            String sourceContext = sourceContextReader.readForDecision(decision);
+            JsonObject implementationContext = codeMap.implementationContext(
+                    decision, sourceContextReader);
             JsonObject changeSet = modificationAgent.createChanges(
-                    decision, sourceContext, previousValidation);
+                    decision, implementationContext, previousValidation);
             AgentJsonFiles.writeObject(iterationDirectory.resolve("code-changes.json"), changeSet);
 
             String changeStatus = changeSet.get("status").getAsString();
@@ -85,7 +88,8 @@ public class DeepSeekOptimizationWorkflowApplication {
 
             CodeChangeApplier.ApplicationResult applicationResult;
             try {
-                applicationResult = changeApplier.apply(decision, changeSet, iterationDirectory);
+                applicationResult = changeApplier.apply(
+                        codeMap, decision, changeSet, iterationDirectory);
             } catch (Exception exception) {
                 JsonObject validation = failedValidation("apply", exception);
                 AgentJsonFiles.writeObject(iterationDirectory.resolve("validation.json"), validation);
@@ -117,7 +121,7 @@ public class DeepSeekOptimizationWorkflowApplication {
 
             if (passed) {
                 JsonObject resultAnalysis = analyzeCandidateResult(
-                        decisionAgent, validation, targetCatalog, sourceContextReader);
+                        decisionAgent, validation, codeMap, sourceContextReader);
                 AgentJsonFiles.writeObject(iterationDirectory.resolve("result-analysis.json"), resultAnalysis);
                 writeFinalResult("applied_and_validated", iteration,
                         decision, changeSet, validation, resultAnalysis);
@@ -171,7 +175,7 @@ public class DeepSeekOptimizationWorkflowApplication {
     /** 成功运行后重新分析候选结果，但不在当前轮继续自动修改，防止无限优化。 */
     private static JsonObject analyzeCandidateResult(OptimizationDecisionAgent decisionAgent,
                                                       JsonObject validation,
-                                                      OptimizationTargetCatalog targetCatalog,
+                                                      ProjectCodeMap codeMap,
                                                       SourceContextReader sourceContextReader) {
         try {
             JsonObject candidateRun = validation.getAsJsonObject("candidateRun");
@@ -180,8 +184,8 @@ public class DeepSeekOptimizationWorkflowApplication {
                 return failedValidation("result_analysis",
                         new IllegalArgumentException("验证通过但未找到候选运行报告。"));
             }
-            String sourceContext = sourceContextReader.readForCodeTargets(targetCatalog.asJson());
-            return decisionAgent.decide(candidateReport, validation, targetCatalog, sourceContext);
+            String sourceContext = codeMap.readDecisionSourceContext(sourceContextReader);
+            return decisionAgent.decide(candidateReport, validation, codeMap, sourceContext);
         } catch (Exception exception) {
             // 代码已经验证通过；分析调用失败不能回滚已通过的算法修改。
             return failedValidation("result_analysis", exception);
