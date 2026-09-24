@@ -145,3 +145,20 @@ mvn exec:java `
 
 监控只增加计数与计时，不改变 Beam Search、随机种子、约束条件或十分钟重排预算。重新运行
 对应案例的排样程序后，新的字段会自动出现在该案例的 `run-report.json` 中。
+
+## 8. NFP 拼接策略 Agent
+
+完整入口 `IntegratedPackingApplication` 现在会在每个案例开始 NFP 拼接前，先在该案例的
+`llm` 目录生成 `nfp-stitch-report.json`。报告统计小矩形数量与面积占比、异形工件数量、
+低填充率异形根工件数量和估算凹腔面积。NFP Decision Agent 只能在以下确定性策略中选择，
+不能生成拼接代码或放宽几何约束：
+
+- `balanced`：平衡关键凹腔收益和小件机会成本；
+- `cavity_first`：优先保护关键凹腔及其小件资源；
+- `preserve_scarce_small_rectangles`：不让第一阶段消耗新增的小矩形，保留它们给后续排样填缝；
+- `compact_blocks_first`：优先紧凑、高填充率的组合块。
+
+决策保存为 `nfp-stitch-decision.json`；排样结束后，实际的 `Sp、So、N、利用率` 会写入
+`nfp-stitch-result.json` 和可持续读取的 `nfp-stitch-memory.json`。下一次处理同一案例时，
+Agent 会读取最近四次策略结果，避免无证据地重复已经退化的策略。若 DeepSeek 暂时不可用，
+程序会记录原因并安全回退到 `balanced`，不会跳过 NFP 几何校验或中断完整求解。

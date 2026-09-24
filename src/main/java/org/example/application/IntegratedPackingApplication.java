@@ -1,5 +1,6 @@
 package org.example.application;
 
+import org.example.agent.NfpStitchingAgentWorkflow;
 import org.example.beamsearch.application.NFPToBeamSearchBridge;
 import org.example.nfp.BatchBlockStitcher;
 
@@ -21,9 +22,9 @@ public final class IntegratedPackingApplication {
     /** 未传入命令行参数时使用的默认案例目录；需要时只修改这一处路径即可。 */
     private static final Path DEFAULT_CASE_PATH = Path.of("data", "inputData");
     /** NFP 拼接结果目录名称。 */
-    private static final String NFP_RESULT_DIRECTORY_NAME = "BA03_NFP";
+    private static final String NFP_RESULT_DIRECTORY_NAME = "BA04_NFP";
     /** 矩形排样结果目录名称。 */
-    private static final String PACKING_RESULT_DIRECTORY_NAME = "BA03_Packing";
+    private static final String PACKING_RESULT_DIRECTORY_NAME = "BA04_Packing";
     /** NFP 到排样的中间文件目录名称。 */
     private static final String BRIDGE_DIRECTORY_NAME = "material";
 
@@ -69,47 +70,55 @@ public final class IntegratedPackingApplication {
                            Path packingResultDirectory) throws IOException {
         Files.createDirectories(nfpResultDirectory);
         Files.createDirectories(packingResultDirectory);
-        List<Path> nfpResultFiles = BatchBlockStitcher.stitchCases(casePath, nfpResultDirectory);
-        if (nfpResultFiles.isEmpty()) {
+        List<Path> caseJsonFiles = resolveCaseJsonFiles(casePath);
+        if (caseJsonFiles.isEmpty()) {
             throw new IOException("未生成任何 NFP 拼接结果。");
         }
 
         Path bridgeRootDirectory = packingResultDirectory.resolve(BRIDGE_DIRECTORY_NAME);
-        for (Path nfpResultFile : nfpResultFiles) {
+        for (Path caseJsonFile : caseJsonFiles) {
+            String caseName = stripExtension(caseJsonFile.getFileName().toString());
+            Path caseLlmDirectory = packingResultDirectory.resolve(caseName).resolve("llm");
+            // 先由受限 Agent 选择策略，再交给确定性的 NFP 几何搜索执行。
+            NfpStitchingAgentWorkflow.Selection selection = NfpStitchingAgentWorkflow.selectPolicy(
+                    caseJsonFile, caseLlmDirectory);
+            Path nfpResultFile = BatchBlockStitcher.stitchCase(
+                    caseJsonFile, nfpResultDirectory, selection.policy());
             if (nfpResultFile == null || !Files.isRegularFile(nfpResultFile)) {
                 throw new IOException("NFP 拼接结果不存在: " + nfpResultFile);
             }
-            Path caseJsonFile = resolveCaseJsonFile(casePath, nfpResultFile);
             Path casePackingDirectory = NFPToBeamSearchBridge.packCase(
                     nfpResultFile,
                     caseJsonFile,
                     bridgeRootDirectory,
                     packingResultDirectory);
+            // 排样已完成后，记录该 NFP 策略对应的最终质量，供下次同案例选择参考。
+            NfpStitchingAgentWorkflow.recordPackingOutcome(caseLlmDirectory, selection);
             System.out.println("案例完成: " + caseJsonFile.getFileName() + " -> " + casePackingDirectory);
         }
     }
 
-    /**
-     * 根据案例输入形式为 NFP 输出文件找回对应的原始 JSON 文件。
-     *
-     * @param casePath 统一入口接收的案例文件或案例目录。
-     * @param nfpResultFile 当前案例生成的 NFP 文本结果，用于取得案例名称。
-     * @return 与当前 NFP 结果同名的原始案例 JSON 文件。
-     * @throws IOException 当目录模式下找不到对应 JSON 文件时抛出。
-     */
-    private static Path resolveCaseJsonFile(Path casePath, Path nfpResultFile) throws IOException {
+    /** 将单文件或目录输入规范化成稳定排序的案例 JSON 列表。 */
+    private static List<Path> resolveCaseJsonFiles(Path casePath) throws IOException {
         if (Files.isRegularFile(casePath)) {
-            return casePath;
+            if (!casePath.getFileName().toString().toLowerCase().endsWith(".json")) {
+                throw new IOException("案例文件必须是 .json: " + casePath);
+            }
+            return List.of(casePath);
         }
+        if (!Files.isDirectory(casePath)) {
+            throw new IOException("案例路径既不是文件也不是目录: " + casePath);
+        }
+        try (var files = Files.list(casePath)) {
+            return files.filter(path -> path.getFileName().toString().toLowerCase().endsWith(".json"))
+                    .sorted()
+                    .toList();
+        }
+    }
 
-        String nfpFileName = nfpResultFile.getFileName().toString();
-        int extensionIndex = nfpFileName.lastIndexOf('.');
-        String caseName = extensionIndex >= 0 ? nfpFileName.substring(0, extensionIndex) : nfpFileName;
-        Path caseJsonFile = casePath.resolve(caseName + ".json");
-        if (!Files.isRegularFile(caseJsonFile)) {
-            throw new IOException("找不到与 NFP 结果对应的案例 JSON: " + caseJsonFile);
-        }
-        return caseJsonFile;
+    private static String stripExtension(String fileName) {
+        int index = fileName.lastIndexOf('.');
+        return index > 0 ? fileName.substring(0, index) : fileName;
     }
 
     /**

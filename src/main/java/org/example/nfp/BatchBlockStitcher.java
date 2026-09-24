@@ -121,6 +121,25 @@ public class BatchBlockStitcher {
     public static Path stitchCase(Path inputFile,
                                    Path outputDirectory,
                                    int beamWidth) throws IOException {
+        return stitchCase(inputFile, outputDirectory, beamWidth, NfpStitchingPolicy.BALANCED);
+    }
+
+    /** 使用默认 Beam 宽度和指定策略执行单案例拼接。 */
+    public static Path stitchCase(Path inputFile,
+                                   Path outputDirectory,
+                                   NfpStitchingPolicy policy) throws IOException {
+        return stitchCase(inputFile, outputDirectory, DEFAULT_BEAM_WIDTH, policy);
+    }
+
+    /**
+     * 对单个案例执行指定策略的 NFP 拼接。
+     *
+     * <p>策略只影响候选资源分配和排序；几何合法性检查仍由既有流程统一执行。</p>
+     */
+    public static Path stitchCase(Path inputFile,
+                                   Path outputDirectory,
+                                   int beamWidth,
+                                   NfpStitchingPolicy policy) throws IOException {
         if (inputFile == null || !Files.isRegularFile(inputFile)) {
             throw new IOException("案例文件不存在: " + inputFile);
         }
@@ -130,16 +149,19 @@ public class BatchBlockStitcher {
 
         Files.createDirectories(outputDirectory);
         List<PolygonItem> items = readItems(inputFile);//读取物品信息
+        NfpStitchingPolicy selectedPolicy = policy == null
+                ? NfpStitchingPolicy.BALANCED : policy;
         // 仅统计第一阶段组块搜索耗时，避免文件写入时间干扰每个案例的求解时间判断。
         long solveStartNanos = System.nanoTime();
-        List<Block> blocks = buildBlocks(items, beamWidth);
+        List<Block> blocks = buildBlocks(items, beamWidth, selectedPolicy);
         long solveElapsedNanos = System.nanoTime() - solveStartNanos;
         Path outputFile = outputDirectory.resolve(replaceExtension(inputFile.getFileName().toString(), ".txt"));
         writeBlocks(outputFile, blocks);
         System.out.printf(Locale.ROOT,
-                "%s -> %s, blocks=%d, solveTime=%.3f ms%n",
+                "%s -> %s, policy=%s, blocks=%d, solveTime=%.3f ms%n",
                 inputFile.getFileName(),
                 outputFile,
+                selectedPolicy.id(),
                 blocks.size(),
                 nanosToMillis(solveElapsedNanos));
         return outputFile;
@@ -187,7 +209,16 @@ public class BatchBlockStitcher {
     }
 
     public static List<Block> buildBlocks(List<PolygonItem> items, int beamWidth) {
+        return buildBlocks(items, beamWidth, NfpStitchingPolicy.BALANCED);
+    }
+
+    /** 使用已选策略构造组块，供 LLM 工作流在不改几何算法的前提下调用。 */
+    public static List<Block> buildBlocks(List<PolygonItem> items,
+                                          int beamWidth,
+                                          NfpStitchingPolicy policy) {
         int normalizedBeamWidth = Math.max(1, beamWidth);
+        NfpStitchingPolicy selectedPolicy = policy == null
+                ? NfpStitchingPolicy.BALANCED : policy;
         List<Block> finalBlocks = new ArrayList<>();
         List<Block> activeBlocks = new ArrayList<>();
         List<PolygonItem> orderedItems = orderItemsByFillRateDescending(items);
@@ -201,7 +232,7 @@ public class BatchBlockStitcher {
             }
         }
 
-        finalBlocks.addAll(stitchByBeamSearch(activeBlocks, normalizedBeamWidth));
+        finalBlocks.addAll(stitchByBeamSearch(activeBlocks, normalizedBeamWidth, selectedPolicy));
         return finalBlocks;
     }
 
@@ -241,7 +272,8 @@ public class BatchBlockStitcher {
      * @return 完成拼接或回退为单件后的结果块。
      */
     private static List<Block> stitchByBeamSearch(List<Block> initialBlocks,
-                                                   int beamWidth) {
+                                                   int beamWidth,
+                                                   NfpStitchingPolicy policy) {
         List<PolygonItem> availableItems = collectItems(initialBlocks);
         List<Block> result = new ArrayList<>();
 
@@ -255,17 +287,21 @@ public class BatchBlockStitcher {
             int rootCandidateCount = Math.max(MIN_ROOT_CANDIDATE_COUNT, beamWidth);
             List<CandidateBlock> candidateBlocks = buildAllRootCandidates(
                     availableItems, beamWidth, rootCandidateCount, nfpCache);
-            List<CandidateBlock> scoredCandidates = calculateOpportunityCosts(candidateBlocks);
+            List<CandidateBlock> scoredCandidates = calculateOpportunityCosts(candidateBlocks, policy);
 
             // 先从关键凹腔候选中预留小件，再过滤会抢占这些小件的普通候选。
             // 修改理由：机会成本只能软性调整排序，不能阻止普通高填充块提前消耗
             // 后续大凹腔真正需要的小件；这里增加显式资源约束，但不改变候选几何。
-            Set<String> reservedSmallItemIds = reserveCriticalSmallItems(scoredCandidates);
+            Set<String> reservedSmallItemIds = policy.reserveCriticalSmallItems()
+                    ? reserveCriticalSmallItems(scoredCandidates) : Set.of();
             List<CandidateBlock> selectableCandidates = filterReservedSmallItemConsumers(
                     scoredCandidates, reservedSmallItemIds);
+            selectableCandidates = filterSmallRectangleConsumersForPacking(
+                    selectableCandidates, policy);
             int globalPlanWidth = Math.max(rootCandidateCount,
                     beamWidth * GLOBAL_PLAN_BEAM_MULTIPLIER);
-            GlobalPlanState bestPlan = selectGlobalCandidatePlan(selectableCandidates, globalPlanWidth);
+            GlobalPlanState bestPlan = selectGlobalCandidatePlan(
+                    selectableCandidates, globalPlanWidth, policy);
 
             if (bestPlan == null || bestPlan.selectedCandidates.isEmpty()) {
                 // 当前剩余工件已经无法形成新的有效拼接块，剩余工件保持单件输出，
@@ -339,7 +375,8 @@ public class BatchBlockStitcher {
      * 修改理由：仅比较候选块自身的 fillRate 会让 1.0 的小件互补块无条件压过
      * 大凹腔方案；同时把机会成本和小件预留分开，避免用一个权重同时承担两种职责。
      */
-    private static List<CandidateBlock> calculateOpportunityCosts(List<CandidateBlock> candidates) {
+    private static List<CandidateBlock> calculateOpportunityCosts(List<CandidateBlock> candidates,
+                                                                   NfpStitchingPolicy policy) {
         Map<String, Double> criticalItemValues = new HashMap<>();
         Map<String, Integer> criticalItemDemand = new HashMap<>();
         for (CandidateBlock candidate : candidates) {
@@ -367,7 +404,9 @@ public class BatchBlockStitcher {
                     }
                 }
             }
-            result.add(candidate.withOpportunityCost(opportunityCost));
+            // 策略仅改变机会成本的权重；候选本身仍来自同一套 NFP 几何约束。
+            result.add(candidate.withOpportunityCost(
+                    opportunityCost * policy.opportunityCostMultiplier()));
         }
         return result;
     }
@@ -446,6 +485,28 @@ public class BatchBlockStitcher {
         return result;
     }
 
+    /**
+     * 在“小矩形稀缺”策略下，不让第一阶段消耗可用于第二阶段填缝的小矩形。
+     *
+     * <p>这不是删除工件：被过滤的小件仍会作为单件进入矩形排样阶段。若存在
+     * 大件进入凹腔的合法候选，它仍可参与竞争，从而实现局部填充和后续填缝之间的取舍。</p>
+     */
+    private static List<CandidateBlock> filterSmallRectangleConsumersForPacking(
+            List<CandidateBlock> candidates,
+            NfpStitchingPolicy policy) {
+        if (!policy.preserveSmallRectanglesForPacking()) {
+            return candidates;
+        }
+
+        List<CandidateBlock> result = new ArrayList<>();
+        for (CandidateBlock candidate : candidates) {
+            if (candidate.addedSmallRectangleItemIds().isEmpty()) {
+                result.add(candidate);
+            }
+        }
+        return result;
+    }
+
     /** 判断两个小件 ID 集合是否有交集，避免使用复杂的集合链式表达式。 */
     private static boolean containsAny(Set<String> first, Set<String> second) {
         for (String itemId : first) {
@@ -468,13 +529,14 @@ public class BatchBlockStitcher {
      */
     private static GlobalPlanState selectGlobalCandidatePlan(
             List<CandidateBlock> candidates,
-            int planBeamWidth) {
+            int planBeamWidth,
+            NfpStitchingPolicy policy) {
         if (candidates.isEmpty()) {
             return null;
         }
 
         List<CandidateBlock> orderedCandidates = new ArrayList<>(candidates);
-        orderedCandidates.sort(BatchBlockStitcher::compareCandidateGenerationOrder);
+        orderedCandidates.sort((left, right) -> compareCandidateGenerationOrder(left, right, policy));
 
         List<GlobalPlanState> beam = new ArrayList<>();
         beam.add(GlobalPlanState.empty());
@@ -485,12 +547,12 @@ public class BatchBlockStitcher {
                     nextStates.add(state.withCandidate(candidate));
                 }
             }
-            beam = selectBestGlobalPlans(nextStates, planBeamWidth);
+            beam = selectBestGlobalPlans(nextStates, planBeamWidth, policy);
         }
 
         GlobalPlanState bestPlan = GlobalPlanState.empty();
         for (GlobalPlanState state : beam) {
-            if (compareGlobalPlans(state, bestPlan) < 0) {
+            if (compareGlobalPlans(state, bestPlan, policy) < 0) {
                 bestPlan = state;
             }
         }
@@ -498,8 +560,10 @@ public class BatchBlockStitcher {
     }
 
     /** 优先将关键凹腔候选送入全局 Beam，但最终优劣仍由完整状态评分决定。 */
-    private static int compareCandidateGenerationOrder(CandidateBlock left, CandidateBlock right) {
-        if (left.criticalCavity != right.criticalCavity) {
+    private static int compareCandidateGenerationOrder(CandidateBlock left,
+                                                       CandidateBlock right,
+                                                       NfpStitchingPolicy policy) {
+        if (policy.cavityFirst() && left.criticalCavity != right.criticalCavity) {
             return left.criticalCavity ? -1 : 1;
         }
         return compareCandidateBlocks(left.block, right.block);
@@ -507,8 +571,9 @@ public class BatchBlockStitcher {
 
     /** 保留全局候选集合中质量最高且签名不同的状态。 */
     private static List<GlobalPlanState> selectBestGlobalPlans(List<GlobalPlanState> states,
-                                                               int planBeamWidth) {
-        states.sort(BatchBlockStitcher::compareGlobalPlans);
+                                                               int planBeamWidth,
+                                                               NfpStitchingPolicy policy) {
+        states.sort((left, right) -> compareGlobalPlans(left, right, policy));
         List<GlobalPlanState> selectedStates = new ArrayList<>();
         Set<String> signatures = new HashSet<>();
         for (GlobalPlanState state : states) {
@@ -529,14 +594,17 @@ public class BatchBlockStitcher {
      * 关键凹腔收益是第一优先级；随后比较被改善的关键凹腔数量、扣除资源机会成本
      * 后的总体收益，最后才使用普通填充率和 score2 作为平局规则。
      */
-    private static int compareGlobalPlans(GlobalPlanState left, GlobalPlanState right) {
-        if (Math.abs(left.criticalGain - right.criticalGain) > PolygonStitcher.SCORE_EPS) {
+    private static int compareGlobalPlans(GlobalPlanState left,
+                                          GlobalPlanState right,
+                                          NfpStitchingPolicy policy) {
+        if (policy.cavityFirst()
+                && Math.abs(left.criticalGain - right.criticalGain) > PolygonStitcher.SCORE_EPS) {
             return Double.compare(right.criticalGain, left.criticalGain);
         }
-        if (left.criticalRootCount != right.criticalRootCount) {
+        if (policy.cavityFirst() && left.criticalRootCount != right.criticalRootCount) {
             return Integer.compare(right.criticalRootCount, left.criticalRootCount);
         }
-        if (left.totalCavityInsertionCount != right.totalCavityInsertionCount) {
+        if (policy.cavityFirst() && left.totalCavityInsertionCount != right.totalCavityInsertionCount) {
             // 修改理由：两个方案的关键收益接近时，优先保留真实进入凹腔的拼接次数，
             // 使全局资源分配继续偏向“凹腔 + 小件”，而不是只追求外接框填充率。
             return Integer.compare(right.totalCavityInsertionCount, left.totalCavityInsertionCount);
@@ -1534,6 +1602,18 @@ public class BatchBlockStitcher {
                 }
             }
             return addedSmallItemIds;
+        }
+
+        /** 仅返回新增的规则小矩形，避免误把小型异形件也当作排样填缝资源。 */
+        private Set<String> addedSmallRectangleItemIds() {
+            Set<String> result = new HashSet<>();
+            for (Block.ItemPlacement placement : block.placements) {
+                if (!placement.item.id.equals(rootItem.id)
+                        && isSmallRectangleItem(placement.item)) {
+                    result.add(placement.item.id);
+                }
+            }
+            return result;
         }
 
         /** 全局方案比较使用的普通收益，机会成本只调节普通候选，不否决关键凹腔。 */
