@@ -49,6 +49,20 @@ public class OptimizationDecisionAgent {
                              JsonObject validationReport,
                              ProjectCodeMap codeMap,
                              String sourceContext) throws Exception {
+        return decide(runReport, validationReport, codeMap, sourceContext, null);
+    }
+
+    /**
+     * 根据运行报告、源码上下文和案例历史经验选择可实施方案。
+     *
+     * <p>experienceContext 只包含过去实验的精简确定性结论，不包含完整模型回复，
+     * 用于避免模型重复已经证明无效的同类修改。</p>
+     */
+    public JsonObject decide(JsonObject runReport,
+                             JsonObject validationReport,
+                             ProjectCodeMap codeMap,
+                             String sourceContext,
+                             JsonObject experienceContext) throws Exception {
         JsonObject request = new JsonObject();
         request.add("runReport", runReport);
         if (validationReport != null) {
@@ -59,6 +73,9 @@ public class OptimizationDecisionAgent {
         }
         if (sourceContext != null && !sourceContext.isBlank()) {
             request.addProperty("sourceContext", sourceContext);
+        }
+        if (experienceContext != null && !experienceContext.isEmpty()) {
+            request.add("optimizationExperience", experienceContext);
         }
 
         String systemPrompt = """
@@ -116,6 +133,9 @@ public class OptimizationDecisionAgent {
                 9. 优先从 projectCodeMap 中分析空间选择、可行组块选择、拆板重组组块顺序、
                    待拆板选择或无改进迭代条件等策略层原因。候选必须说明它预计首先改善
                    哪个质量指标，以及为何当前源码的启发式可能限制该指标。
+                10. optimizationExperience 是同一案例过去实验的确定性结论。对于其中标为
+                    safe_but_ineffective 的 targetId 和 editPointIds，不得重复相同组合；只有
+                    明确说明使用了不同 editPointId 或不同可检验假设时，才可再次选择同一 targetId。
                 """;
 
         JsonObject response = client.chatJson(systemPrompt, request.toString());

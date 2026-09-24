@@ -40,6 +40,9 @@ public class DeepSeekOptimizationWorkflowApplication {
         ProjectCodeMap codeMap = ProjectCodeMap.create(projectRoot);
         SourceContextReader sourceContextReader = new SourceContextReader(
                 projectRoot.resolve("src/main/java"));
+        OptimizationExperienceStore experienceStore = OptimizationExperienceStore.open(LLM_DIRECTORY);
+        // 首次升级到经验机制时，自动读取已有 iteration 目录，不丢失过去的实验结论。
+        experienceStore.importExistingIterations(LLM_DIRECTORY);
         // 每次启动都保存当前源码对应的代码地图，方便人工审计 Agent 的可见范围。
         AgentJsonFiles.writeObject(LLM_DIRECTORY.resolve("code-map.json"), codeMap.asJson());
 
@@ -48,7 +51,7 @@ public class DeepSeekOptimizationWorkflowApplication {
         // 决策前自动提供代码地图和真实目标方法，避免模型猜测项目结构。
         String decisionSourceContext = codeMap.readDecisionSourceContext(sourceContextReader);
         JsonObject decision = decisionAgent.decide(
-                runReport, null, codeMap, decisionSourceContext);
+                runReport, null, codeMap, decisionSourceContext, experienceStore.decisionContext());
         int firstIteration = nextIterationNumber();
         Path firstIterationDirectory = iterationDirectory(firstIteration);
         AgentJsonFiles.writeObject(firstIterationDirectory.resolve("decision.json"), decision);
@@ -83,6 +86,7 @@ public class DeepSeekOptimizationWorkflowApplication {
             if (!"ready_to_apply".equals(changeStatus)) {
                 JsonObject validation = stoppedValidation(changeStatus, changeSet);
                 AgentJsonFiles.writeObject(iterationDirectory.resolve("validation.json"), validation);
+                experienceStore.record(iteration, decision, changeSet, validation);
                 writeFinalResult("code_change_not_ready", iteration, decision, changeSet, validation, null);
                 System.out.println("代码修改 Agent 未给出可安全应用的修改，工作流已结束。");
                 return;
@@ -95,6 +99,7 @@ public class DeepSeekOptimizationWorkflowApplication {
             } catch (Exception exception) {
                 JsonObject validation = failedValidation("apply", exception);
                 AgentJsonFiles.writeObject(iterationDirectory.resolve("validation.json"), validation);
+                experienceStore.record(iteration, decision, changeSet, validation);
                 previousValidation = validation;
                 continue;
             }
@@ -120,10 +125,13 @@ public class DeepSeekOptimizationWorkflowApplication {
             ModificationReportWriter.appendValidationResult(
                     iterationDirectory.resolve("modification-report.md"), passed);
             AgentJsonFiles.writeObject(iterationDirectory.resolve("validation.json"), validation);
+            // 无论保留还是回滚，都记录实验结论，使后续启动也能避免重复尝试。
+            experienceStore.record(iteration, decision, changeSet, validation);
 
             if (passed) {
                 JsonObject resultAnalysis = analyzeCandidateResult(
-                        decisionAgent, validation, codeMap, sourceContextReader);
+                        decisionAgent, validation, codeMap, sourceContextReader,
+                        experienceStore.decisionContext());
                 AgentJsonFiles.writeObject(iterationDirectory.resolve("result-analysis.json"), resultAnalysis);
                 writeFinalResult("applied_and_validated", iteration,
                         decision, changeSet, validation, resultAnalysis);
@@ -140,7 +148,8 @@ public class DeepSeekOptimizationWorkflowApplication {
                 // 此时重新选择 targetId，避免让代码 Agent 在同一无效方向反复微调。
                 String sourceContext = codeMap.readDecisionSourceContext(sourceContextReader);
                 JsonObject nextDecision = decisionAgent.decide(
-                        runReport, validation, codeMap, sourceContext);
+                        runReport, validation, codeMap, sourceContext,
+                        experienceStore.decisionContext());
                 AgentJsonFiles.writeObject(iterationDirectory.resolve("next-decision.json"), nextDecision);
                 if (!"ready_for_implementation".equals(stringValue(nextDecision, "status"))) {
                     writeFinalResult("no_effective_strategy", iteration,
@@ -200,7 +209,8 @@ public class DeepSeekOptimizationWorkflowApplication {
     private static JsonObject analyzeCandidateResult(OptimizationDecisionAgent decisionAgent,
                                                       JsonObject validation,
                                                       ProjectCodeMap codeMap,
-                                                      SourceContextReader sourceContextReader) {
+                                                      SourceContextReader sourceContextReader,
+                                                      JsonObject experienceContext) {
         try {
             JsonObject candidateRun = validation.getAsJsonObject("candidateRun");
             JsonObject candidateReport = candidateRun == null ? null : candidateRun.getAsJsonObject("runReport");
@@ -209,7 +219,8 @@ public class DeepSeekOptimizationWorkflowApplication {
                         new IllegalArgumentException("验证通过但未找到候选运行报告。"));
             }
             String sourceContext = codeMap.readDecisionSourceContext(sourceContextReader);
-            return decisionAgent.decide(candidateReport, validation, codeMap, sourceContext);
+            return decisionAgent.decide(candidateReport, validation, codeMap, sourceContext,
+                    experienceContext);
         } catch (Exception exception) {
             // 代码已经验证通过；分析调用失败不能回滚已通过的算法修改。
             return failedValidation("result_analysis", exception);

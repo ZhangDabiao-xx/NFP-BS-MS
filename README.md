@@ -93,6 +93,12 @@ mvn exec:java `
 数据约束、允许优化的 `targetId` 和预登记的 `editPointId`。Decision Agent 只接收运行报告、代码地图
 和真实目标方法源码，并且只能选择一个 `targetId`；它不再输出文件路径或方法名。
 
+每个案例还会维护 `llm/optimization-memory.json`。该文件不是模型聊天记录，而是该案例已经结束的
+实验台账：每轮的策略目标、实际修改点、验证结论，以及 `Sp → So → N → 利用率 → 耗时` 的指标变化。
+主入口首次升级到该机制时会从已有的 `iteration-XX` 目录自动回填；以后每次启动都会向 Decision Agent
+提供最近六条精简经验。因此，已被验证为“可运行但无收益”的相同策略目标和修改点不会被直接重复尝试；
+若仍选择同一策略，模型必须提出不同修改点或不同、可验证的假设。
+
 当决策为 `ready_for_implementation` 时，代码修改 Agent 会收到该目标方法、数据约束和可修改区域，
 只能输出 `editPointId + replacementText`。程序根据 `editPointId` 的唯一开始/结束锚点定位真实源码，
 因此模型不需要复写大段原文，也不会因 Windows 换行符或缩进差异导致匹配失败。修改前仍会自动备份。
