@@ -34,6 +34,8 @@ public class BatchBlockStitcher {
     private static final int DEFAULT_BEAM_WIDTH = 5;
     // 每个根工件至少保留多个最终候选，避免唯一候选被资源冲突淘汰后无法重新尝试其他方案。
     private static final int MIN_ROOT_CANDIDATE_COUNT = 5;
+    // Pareto 策略在同一根工件下最多额外保护的资源结构不同的候选数量。
+    private static final int MAX_DIVERSE_ROOT_CANDIDATES = 3;
     // 外层候选集合使用比根内 Beam 更宽的搜索，允许多个根工件的方案一起竞争。
     private static final int GLOBAL_PLAN_BEAM_MULTIPLIER = 4;
     // 非 smallItem 且初始填充率不高的非矩形工件被视为关键凹腔根工件。
@@ -286,7 +288,7 @@ public class BatchBlockStitcher {
             // 因为候选工件已出现在其他候选块中就提前排除它。
             int rootCandidateCount = Math.max(MIN_ROOT_CANDIDATE_COUNT, beamWidth);
             List<CandidateBlock> candidateBlocks = buildAllRootCandidates(
-                    availableItems, beamWidth, rootCandidateCount, nfpCache);
+                    availableItems, beamWidth, rootCandidateCount, nfpCache, policy);
             List<CandidateBlock> scoredCandidates = calculateOpportunityCosts(candidateBlocks, policy);
 
             // 先从关键凹腔候选中预留小件，再过滤会抢占这些小件的普通候选。
@@ -345,7 +347,8 @@ public class BatchBlockStitcher {
             List<PolygonItem> availableItems,
             int beamWidth,
             int candidateLimit,
-            Map<String, PolygonStitcher.StitchingResult> nfpCache) {
+            Map<String, PolygonStitcher.StitchingResult> nfpCache,
+            NfpStitchingPolicy policy) {
         List<CandidateBlock> candidateBlocks = new ArrayList<>();
         for (PolygonItem rootItem : availableItems) {
             if (isSmallRectangleItem(rootItem)) {
@@ -354,7 +357,7 @@ public class BatchBlockStitcher {
             }
 
             List<Block> rootCandidates = searchTopBlocksFromRoot(
-                    rootItem, availableItems, beamWidth, candidateLimit, nfpCache);
+                    rootItem, availableItems, beamWidth, candidateLimit, nfpCache, policy);
             for (Block rootCandidate : rootCandidates) {
                 if (rootCandidate.memberCount() > 1) {
                     // 单件结果不是竞争候选；它会在没有可行拼接时由外层统一输出。
@@ -712,7 +715,8 @@ public class BatchBlockStitcher {
             List<PolygonItem> remainingItems,
             int beamWidth,
             int candidateLimit,
-            Map<String, PolygonStitcher.StitchingResult> nfpCache) {
+            Map<String, PolygonStitcher.StitchingResult> nfpCache,
+            NfpStitchingPolicy policy) {
         Block rootBlock = Block.fromSingle(rootItem);
 
         // 小矩形只作为被插入物品，不作为根节点继续扩展，保持原有业务规则。
@@ -731,12 +735,14 @@ public class BatchBlockStitcher {
                     beamWidth,
                     candidateLimit,
                     penalizedFirstItemIds,
-                    nfpCache);
+                    nfpCache,
+                    policy);
 
             if (!searchResult.validCompletedStates.isEmpty()) {
                 List<RootBeamState> topStates = selectBestRootStates(
                         searchResult.validCompletedStates,
-                        candidateLimit);
+                        candidateLimit,
+                        policy);
                 List<Block> result = new ArrayList<>(topStates.size());
                 for (RootBeamState state : topStates) {
                     result.add(state.block);
@@ -780,7 +786,8 @@ public class BatchBlockStitcher {
             int beamWidth,
             int candidateLimit,
             Set<String> penalizedFirstItemIds,
-            Map<String, PolygonStitcher.StitchingResult> nfpCache) {
+            Map<String, PolygonStitcher.StitchingResult> nfpCache,
+            NfpStitchingPolicy policy) {
         Block rootBlock = Block.fromSingle(rootItem);
         RootBeamState initialState = RootBeamState.fromRoot(rootBlock);
 
@@ -828,7 +835,8 @@ public class BatchBlockStitcher {
             // 修改理由：若根内只保留一个分支，外层即使使用全局 Beam 也看不到该根的替代方案。
             beam = selectBestRootStates(
                     nextBeamCandidates,
-                    Math.max(beamWidth, candidateLimit));
+                    Math.max(beamWidth, candidateLimit),
+                    policy);
         }
 
         // 正常情况下每条路径最终都会进入 completedStates；这里保留防御性回退，
@@ -948,11 +956,17 @@ public class BatchBlockStitcher {
      * @return 去重并保留必要大件外扩名额后的下一层根 Beam 状态。
      */
     private static List<RootBeamState> selectBestRootStates(List<RootBeamState> states,
-                                                            int beamWidth) {
+                                                            int beamWidth,
+                                                            NfpStitchingPolicy policy) {
         int normalizedBeamWidth = Math.max(1, beamWidth);
         List<RootBeamState> orderedStates = new ArrayList<>(states);
         // NFP 阶段始终使用综合评分和几何特征的固定比较器。
         orderedStates.sort(BatchBlockStitcher::compareRootStates);
+
+        if (policy.preserveDiverseRootCandidates()) {
+            return selectDiverseRootStates(orderedStates, normalizedBeamWidth);
+        }
+
         List<RootBeamState> selectedStates = new ArrayList<>();
         Set<String> signatures = new HashSet<>();
 
@@ -987,6 +1001,118 @@ public class BatchBlockStitcher {
         }
 
         return selectedStates;
+    }
+
+    /**
+     * 为 Pareto 策略保留局部高分与资源消耗不同的根候选。
+     *
+     * <p>普通 Beam 只保留按综合评分靠前的分支。某些分支虽然暂时无法继续扩展，
+     * 或者局部填充率低于“两个小矩形填腔”的方案，却能保留后续排样需要的长条小矩形。
+     * 本方法在每一层和最终终止集合中都保留最多三个互补候选，使这些有效终止分支能够
+     * 进入全局 Beam；其最终排样价值仍由后续确定性排样结果验证。</p>
+     */
+    private static List<RootBeamState> selectDiverseRootStates(
+            List<RootBeamState> orderedStates,
+            int beamWidth) {
+        List<RootBeamState> selected = new ArrayList<>();
+        Set<String> stateSignatures = new HashSet<>();
+        Set<String> resourceSignatures = new HashSet<>();
+
+        // 1) 始终保留局部综合评分最高的方案，维持原有高填充路径。
+        if (!orderedStates.isEmpty()) {
+            addRootState(selected, stateSignatures, resourceSignatures, orderedStates.get(0));
+        }
+
+        // Beam 宽度可能被调用方设为 1，此时不能因多样性策略突破原有搜索上限。
+        int diversityLimit = Math.min(MAX_DIVERSE_ROOT_CANDIDATES, beamWidth);
+
+        // 2) 保留消耗规则小矩形最少的不同资源方案，例如“一个宽矩形”替代“两个长条”。
+        List<RootBeamState> resourceSavingOrder = new ArrayList<>(orderedStates);
+        resourceSavingOrder.sort((left, right) -> {
+            int comparison = Integer.compare(addedSmallRectangleCount(left.block),
+                    addedSmallRectangleCount(right.block));
+            return comparison != 0 ? comparison : compareRootStates(left, right);
+        });
+        if (selected.size() < diversityLimit) {
+            addFirstDifferentResourceState(selected, stateSignatures, resourceSignatures, resourceSavingOrder);
+        }
+
+        // 3) 再保留填充率最高的不同资源方案，避免“不能继续扩展”的有效终止块被遗漏。
+        List<RootBeamState> fillRateOrder = new ArrayList<>(orderedStates);
+        fillRateOrder.sort((left, right) -> {
+            if (Math.abs(left.block.fillRate - right.block.fillRate) > PolygonStitcher.SCORE_EPS) {
+                return Double.compare(right.block.fillRate, left.block.fillRate);
+            }
+            return compareRootStates(left, right);
+        });
+        if (selected.size() < diversityLimit) {
+            addFirstDifferentResourceState(selected, stateSignatures, resourceSignatures, fillRateOrder);
+        }
+
+        // 三个多样性名额之外，继续按原综合评分补足 Beam 宽度，不改变搜索上限。
+        for (RootBeamState state : orderedStates) {
+            if (selected.size() >= beamWidth) {
+                break;
+            }
+            addRootState(selected, stateSignatures, resourceSignatures, state);
+        }
+        return selected;
+    }
+
+    /** 从排序列表中加入第一个资源结构不同的合法状态。 */
+    private static void addFirstDifferentResourceState(List<RootBeamState> selected,
+                                                       Set<String> stateSignatures,
+                                                       Set<String> resourceSignatures,
+                                                       List<RootBeamState> orderedStates) {
+        if (selected.size() >= MAX_DIVERSE_ROOT_CANDIDATES) {
+            return;
+        }
+        for (RootBeamState state : orderedStates) {
+            if (!resourceSignatures.contains(rootResourceSignature(state))) {
+                addRootState(selected, stateSignatures, resourceSignatures, state);
+                return;
+            }
+        }
+    }
+
+    /** 加入状态并同步记录几何签名与小矩形资源签名。 */
+    private static void addRootState(List<RootBeamState> selected,
+                                     Set<String> stateSignatures,
+                                     Set<String> resourceSignatures,
+                                     RootBeamState state) {
+        String stateSignature = rootStateSignature(state);
+        if (stateSignatures.add(stateSignature)) {
+            selected.add(state);
+            resourceSignatures.add(rootResourceSignature(state));
+        }
+    }
+
+    /**
+     * 使用新增规则小矩形 ID 描述一个根分支的资源消耗。
+     *
+     * <p>根工件本身不计入；同样不把小型异形件误当作第二阶段的矩形填缝资源。</p>
+     */
+    private static String rootResourceSignature(RootBeamState state) {
+        List<String> itemIds = new ArrayList<>();
+        for (int index = 1; index < state.block.placements.size(); index++) {
+            PolygonItem item = state.block.placements.get(index).item;
+            if (isSmallRectangleItem(item)) {
+                itemIds.add(item.id);
+            }
+        }
+        itemIds.sort(String::compareTo);
+        return itemIds.isEmpty() ? "no-small-rectangle" : String.join("|", itemIds);
+    }
+
+    /** 统计根分支新增的规则小矩形数量，供资源保留候选排序使用。 */
+    private static int addedSmallRectangleCount(Block block) {
+        int count = 0;
+        for (int index = 1; index < block.placements.size(); index++) {
+            if (isSmallRectangleItem(block.placements.get(index).item)) {
+                count++;
+            }
+        }
+        return count;
     }
 
     /**

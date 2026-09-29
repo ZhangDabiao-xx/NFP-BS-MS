@@ -157,6 +157,7 @@ mvn exec:java `
 - `cavity_first`：优先保护关键凹腔及其小件资源；
 - `preserve_scarce_small_rectangles`：不让第一阶段消耗新增的小矩形，保留它们给后续排样填缝；
 - `compact_blocks_first`：优先紧凑、高填充率的组合块。
+- `pareto_cavity_alternatives`：同时保留局部高分、少消耗小矩形和高填充率的互补根候选（最多三个），避免无法继续扩展但仍可能有排样价值的有效终止分支被提前淘汰。
 
 决策保存为 `nfp-stitch-decision.json`；排样结束后，实际的 `Sp、So、N、利用率` 会写入
 `nfp-stitch-result.json` 和可持续读取的 `nfp-stitch-memory.json`。下一次处理同一案例时，

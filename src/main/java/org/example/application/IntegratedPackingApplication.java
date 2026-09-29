@@ -1,6 +1,7 @@
 package org.example.application;
 
 import org.example.agent.NfpStitchingAgentWorkflow;
+import org.example.agent.DeepSeekOptimizationWorkflowApplication;
 import org.example.beamsearch.application.NFPToBeamSearchBridge;
 import org.example.nfp.BatchBlockStitcher;
 
@@ -20,11 +21,11 @@ import java.util.List;
 public final class IntegratedPackingApplication {
 
     /** 未传入命令行参数时使用的默认案例目录；需要时只修改这一处路径即可。 */
-    private static final Path DEFAULT_CASE_PATH = Path.of("data", "inputData");
+    private static final Path DEFAULT_CASE_PATH = Path.of("data", "inputData2");
     /** NFP 拼接结果目录名称。 */
-    private static final String NFP_RESULT_DIRECTORY_NAME = "BA04_NFP";
+    private static final String NFP_RESULT_DIRECTORY_NAME = "BA05_NFP";
     /** 矩形排样结果目录名称。 */
-    private static final String PACKING_RESULT_DIRECTORY_NAME = "BA04_Packing";
+    private static final String PACKING_RESULT_DIRECTORY_NAME = "BA05_Packing";
     /** NFP 到排样的中间文件目录名称。 */
     private static final String BRIDGE_DIRECTORY_NAME = "material";
 
@@ -81,7 +82,9 @@ public final class IntegratedPackingApplication {
             Path caseLlmDirectory = packingResultDirectory.resolve(caseName).resolve("llm");
             // 先由受限 Agent 选择策略，再交给确定性的 NFP 几何搜索执行。
             NfpStitchingAgentWorkflow.Selection selection = NfpStitchingAgentWorkflow.selectPolicy(
-                    caseJsonFile, caseLlmDirectory);
+                    caseJsonFile,
+                    caseLlmDirectory,
+                    DeepSeekOptimizationWorkflowApplication.isNfpStitchingAgentEnabled());
             Path nfpResultFile = BatchBlockStitcher.stitchCase(
                     caseJsonFile, nfpResultDirectory, selection.policy());
             if (nfpResultFile == null || !Files.isRegularFile(nfpResultFile)) {

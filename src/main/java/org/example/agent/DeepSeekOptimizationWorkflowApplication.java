@@ -13,8 +13,24 @@ import java.nio.file.Path;
  */
 public class DeepSeekOptimizationWorkflowApplication {
 
+    /**
+     * 是否在完整求解开始前启用 NFP 拼接策略 Agent。
+     *
+     * <p>该开关由 IntegratedPackingApplication 在 NFP 阶段读取；设为 false 时
+     * 不调用模型，固定使用 balanced 基准策略。</p>
+     */
+    private static final boolean ENABLE_NFP_STITCHING_AGENT = true;
+
+    /**
+     * 是否启用排样代码优化 Agent。
+     *
+     * <p>设为 false 时，本入口不会调用 Decision Agent 或 Code Modification Agent，
+     * 仅保留已有排样与 NFP 结果。</p>
+     */
+    private static final boolean ENABLE_PACKING_OPTIMIZATION_AGENT = false;
+
     /** 当前测试案例的输出目录。切换案例时只需要修改这一处。 */
-    private static final Path CASE_OUTPUT_DIRECTORY = Path.of("data", "BA04_Packing", "Cabinet1");
+    private static final Path CASE_OUTPUT_DIRECTORY = Path.of("data", "BA05_Packing", "Cabinet1");
 
     /** 排样程序和 LLM 流程共用的案例专属目录。 */
     private static final Path LLM_DIRECTORY = CASE_OUTPUT_DIRECTORY.resolve("llm");
@@ -34,7 +50,17 @@ public class DeepSeekOptimizationWorkflowApplication {
     private DeepSeekOptimizationWorkflowApplication() {
     }
 
+    /** 供完整求解入口读取 NFP Agent 开关，避免把开关分散到多个启动类。 */
+    public static boolean isNfpStitchingAgentEnabled() {
+        return ENABLE_NFP_STITCHING_AGENT;
+    }
+
     public static void main(String[] args) throws Exception {
+        if (!ENABLE_PACKING_OPTIMIZATION_AGENT) {
+            System.out.println("排样代码优化 Agent 已关闭：保留当前 NFP 与排样结果，不执行代码修改。");
+            return;
+        }
+
         JsonObject runReport = readLatestRunReport();
         Path projectRoot = Path.of("").toAbsolutePath().normalize();
         ProjectCodeMap codeMap = ProjectCodeMap.create(projectRoot);

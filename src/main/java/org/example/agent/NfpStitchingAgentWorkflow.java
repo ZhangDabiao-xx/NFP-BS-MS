@@ -33,20 +33,37 @@ public final class NfpStitchingAgentWorkflow {
 
     /** NFP 拼接前根据当前案例特征选择一个受限策略，并保存报告与决策。 */
     public static Selection selectPolicy(Path caseJsonFile, Path llmDirectory) throws IOException {
+        return selectPolicy(caseJsonFile, llmDirectory, true);
+    }
+
+    /**
+     * 根据开关决定是否调用 NFP 策略 Agent。
+     *
+     * <p>关闭时仍会写出案例特征报告和基准决策，便于与启用 Agent 的实验保持相同
+     * 文件结构；但不会创建 DeepSeekClient 或消耗模型 token。</p>
+     */
+    public static Selection selectPolicy(Path caseJsonFile,
+                                         Path llmDirectory,
+                                         boolean enableAgent) throws IOException {
         List<PolygonItem> items = BatchBlockStitcher.readItems(caseJsonFile);
         JsonObject report = buildReport(caseJsonFile, items);
         AgentJsonFiles.writeObject(llmDirectory.resolve(REPORT_FILE_NAME), report);
 
         JsonObject history = readExperienceContext(llmDirectory);
         JsonObject decision;
-        boolean agentUsed = true;
-        try {
-            DeepSeekClient client = new DeepSeekClient(DeepSeekConfig.fromCode());
-            decision = new NfpStitchingDecisionAgent(client).decide(report, history);
-        } catch (Exception exception) {
-            // NFP 本身不依赖 LLM；不可用时用可审计的默认策略继续完成求解。
+        boolean agentUsed = enableAgent;
+        if (!enableAgent) {
             agentUsed = false;
-            decision = fallbackDecision(exception);
+            decision = disabledDecision();
+        } else {
+            try {
+                DeepSeekClient client = new DeepSeekClient(DeepSeekConfig.fromCode());
+                decision = new NfpStitchingDecisionAgent(client).decide(report, history);
+            } catch (Exception exception) {
+                // NFP 本身不依赖 LLM；不可用时用可审计的默认策略继续完成求解。
+                agentUsed = false;
+                decision = fallbackDecision(exception);
+            }
         }
 
         AgentJsonFiles.writeObject(llmDirectory.resolve(DECISION_FILE_NAME), decision);
@@ -153,6 +170,9 @@ public final class NfpStitchingAgentWorkflow {
             value.addProperty("description", policy.description());
             value.addProperty("preservesSmallRectanglesForPacking",
                     policy.preserveSmallRectanglesForPacking());
+            // 让模型明确哪些策略会在根 Beam 中保留资源消耗不同的候选分支。
+            value.addProperty("preservesDiverseRootCandidates",
+                    policy.preserveDiverseRootCandidates());
             values.add(value);
         }
         return values;
@@ -165,6 +185,17 @@ public final class NfpStitchingAgentWorkflow {
         decision.addProperty("reason", "NFP 策略 Agent 暂不可用，使用平衡策略继续确定性求解。"
                 + "原因: " + limited(exception.getMessage()));
         decision.addProperty("expectedTradeoff", "不改变已有的小件预留规则。");
+        decision.addProperty("humanDecision", "none");
+        return decision;
+    }
+
+    /** NFP Agent 被手动关闭时写入明确原因，避免被误认为接口故障。 */
+    private static JsonObject disabledDecision() {
+        JsonObject decision = new JsonObject();
+        decision.addProperty("status", "no_change");
+        decision.addProperty("selectedPolicyId", NfpStitchingPolicy.BALANCED.id());
+        decision.addProperty("reason", "NFP 拼接策略 Agent 已关闭，使用 balanced 基准策略。");
+        decision.addProperty("expectedTradeoff", "不调用模型，也不改变已有的小件预留规则。");
         decision.addProperty("humanDecision", "none");
         return decision;
     }

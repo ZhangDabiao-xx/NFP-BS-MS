@@ -30,6 +30,11 @@ final class NfpStitchingDecisionAgent {
                 填缝，不应为了填满当前凹腔而耗尽它们。此时应考虑
                 preserve_scarce_small_rectangles，使大件或单件保留给 NFP、而小矩形进入后续排样。
 
+                若同一凹腔存在“局部得分更高但消耗多个小矩形”和“局部略低但保留小矩形”
+                两种合法组合，且无法仅凭报告确定哪一种更利于最终排样，可考虑
+                pareto_cavity_alternatives。它只在根 Beam 中保留最多三个资源结构不同的候选，
+                让有效终止分支继续进入后续全局拼接与确定性排样；它不放宽任何几何约束。
+
                 previousNfpExperiences 是本案例过去的策略与最终排样结果。若某策略最近被
                 证明退化或无收益，优先选择其他适用策略；只有新报告特征发生明显变化时
                 才能重复该策略，并在 reason 中说明变化。
