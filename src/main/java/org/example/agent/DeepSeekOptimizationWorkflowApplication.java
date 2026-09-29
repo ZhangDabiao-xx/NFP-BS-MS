@@ -13,13 +13,6 @@ import java.nio.file.Path;
  */
 public class DeepSeekOptimizationWorkflowApplication {
 
-    /**
-     * 是否在完整求解开始前启用 NFP 拼接策略 Agent。
-     *
-     * <p>该开关由 IntegratedPackingApplication 在 NFP 阶段读取；设为 false 时
-     * 不调用模型，固定使用 balanced 基准策略。</p>
-     */
-    private static final boolean ENABLE_NFP_STITCHING_AGENT = true;
 
     /**
      * 是否启用排样代码优化 Agent。
@@ -48,11 +41,6 @@ public class DeepSeekOptimizationWorkflowApplication {
     private static final int MAX_MODIFICATION_ATTEMPTS = 3;
 
     private DeepSeekOptimizationWorkflowApplication() {
-    }
-
-    /** 供完整求解入口读取 NFP Agent 开关，避免把开关分散到多个启动类。 */
-    public static boolean isNfpStitchingAgentEnabled() {
-        return ENABLE_NFP_STITCHING_AGENT;
     }
 
     public static void main(String[] args) throws Exception {

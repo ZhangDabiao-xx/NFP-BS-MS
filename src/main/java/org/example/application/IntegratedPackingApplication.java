@@ -1,9 +1,10 @@
 package org.example.application;
 
 import org.example.agent.NfpStitchingAgentWorkflow;
-import org.example.agent.DeepSeekOptimizationWorkflowApplication;
 import org.example.beamsearch.application.NFPToBeamSearchBridge;
 import org.example.nfp.BatchBlockStitcher;
+import org.example.nfp.NfpAgentConfig;
+import org.example.nfp.selection.NfpSelectionTrace;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -23,9 +24,9 @@ public final class IntegratedPackingApplication {
     /** 未传入命令行参数时使用的默认案例目录；需要时只修改这一处路径即可。 */
     private static final Path DEFAULT_CASE_PATH = Path.of("data", "inputData2");
     /** NFP 拼接结果目录名称。 */
-    private static final String NFP_RESULT_DIRECTORY_NAME = "BA05_NFP";
+    private static final String NFP_RESULT_DIRECTORY_NAME = "BA06_NFP";
     /** 矩形排样结果目录名称。 */
-    private static final String PACKING_RESULT_DIRECTORY_NAME = "BA05_Packing";
+    private static final String PACKING_RESULT_DIRECTORY_NAME = "BA06_Packing";
     /** NFP 到排样的中间文件目录名称。 */
     private static final String BRIDGE_DIRECTORY_NAME = "material";
 
@@ -76,27 +77,39 @@ public final class IntegratedPackingApplication {
             throw new IOException("未生成任何 NFP 拼接结果。");
         }
 
-        Path bridgeRootDirectory = packingResultDirectory.resolve(BRIDGE_DIRECTORY_NAME);
         for (Path caseJsonFile : caseJsonFiles) {
             String caseName = stripExtension(caseJsonFile.getFileName().toString());
-            Path caseLlmDirectory = packingResultDirectory.resolve(caseName).resolve("llm");
-            // 先由受限 Agent 选择策略，再交给确定性的 NFP 几何搜索执行。
-            NfpStitchingAgentWorkflow.Selection selection = NfpStitchingAgentWorkflow.selectPolicy(
+            Path preparationLlmDirectory = packingResultDirectory.resolve(caseName).resolve("llm");
+            // The Agent prepares one profile before deterministic geometry; it never chooses a legacy policy.
+            NfpStitchingAgentWorkflow.Selection selection = NfpStitchingAgentWorkflow.prepareSelectionModel(
                     caseJsonFile,
-                    caseLlmDirectory,
-                    DeepSeekOptimizationWorkflowApplication.isNfpStitchingAgentEnabled());
-            Path nfpResultFile = BatchBlockStitcher.stitchCase(
-                    caseJsonFile, nfpResultDirectory, selection.policy());
+                    preparationLlmDirectory,
+                    NfpAgentConfig.isEnabled());
+            Path effectiveNfpDirectory = selection.agentUsed() ? nfpResultDirectory.resolve("agent") : nfpResultDirectory;
+            Path effectivePackingDirectory = selection.agentUsed() ? packingResultDirectory.resolve("agent") : packingResultDirectory;
+            Path effectiveBridgeDirectory = effectivePackingDirectory.resolve(BRIDGE_DIRECTORY_NAME);
+            Path nfpResultFile;
+            if (selection.agentUsed()) {
+                int width = 5, generationCap = 20, globalPlanWidth = 20;
+                NfpSelectionTrace trace = NfpStitchingAgentWorkflow.newTrace(selection, width, generationCap, globalPlanWidth);
+                BatchBlockStitcher.StitchingOutcome outcome = BatchBlockStitcher.stitchCase(
+                        caseJsonFile, effectiveNfpDirectory, width, selection.model(), generationCap, globalPlanWidth, trace);
+                NfpStitchingAgentWorkflow.recordNfpOutcome(selection, outcome);
+                nfpResultFile = outcome.outputFile();
+            } else {
+                nfpResultFile = BatchBlockStitcher.stitchCase(caseJsonFile, effectiveNfpDirectory);
+            }
             if (nfpResultFile == null || !Files.isRegularFile(nfpResultFile)) {
                 throw new IOException("NFP 拼接结果不存在: " + nfpResultFile);
             }
             Path casePackingDirectory = NFPToBeamSearchBridge.packCase(
                     nfpResultFile,
                     caseJsonFile,
-                    bridgeRootDirectory,
-                    packingResultDirectory);
-            // 排样已完成后，记录该 NFP 策略对应的最终质量，供下次同案例选择参考。
-            NfpStitchingAgentWorkflow.recordPackingOutcome(caseLlmDirectory, selection);
+                    effectiveBridgeDirectory,
+                    effectivePackingDirectory);
+            // Record final quality against the profile only after the unchanged packing stage ends.
+            NfpStitchingAgentWorkflow.recordPackingOutcome(
+                    effectivePackingDirectory.resolve(caseName).resolve("llm"), selection);
             System.out.println("案例完成: " + caseJsonFile.getFileName() + " -> " + casePackingDirectory);
         }
     }

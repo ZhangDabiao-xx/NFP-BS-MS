@@ -1,5 +1,9 @@
 package org.example.nfp;
 
+import org.example.nfp.selection.NfpFeatureExtractor;
+import org.example.nfp.selection.NfpSelectionModel;
+import org.example.nfp.selection.NfpSelectionStage;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
@@ -261,6 +265,55 @@ public class PolygonStitcher {
             List<Integer> movingRotationDegrees,
             boolean requireCavityInsertion,
             int maxCandidates) {
+        return findTopStitchesForFixedPolygons(fixedPolygons, areaA, boxAArea, polygonB, areaB,
+                movingRotationDegrees, requireCavityInsertion, maxCandidates, null);
+    }
+
+    /**
+     * Agent-mode overload. Geometry still creates and filters candidates first; the supplied
+     * model only ranks the bounded, valid candidate pool and cannot alter coordinates or checks.
+     */
+    public static StitchingResult findTopStitchesForFixedPolygons(
+            List<List<Point>> fixedPolygons,
+            double areaA,
+            double boxAArea,
+            List<Point> polygonB,
+            double areaB,
+            List<Integer> movingRotationDegrees,
+            boolean requireCavityInsertion,
+            int maxCandidates,
+            NfpSelectionModel selectionModel) {
+        return findTopStitchesForFixedPolygonsInternal(fixedPolygons, areaA, boxAArea, polygonB, areaB,
+                movingRotationDegrees, requireCavityInsertion, maxCandidates, selectionModel, null);
+    }
+
+    /** Same bounded ranking path with the original item metadata for profile-only features. */
+    public static StitchingResult findTopStitchesForFixedPolygons(
+            List<List<Point>> fixedPolygons,
+            double areaA,
+            double boxAArea,
+            List<Point> polygonB,
+            double areaB,
+            List<Integer> movingRotationDegrees,
+            boolean requireCavityInsertion,
+            int maxCandidates,
+            NfpSelectionModel selectionModel,
+            PolygonItem profileMovingItem) {
+        return findTopStitchesForFixedPolygonsInternal(fixedPolygons, areaA, boxAArea, polygonB, areaB,
+                movingRotationDegrees, requireCavityInsertion, maxCandidates, selectionModel, profileMovingItem);
+    }
+
+    private static StitchingResult findTopStitchesForFixedPolygonsInternal(
+            List<List<Point>> fixedPolygons,
+            double areaA,
+            double boxAArea,
+            List<Point> polygonB,
+            double areaB,
+            List<Integer> movingRotationDegrees,
+            boolean requireCavityInsertion,
+            int maxCandidates,
+            NfpSelectionModel selectionModel,
+            PolygonItem profileMovingItem) {
         int candidateLimit = Math.max(1, maxCandidates);
         List<Point> firstFixedPolygon = fixedPolygons == null || fixedPolygons.isEmpty()
                 ? new ArrayList<>()
@@ -337,7 +390,13 @@ public class PolygonStitcher {
                     new ArrayList<>(), new ArrayList<>(), null);
         }
 
-        allValidCandidates.sort(PolygonStitcher::compareCandidates);
+        if (selectionModel == null || !selectionModel.isProfileDriven()) {
+            allValidCandidates.sort(PolygonStitcher::compareCandidates);
+        } else {
+            int remainingCount = fixedPolygons.size() + 1;
+            allValidCandidates.sort((left, right) -> compareBySelectionModel(
+                    left, right, polygonB, profileMovingItem, remainingCount, selectionModel));
+        }
         List<StitchingCandidate> retainedCandidates = selectTopDistinctCandidates(
                 allValidCandidates, candidateLimit);
         StitchingCandidate retainedBestCandidate = retainedCandidates.isEmpty()
@@ -346,6 +405,29 @@ public class PolygonStitcher {
 
         return new StitchingResult(true, true, "Best stitching placement found", firstFixedPolygon, polygonB,
                 bestOuterNfp, bestHoles, retainedCandidates, retainedCandidates, retainedBestCandidate);
+    }
+
+    /** Stable model ordering; legacy geometry fields remain the deterministic tie breakers. */
+    private static int compareBySelectionModel(StitchingCandidate left,
+                                               StitchingCandidate right,
+                                               List<Point> originalMovingPolygon,
+                                               PolygonItem profileMovingItem,
+                                               int remainingCount,
+                                               NfpSelectionModel model) {
+        PolygonItem movingItem = profileMovingItem == null
+                ? new PolygonItem("selection-moving", false, new Point(0, 0), originalMovingPolygon, List.of(0), false)
+                : profileMovingItem;
+        double leftScore = model.score(NfpSelectionStage.PLACEMENT,
+                NfpFeatureExtractor.placement(left, movingItem, remainingCount));
+        double rightScore = model.score(NfpSelectionStage.PLACEMENT,
+                NfpFeatureExtractor.placement(right, movingItem, remainingCount));
+        if (Math.abs(leftScore - rightScore) > SCORE_EPS) {
+            return Double.compare(rightScore, leftScore);
+        }
+        String leftSignature = left.sourceType + "|" + left.movingRotationDegrees + "|" + left.edgeStartIndex + "|" + left.edgeEndIndex;
+        String rightSignature = right.sourceType + "|" + right.movingRotationDegrees + "|" + right.edgeStartIndex + "|" + right.edgeEndIndex;
+        int signatureComparison = leftSignature.compareTo(rightSignature);
+        return signatureComparison != 0 ? signatureComparison : compareCandidates(left, right);
     }
 
     public static double boundingBoxArea(List<Point> polygon) {

@@ -32,6 +32,14 @@
             <version>${javafx.version}</version>
         </dependency>
 
+        <!-- 真正由 mvn test 执行的单元测试框架；测试不会调用真实模型 API。 -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>5.10.2</version>
+            <scope>test</scope>
+        </dependency>
+
         <!--JavaFx 保存图片需要 -->
         <dependency>
             <groupId>org.openjfx</groupId>
@@ -52,6 +60,12 @@
                 <configuration>
                     <mainClass>org.example.application.IntegratedPackingApplication</mainClass>
                 </configuration>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.2.5</version>
             </plugin>
 
             <!-- 打包统一求解入口及其运行时依赖 -->
