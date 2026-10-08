@@ -89,6 +89,30 @@ public final class NfpScoringProfile {
         return value;
     }
 
+    /**
+     * Produces a bounded deterministic alternative when a remote model repeats a known profile.
+     * It changes only allowed numeric weights and preserves the schema/geometry boundary.
+     */
+    public NfpScoringProfile explorationVariant(int ordinal, int beamWidth) {
+        JsonObject variant = toJson();
+        int stageIndex = Math.floorMod(ordinal, 3);
+        String stage = stageIndex == 0 ? "placementScore" : stageIndex == 1 ? "rootBeamScore" : "globalPlanScore";
+        JsonArray values = variant.getAsJsonArray(stage);
+        JsonObject first = values.get(0).getAsJsonObject();
+        double current = first.get("weight").getAsDouble();
+        double delta = (ordinal & 1) == 0 ? 0.25 : -0.25;
+        double adjusted = Math.max(-MAX_ABS_WEIGHT, Math.min(MAX_ABS_WEIGHT, current + delta));
+        // At a bound, move inward instead of accidentally recreating the same profile hash.
+        if (Double.compare(adjusted, current) == 0) adjusted = Math.max(-MAX_ABS_WEIGHT,
+                Math.min(MAX_ABS_WEIGHT, current - delta));
+        first.addProperty("weight", adjusted);
+        variant.addProperty("diversityWeight", Math.max(-1.0, Math.min(1.0, diversityWeight + 0.1 * ((ordinal & 1) == 0 ? 1 : -1))));
+        variant.addProperty("explorationSlots", Math.min(Math.max(0, beamWidth - 1), Math.max(0, explorationSlots + 1)));
+        variant.addProperty("reason", limited(reason + "；重复配置触发受限探索变体。"));
+        variant.addProperty("hypothesis", limited(hypothesis + "；测试受限权重扰动是否改变候选排序。"));
+        return fromJson(variant, beamWidth);
+    }
+
     private JsonObject canonicalJson() {
         JsonObject value = new JsonObject();
         value.addProperty("schemaVersion", "2.0");

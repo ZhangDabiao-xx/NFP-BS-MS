@@ -29,6 +29,14 @@ class NfpScoringProfileValidationTest {
         assertThrows(IllegalArgumentException.class, () -> NfpScoringProfile.fromJson(invalid, 5));
     }
 
+    @Test
+    void repeatedProfileCanBeConvertedToAValidBoundedExplorationVariant() {
+        NfpScoringProfile original = NfpScoringProfile.fromJson(profile("normalizedSBox", "sArea"), 5);
+        NfpScoringProfile variant = original.explorationVariant(2, 5);
+        assertTrue(!original.id().equals(variant.id()));
+        assertTrue(variant.explorationSlots() <= 4);
+    }
+
     private static JsonObject profile(String firstPlacementFeature, String secondPlacementFeature) {
         JsonObject value = new JsonObject();
         value.add("placementScore", terms(firstPlacementFeature, secondPlacementFeature));

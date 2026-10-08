@@ -45,7 +45,9 @@ public final class IntegratedPackingApplication {
             return;
         }
         Path casePath = args.length == 1 ? Path.of(args[0]) : DEFAULT_CASE_PATH;
-        run(casePath);
+
+
+            run(casePath);
     }
 
     /**

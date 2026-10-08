@@ -4,5 +4,9 @@ package org.example.nfp;
 public final class NfpAgentConfig {
     private static final boolean ENABLE_NFP_STITCHING_AGENT = true;
     private NfpAgentConfig() { }
-    public static boolean isEnabled() { return ENABLE_NFP_STITCHING_AGENT; }
+    /** System property is used only by the explicit experiment application. */
+    public static boolean isEnabled() {
+        return Boolean.parseBoolean(System.getProperty("nfp.agent.enabled",
+                Boolean.toString(ENABLE_NFP_STITCHING_AGENT)));
+    }
 }
