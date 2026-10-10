@@ -1,44 +1,50 @@
 package org.example.agent;
 
-import org.example.application.IntegratedPackingApplication;
-
+import java.nio.file.Files;
 import java.nio.file.Path;
 
-/**
- * Explicit, bounded A/B experiment runner. Ordinary IntegratedPackingApplication runs once;
- * this runner first creates a fixed baseline and then executes distinct profile iterations.
- */
+/** IDE 实验入口：baseline 保持原算法，Agent 使用局部重建、去重和分档评估。 */
 public final class NfpAgentExperimentApplication {
-    /**
-     * 在 IDE 中直接运行本类时使用的案例。需要切换案例时，只修改这一行。
-     * 路径应指向输入 JSON 文件，或只包含 JSON 案例的输入目录；不能指向 BA06_Packing 等输出目录。
-     */
+    /** 直接在 IDEA 修改此路径：输入案例 JSON 或仅含案例 JSON 的目录，不能填排样输出目录。 */
     private static final Path DEFAULT_CASE_PATH = Path.of("data", "inputData2", "Cabinet1.json");
-    private static final int DEFAULT_MAX_ITERATIONS = 10;
+    /** 轮次是批量设计与反馈次数，不再意味着重复执行整例 NFP 和长时间排样。 */
+    private static final int DEFAULT_MAX_ITERATIONS = 4;
+    /** false 只测试带明确标记的本地探索种子，适合离线验证。 */
+    private static final boolean USE_LLM = true;
+    /** 每案例总计最多 6 次快速、2 次中等、1 次最终候选排样，不包含三个同档 baseline。 */
+    private static final int MAX_QUICK_CANDIDATES = 6;
+    private static final long QUICK_BUDGET_MS = 10_000;
+    private static final long MEDIUM_BUDGET_MS = 60_000;
+    private static final long FINAL_BUDGET_MS = 600_000;
+    /** 完整 baseline 建立后开始计时；初始排样/单次几何操作仅支持协作式停止。 */
+    private static final long AGENT_WALL_BUDGET_MS = 25 * 60_000L;
+    private static final long NFP_TRIAL_BUDGET_MS = 45_000;
 
     private NfpAgentExperimentApplication() { }
 
     public static void main(String[] args) throws Exception {
-        if (args.length > 2) {
-            System.out.println("用法: NfpAgentExperimentApplication [案例文件或目录] [maxIterations]");
-            return;
-        }
-        Path casePath = args.length >= 1 ? Path.of(args[0]) : DEFAULT_CASE_PATH;
-        int maxIterations = args.length == 2 ? Integer.parseInt(args[1]) : DEFAULT_MAX_ITERATIONS;
-        if (maxIterations <= 0) throw new IllegalArgumentException("maxIterations 必须为正数。");
-
-        String prior = System.getProperty("nfp.agent.enabled");
-        try {
-            // Baseline is deliberately separated from trials, so every outcome has a stable comparator.
-            System.setProperty("nfp.agent.enabled", "false");
-            IntegratedPackingApplication.run(casePath);
-            System.setProperty("nfp.agent.enabled", "true");
-            for (int iteration = 1; iteration <= maxIterations; iteration++) {
-                System.out.println("开始 NFP Agent 实验轮次 " + iteration + "/" + maxIterations);
-                IntegratedPackingApplication.run(casePath);
+        if (args.length > 2) throw new IllegalArgumentException("用法: [输入 JSON 文件或目录] [批量轮数]");
+        Path input = args.length > 0 ? Path.of(args[0]) : DEFAULT_CASE_PATH;
+        int rounds = args.length > 1 ? Integer.parseInt(args[1]) : DEFAULT_MAX_ITERATIONS;
+        NfpAgentOptimizer.Settings settings = new NfpAgentOptimizer.Settings(rounds, MAX_QUICK_CANDIDATES,
+                QUICK_BUDGET_MS, MEDIUM_BUDGET_MS, FINAL_BUDGET_MS, AGENT_WALL_BUDGET_MS, NFP_TRIAL_BUDGET_MS, USE_LLM);
+        if (Files.isRegularFile(input)) runCase(input, settings);
+        else if (Files.isDirectory(input)) {
+            // 每案例独立计数/预算，防止把其他案例的完成次数算到当前案例中。
+            try (var files = Files.list(input)) {
+                for (Path file : files.filter(path -> Files.isRegularFile(path)
+                        && path.getFileName().toString().toLowerCase(java.util.Locale.ROOT).endsWith(".json")).sorted().toList()) {
+                    runCase(file, settings);
+                }
             }
-        } finally {
-            if (prior == null) System.clearProperty("nfp.agent.enabled"); else System.setProperty("nfp.agent.enabled", prior);
-        }
+        } else throw new IllegalArgumentException("输入路径不存在: " + input.toAbsolutePath());
+    }
+
+    private static void runCase(Path input, NfpAgentOptimizer.Settings settings) throws Exception {
+        Path data = input.toAbsolutePath().getParent().getParent();
+        String name = input.getFileName().toString().replaceFirst("\\.[^.]+$", "");
+        Path artifacts = data.resolve("BA06_Packing").resolve(name).resolve("llm/nfp-agent");
+        Path summary = new NfpAgentOptimizer(settings).run(input, artifacts);
+        System.out.println("NFP Agent 实验完成，最终结论: " + summary.toAbsolutePath());
     }
 }

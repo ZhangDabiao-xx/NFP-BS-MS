@@ -87,19 +87,49 @@ public final class IntegratedPackingApplication {
                     caseJsonFile,
                     preparationLlmDirectory,
                     NfpAgentConfig.isEnabled());
-            Path effectiveNfpDirectory = selection.agentUsed() ? nfpResultDirectory.resolve("agent") : nfpResultDirectory;
-            Path effectivePackingDirectory = selection.agentUsed() ? packingResultDirectory.resolve("agent") : packingResultDirectory;
+            if (!selection.shouldRun()) {
+                // 无效 Agent JSON 只记录为失败尝试，不能改走 baseline 或占用排样时间。
+                NfpStitchingAgentWorkflow.recordSkippedOutcome(selection, "invalid_profile_no_packing",
+                        selection.fallbackReason());
+                System.out.println("跳过无效 NFP Agent Profile: " + caseJsonFile.getFileName());
+                continue;
+            }
+            // Baseline 仍使用原目录；每个 Agent trial 独占目录，避免覆盖任意历史证据。
+            Path effectiveNfpDirectory = selection.agentUsed()
+                    ? nfpResultDirectory.resolve("agent").resolve(selection.outputSegment()) : nfpResultDirectory;
+            Path effectivePackingDirectory = selection.agentUsed()
+                    ? packingResultDirectory.resolve("agent").resolve(selection.outputSegment()) : packingResultDirectory;
             Path effectiveBridgeDirectory = effectivePackingDirectory.resolve(BRIDGE_DIRECTORY_NAME);
             Path nfpResultFile;
+            long nfpStartedNanos = System.nanoTime();
             if (selection.agentUsed()) {
-                int width = 5, generationCap = 20, globalPlanWidth = 20;
+                // Validated Agent-only search bounds expand or contract its candidate space.
+                // The legacy overload never reads these values and therefore keeps baseline behavior.
+                int width = selection.profile().rootBeamWidth();
+                int generationCap = selection.profile().generationCap();
+                int globalPlanWidth = selection.profile().globalPlanWidth();
                 NfpSelectionTrace trace = NfpStitchingAgentWorkflow.newTrace(selection, width, generationCap, globalPlanWidth);
                 BatchBlockStitcher.StitchingOutcome outcome = BatchBlockStitcher.stitchCase(
                         caseJsonFile, effectiveNfpDirectory, width, selection.model(), generationCap, globalPlanWidth, trace);
                 NfpStitchingAgentWorkflow.recordNfpOutcome(selection, outcome);
                 nfpResultFile = outcome.outputFile();
+                String structureFailure = NfpStitchingAgentWorkflow.unmetStructureTarget(selection);
+                if (!structureFailure.isBlank()) {
+                    NfpStitchingAgentWorkflow.recordSkippedOutcome(selection, "skipped_unmet_structure_target", structureFailure);
+                    System.out.println("跳过未达到结构目标的 NFP 方案，未执行排样: " + caseJsonFile.getFileName());
+                    continue;
+                }
+                if (NfpStitchingAgentWorkflow.isDuplicatePlan(selection)) {
+                    NfpStitchingAgentWorkflow.recordSkippedOutcome(selection, "skipped_duplicate_nfp",
+                            "与基线或历史 Agent 迭代的完整 NFP 方案签名相同。");
+                    System.out.println("跳过重复 NFP 方案，未执行排样: " + caseJsonFile.getFileName());
+                    continue;
+                }
             } else {
                 nfpResultFile = BatchBlockStitcher.stitchCase(caseJsonFile, effectiveNfpDirectory);
+                // Preserve legacy stitching while exposing its NFP composition to the next Agent profile.
+                long elapsedMs = Math.round((System.nanoTime() - nfpStartedNanos) / 1_000_000.0);
+                NfpStitchingAgentWorkflow.recordTextNfpOutcome(selection, nfpResultFile, elapsedMs);
             }
             if (nfpResultFile == null || !Files.isRegularFile(nfpResultFile)) {
                 throw new IOException("NFP 拼接结果不存在: " + nfpResultFile);

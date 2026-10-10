@@ -7,6 +7,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import org.example.nfp.selection.NfpFeatureExtractor;
 import org.example.nfp.selection.NfpSelectionModel;
+import org.example.nfp.selection.NfpScoringProfile;
 import org.example.nfp.selection.NfpSelectionStage;
 import org.example.nfp.selection.NfpSelectionTrace;
 import org.example.nfp.selection.ProfileDrivenNfpSelectionModel;
@@ -66,6 +67,10 @@ public class BatchBlockStitcher {
     private static final ThreadLocal<NfpSelectionTrace> ACTIVE_SELECTION_TRACE = new ThreadLocal<>();
     private static final ThreadLocal<SearchContext> ACTIVE_SEARCH_CONTEXT = new ThreadLocal<>();
     private static final ThreadLocal<Integer> ACTIVE_GENERATION_CAP = new ThreadLocal<>();
+    /** Agent-only global Beam override; the legacy baseline keeps its historical width formula. */
+    private static final ThreadLocal<Integer> ACTIVE_GLOBAL_PLAN_WIDTH = new ThreadLocal<>();
+    /** Agent-only per-root terminal-candidate limit; baseline keeps MIN_ROOT_CANDIDATE_COUNT behavior. */
+    private static final ThreadLocal<Integer> ACTIVE_ROOT_CANDIDATE_LIMIT = new ThreadLocal<>();
 
     /** Structured NFP result for callers that need metrics and trace artifacts. */
     public record StitchingOutcome(Path outputFile, List<Block> blocks, NfpSelectionTrace trace, long nfpTimeMs) { }
@@ -194,8 +199,8 @@ public class BatchBlockStitcher {
     }
 
     /**
-     * Profile-driven entry point. It makes one deterministic pass over all roots, permits root
-     * candidate reuse, and then commits a single conflict-free global plan.
+     * Profile-driven entry point. Agent rankings use a raw-geometry session while the outer
+     * loop keeps committing conflict-free plans until all remaining items are accounted for.
      */
     public static StitchingOutcome stitchCase(Path inputFile, Path outputDirectory, int beamWidth,
                                                NfpSelectionModel selectionModel, int generationCap,
@@ -207,7 +212,13 @@ public class BatchBlockStitcher {
         Files.createDirectories(outputDirectory);
         List<PolygonItem> items = readItems(inputFile);
         long started = System.nanoTime();
-        List<Block> blocks = buildBlocks(items, beamWidth, selectionModel, generationCap, globalPlanWidth, trace);
+        double[] plate = NfpSearchSession.plate(inputFile);
+        List<Block> blocks;
+        // 普通 Agent 单次入口也使用案例板材尺寸；实验入口可以复用已存在的跨 Profile 会话。
+        try (NfpSearchSession owned = NfpSearchSession.current() == null
+                ? new NfpSearchSession(plate[0], plate[1], 86_400_000) : null) {
+            blocks = buildBlocks(items, beamWidth, selectionModel, generationCap, globalPlanWidth, trace);
+        }
         long elapsed = System.nanoTime() - started;
         Path output = outputDirectory.resolve(replaceExtension(inputFile.getFileName().toString(), ".txt"));
         writeBlocks(output, blocks);
@@ -296,24 +307,40 @@ public class BatchBlockStitcher {
         SearchContext context = searchContext(items);
         ACTIVE_SELECTION_MODEL.set(model); ACTIVE_SELECTION_TRACE.set(trace); ACTIVE_SEARCH_CONTEXT.set(context);
         ACTIVE_GENERATION_CAP.set(cap);
+        ACTIVE_GLOBAL_PLAN_WIDTH.set(globalWidth);
+        NfpScoringProfile profile = ((ProfileDrivenNfpSelectionModel) model).profile();
+        ACTIVE_ROOT_CANDIDATE_LIMIT.set(profile.rootCandidateLimit());
         try {
             List<Block> singles = new ArrayList<>(); List<Block> active = new ArrayList<>();
             for (PolygonItem item : orderItemsByFillRateDescending(items)) {
-                if (shouldKeepAsSingleBlock(item)) singles.add(Block.fromSingle(item)); else active.add(Block.fromSingle(item));
+                // Only a validated LARGE_BLOCK / ANTI_BASELINE Agent profile can admit near-rectangles
+                // into NFP roots.  Baseline continues to keep them as single blocks unconditionally.
+                if (shouldKeepAsSingleBlock(item) && !profile.includeNearRectangularRoots()) singles.add(Block.fromSingle(item));
+                else active.add(Block.fromSingle(item));
             }
-            Map<String, PolygonStitcher.StitchingResult> cache = new HashMap<>();
-            List<PolygonItem> available = collectItems(active);
-            // Exactly width final candidates per root in profile mode; cap only bounds geometric positions.
-            List<CandidateBlock> candidates = buildAllRootCandidates(available, width, width, cache, NfpStitchingPolicy.BALANCED);
-            GlobalPlanState plan = selectGlobalCandidatePlan(candidates, globalWidth, NfpStitchingPolicy.BALANCED);
-            Set<String> committed = new HashSet<>();
-            if (plan != null) for (CandidateBlock candidate : plan.selectedCandidates) { singles.add(candidate.block); committed.addAll(candidate.itemIds); }
-            for (PolygonItem item : available) if (!committed.contains(item.id)) singles.add(Block.fromSingle(item));
+            /*
+             * Agent and baseline must share the same outer search semantics.  The legacy path
+             * repeatedly commits a conflict-free plan and then regenerates candidates for the
+             * remaining items.  A previous Agent-only one-pass variant stopped after its first
+             * global plan, which made a score-profile experiment also change search depth.
+             *
+             * The active profile is still used at placement, root-beam and global-plan ranking
+             * points through the thread-local deterministic model.  NfpStitchingPolicy.BALANCED
+             * only supplies legacy guardrails; it does not choose Agent candidates in this mode.
+             */
+            singles.addAll(stitchByBeamSearch(active, width, NfpStitchingPolicy.BALANCED));
             assertExactCoverage(items, singles);
-            if (trace != null) trace.event("global-final", plan == null ? "" : plan.signature(), plan == null ? 0 : profileGlobalScore(plan), candidates.size(), plan == null ? 0 : plan.selectedCandidates.size());
+            if (trace != null) {
+                int compositeCount = 0;
+                for (Block block : singles) if (block.memberCount() > 1) compositeCount++;
+                // The final event is an auditable output summary after all profile-driven rounds.
+                trace.event("profile-output", "composite-blocks=" + compositeCount,
+                        compositeCount, singles.size(), compositeCount);
+            }
             return singles;
         } finally {
-            ACTIVE_SELECTION_MODEL.remove(); ACTIVE_SELECTION_TRACE.remove(); ACTIVE_SEARCH_CONTEXT.remove(); ACTIVE_GENERATION_CAP.remove();
+            ACTIVE_SELECTION_MODEL.remove(); ACTIVE_SELECTION_TRACE.remove(); ACTIVE_SEARCH_CONTEXT.remove();
+            ACTIVE_GENERATION_CAP.remove(); ACTIVE_GLOBAL_PLAN_WIDTH.remove(); ACTIVE_ROOT_CANDIDATE_LIMIT.remove();
         }
     }
 
@@ -378,9 +405,14 @@ public class BatchBlockStitcher {
         Map<String, PolygonStitcher.StitchingResult> nfpCache = new HashMap<>();
 
         while (!availableItems.isEmpty()) {
+            if (isProfileMode()) NfpSearchSession.checkDeadline();
             // 本轮先让所有不规则工件作为根工件生成各自的多个候选块，不能在生成阶段
             // 因为候选工件已出现在其他候选块中就提前排除它。
             int rootCandidateCount = Math.max(MIN_ROOT_CANDIDATE_COUNT, beamWidth);
+            if (isProfileMode() && ACTIVE_ROOT_CANDIDATE_LIMIT.get() != null) {
+                // Profile validation guarantees this is one of the bounded Agent-only values.
+                rootCandidateCount = Math.max(rootCandidateCount, ACTIVE_ROOT_CANDIDATE_LIMIT.get());
+            }
             List<CandidateBlock> candidateBlocks = buildAllRootCandidates(
                     availableItems, beamWidth, rootCandidateCount, nfpCache, policy);
             List<CandidateBlock> scoredCandidates = calculateOpportunityCosts(candidateBlocks, policy);
@@ -396,6 +428,10 @@ public class BatchBlockStitcher {
                     selectableCandidates, policy);
             int globalPlanWidth = Math.max(rootCandidateCount,
                     beamWidth * GLOBAL_PLAN_BEAM_MULTIPLIER);
+            if (isProfileMode() && ACTIVE_GLOBAL_PLAN_WIDTH.get() != null) {
+                // Preserve the baseline formula while letting an Agent experiment configure its own bound.
+                globalPlanWidth = ACTIVE_GLOBAL_PLAN_WIDTH.get();
+            }
             GlobalPlanState bestPlan = selectGlobalCandidatePlan(
                     selectableCandidates, globalPlanWidth, policy);
 
@@ -638,6 +674,7 @@ public class BatchBlockStitcher {
         List<GlobalPlanState> beam = new ArrayList<>();
         beam.add(GlobalPlanState.empty());
         for (CandidateBlock candidate : orderedCandidates) {
+            if (isProfileMode()) NfpSearchSession.checkDeadline();
             List<GlobalPlanState> nextStates = new ArrayList<>(beam);
             for (GlobalPlanState state : beam) {
                 if (!hasItemConflict(candidate.itemIds, state.usedItemIds)) {
@@ -682,6 +719,10 @@ public class BatchBlockStitcher {
                                                                int planBeamWidth,
                                                                NfpStitchingPolicy policy) {
         states.sort((left, right) -> compareGlobalPlans(left, right, policy));
+        if (isProfileMode()) {
+            // This branch is reachable only from the Agent overload; baseline keeps its original sort-and-cut Beam.
+            return selectProfiledGlobalPlans(states, planBeamWidth);
+        }
         List<GlobalPlanState> selectedStates = new ArrayList<>();
         Set<String> signatures = new HashSet<>();
         for (GlobalPlanState state : states) {
@@ -694,6 +735,51 @@ public class BatchBlockStitcher {
             }
         }
         return selectedStates;
+    }
+
+    /** Retains some structurally different global plans when an Agent profile requests diversity. */
+    private static List<GlobalPlanState> selectProfiledGlobalPlans(List<GlobalPlanState> ordered, int width) {
+        NfpScoringProfile profile = ((ProfileDrivenNfpSelectionModel) ACTIVE_SELECTION_MODEL.get()).profile();
+        int exploration = Math.min(Math.max(0, width - 1), profile.explorationSlots()
+                + (profile.diversityWeight() > 0.0 ? 1 : 0));
+        int primary = Math.max(1, width - exploration);
+        List<GlobalPlanState> selected = new ArrayList<>();
+        Set<String> signatures = new HashSet<>();
+        for (GlobalPlanState state : ordered) {
+            if (selected.size() >= primary) break;
+            if (signatures.add(state.signature())) selected.add(state);
+        }
+        while (selected.size() < width) {
+            GlobalPlanState best = null;
+            for (GlobalPlanState candidate : ordered) {
+                if (signatures.contains(candidate.signature())) continue;
+                if (best == null || profileGlobalDiversityScore(candidate, selected, profile)
+                        > profileGlobalDiversityScore(best, selected, profile)) best = candidate;
+            }
+            if (best == null) break;
+            signatures.add(best.signature());
+            selected.add(best);
+        }
+        return selected;
+    }
+
+    /** Positive diversityWeight rewards a plan that consumes a different item set from retained plans. */
+    private static double profileGlobalDiversityScore(GlobalPlanState candidate,
+                                                       List<GlobalPlanState> selected,
+                                                       NfpScoringProfile profile) {
+        double distance = 0.0;
+        for (GlobalPlanState retained : selected) distance += globalPlanDistance(candidate, retained);
+        if (!selected.isEmpty()) distance /= selected.size();
+        return profileGlobalScore(candidate) + profile.diversityWeight() * distance;
+    }
+
+    private static double globalPlanDistance(GlobalPlanState left, GlobalPlanState right) {
+        Set<String> union = new HashSet<>(left.usedItemIds);
+        union.addAll(right.usedItemIds);
+        if (union.isEmpty()) return 0.0;
+        Set<String> intersection = new HashSet<>(left.usedItemIds);
+        intersection.retainAll(right.usedItemIds);
+        return 1.0 - intersection.size() / (double) union.size();
     }
 
     /**
@@ -910,9 +996,14 @@ public class BatchBlockStitcher {
         Set<String> exploredFirstItemIds = new HashSet<>();
 
         while (!beam.isEmpty()) {
+            if (isProfileMode()) NfpSearchSession.checkDeadline();
             List<RootBeamState> nextBeamCandidates = new ArrayList<>();
 
             for (RootBeamState state : beam) {
+                // Agent 可以主动停止在有效的 2/3 件中间块，不再只能选择无法继续扩展的终点。
+                if (isProfileMode() && state.block.memberCount() > 1 && !isLowQualityLargeOuterBlock(state.block)) {
+                    completedStates.add(state);
+                }
                 if (state.firstAddedItemId != null) {
                     // 该状态已经实际进入搜索，若整轮没有任何有效终止结果，
                     // 它的首层物品才有资格接受惩罚并在下一轮暂时排除。
@@ -948,8 +1039,12 @@ public class BatchBlockStitcher {
             // 修改理由：若根内只保留一个分支，外层即使使用全局 Beam 也看不到该根的替代方案。
             beam = selectBestRootStates(
                     nextBeamCandidates,
-                    Math.max(beamWidth, candidateLimit),
+                    isProfileMode() ? beamWidth : Math.max(beamWidth, candidateLimit),
                     policy);
+            // 终态候选数与逐层 beam 宽度解耦，并限制中间状态存储量。
+            if (isProfileMode() && completedStates.size() > candidateLimit * 2) {
+                completedStates = selectBestRootStates(completedStates, candidateLimit, policy);
+            }
         }
 
         // 正常情况下每条路径最终都会进入 completedStates；这里保留防御性回退，
@@ -1127,17 +1222,45 @@ public class BatchBlockStitcher {
     /** Keeps ordinary scoring slots first, then bounded resource-distinct exploration slots. */
     private static List<RootBeamState> selectProfiledRootStates(List<RootBeamState> ordered, int width) {
         List<RootBeamState> selected = new ArrayList<>(); Set<String> signatures = new HashSet<>();
-        int exploration = ((ProfileDrivenNfpSelectionModel) ACTIVE_SELECTION_MODEL.get()).profile().explorationSlots();
+        NfpScoringProfile profile = ((ProfileDrivenNfpSelectionModel) ACTIVE_SELECTION_MODEL.get()).profile();
+        // diversityWeight now changes retention: a positive value reserves one extra Agent-only
+        // exploration slot in addition to the explicit slot count.
+        int exploration = Math.min(Math.max(0, width - 1), profile.explorationSlots()
+                + (profile.diversityWeight() > 0.0 ? 1 : 0));
         int primary = Math.max(0, width - exploration);
         for (RootBeamState state : ordered) { if (selected.size() >= primary) break; if (signatures.add(rootStateSignature(state))) selected.add(state); }
         Set<String> resourceSignatures = new HashSet<>(); for (RootBeamState state : selected) resourceSignatures.add(rootResourceSignature(state));
+        while (selected.size() < width) {
+            RootBeamState best = null;
+            for (RootBeamState candidate : ordered) {
+                if (signatures.contains(rootStateSignature(candidate)) || resourceSignatures.contains(rootResourceSignature(candidate))) continue;
+                if (best == null || profileRootDiversityScore(candidate, selected, profile)
+                        > profileRootDiversityScore(best, selected, profile)) best = candidate;
+            }
+            if (best == null) break;
+            signatures.add(rootStateSignature(best)); resourceSignatures.add(rootResourceSignature(best)); selected.add(best);
+        }
         for (RootBeamState state : ordered) {
             if (selected.size() >= width) break;
-            if (signatures.contains(rootStateSignature(state)) || resourceSignatures.contains(rootResourceSignature(state))) continue;
-            signatures.add(rootStateSignature(state)); resourceSignatures.add(rootResourceSignature(state)); selected.add(state);
+            if (signatures.add(rootStateSignature(state))) selected.add(state);
         }
-        for (RootBeamState state : ordered) { if (selected.size() >= width) break; if (signatures.add(rootStateSignature(state))) selected.add(state); }
         return selected;
+    }
+
+    /** Scores a root against retained branches; this makes Agent diversity observable in the Beam. */
+    private static double profileRootDiversityScore(RootBeamState candidate, List<RootBeamState> selected,
+                                                    NfpScoringProfile profile) {
+        double distance = 0.0;
+        for (RootBeamState retained : selected) distance += rootDiversityDistance(candidate, retained);
+        if (!selected.isEmpty()) distance /= selected.size();
+        return profileRootScore(candidate) + profile.diversityWeight() * distance;
+    }
+
+    private static double rootDiversityDistance(RootBeamState left, RootBeamState right) {
+        double members = Math.min(1.0, Math.abs(left.block.memberCount() - right.block.memberCount()) / 3.0);
+        double fill = Math.min(1.0, Math.abs(left.block.fillRate - right.block.fillRate));
+        double resource = rootResourceSignature(left).equals(rootResourceSignature(right)) ? 0.0 : 1.0;
+        return 0.25 * members + 0.25 * fill + 0.50 * resource;
     }
 
     private static int compareRootStatesByProfile(RootBeamState left, RootBeamState right) {
@@ -1149,8 +1272,10 @@ public class BatchBlockStitcher {
     private static boolean isProfileMode() { return ACTIVE_SELECTION_MODEL.get() != null && ACTIVE_SELECTION_MODEL.get().isProfileDriven(); }
     private static double profileRootScore(RootBeamState state) {
         SearchContext context = ACTIVE_SEARCH_CONTEXT.get();
+        int totalItems = context == null ? 0 : context.itemCount;
+        int remainingItems = Math.max(0, totalItems - state.usedItemIds.size());
         return ACTIVE_SELECTION_MODEL.get().score(NfpSelectionStage.ROOT_BEAM,
-                NfpFeatureExtractor.root(state.block, context == null ? 0 : context.itemCount));
+                NfpFeatureExtractor.root(state.block, remainingItems, totalItems));
     }
 
     private static double profileGlobalScore(GlobalPlanState state) {
@@ -1162,7 +1287,14 @@ public class BatchBlockStitcher {
         values.put("selectedBlockCountRatio", clamp(state.selectedCandidates.size() / (double) Math.max(1, context.itemCount)));
         values.put("meanBlockFillRate", state.selectedCandidates.isEmpty() ? 0.0 : fillTotal / state.selectedCandidates.size()); values.put("minimumBlockFillRate", state.selectedCandidates.isEmpty() ? 0.0 : fillMinimum);
         values.put("totalBoxSavingRatio", ratio(sourceSaving, context.itemArea)); values.put("totalCavityInsertionRatio", ratio(state.totalCavityInsertionCount, Math.max(1, covered)));
-        values.put("remainingSmallRectangleRatio", clamp((context.smallRectangleCount - state.nonCriticalSmallItemCount) / (double) Math.max(1, context.smallRectangleCount)));
+        // 统计真正消耗的小矩形（含根），不能拿“非关键小件数”代替矩形资源数。
+        Set<String> usedSmallRectangles = new HashSet<>();
+        for (CandidateBlock candidate : state.selectedCandidates) {
+            for (Block.ItemPlacement placement : candidate.block.placements) {
+                if (placement.item.smallItem && placement.item.rectangular) usedSmallRectangles.add(placement.item.id);
+            }
+        }
+        values.put("remainingSmallRectangleRatio", clamp((context.smallRectangleCount - usedSmallRectangles.size()) / (double) Math.max(1, context.smallRectangleCount)));
         values.put("predictedSingleItemRatio", clamp((context.itemCount - covered) / (double) Math.max(1, context.itemCount))); values.put("predictedSingleAreaRatio", clamp((context.itemArea - selectedArea) / Math.max(1.0, context.itemArea)));
         values.put("criticalRootCoverageRatio", ratio(state.criticalRootCount, Math.max(1, context.itemCount)));
         return ACTIVE_SELECTION_MODEL.get().score(NfpSelectionStage.GLOBAL_PLAN, values);
@@ -1473,6 +1605,14 @@ public class BatchBlockStitcher {
         BBox box = Geometry.polygonBBox(combinedCoordinates);
         double length = box.maxX - box.minX;
         double width = box.maxY - box.minY;
+        NfpSearchSession session = isProfileMode() ? NfpSearchSession.current() : null;
+        if (session != null) {
+            // Agent 按真实板材双边检查；无会话的 baseline 保留原有边界逻辑。
+            double eps = PolygonStitcher.SCORE_EPS;
+            return (length <= session.plateLength + eps && width <= session.plateWidth + eps)
+                    || (canRotateInSecondStage(rotations) && width <= session.plateLength + eps
+                    && length <= session.plateWidth + eps);
+        }
         double longSide = Math.max(length, width);
         if (longSide > MAX_PACKABLE_BLOCK_LENGTH + PolygonStitcher.SCORE_EPS) {
             return false;
@@ -1509,6 +1649,16 @@ public class BatchBlockStitcher {
         List<List<Point>> fixedPolygons = block.placedPolygons();
         int effectiveGenerationCap = isProfileMode()
                 ? Math.max(candidateLimit, ACTIVE_GENERATION_CAP.get()) : candidateLimit;
+        if (isProfileMode() && NfpSearchSession.current() != null) {
+            // 先从共享的完整合法位置池按当前 Profile 排序，再截断和构建 Block。
+            for (PolygonStitcher.StitchingCandidate candidate : NfpSearchSession.current().candidates(
+                    block, item, relativeRotations, ACTIVE_SELECTION_MODEL.get(), effectiveGenerationCap)) {
+                NfpSearchSession.checkDeadline();
+                Block child = tryBuildChildBlock(block, item, candidate);
+                if (child != null) childBlocks.add(child);
+            }
+            return childBlocks;
+        }
         String cacheKey = stitchInputSignature(fixedPolygons, block.areaSum, block.boxArea,
                 item.points, item.area, relativeRotations, item.smallItem, effectiveGenerationCap)
                 + "|" + (isProfileMode() ? ACTIVE_SELECTION_MODEL.get().id() : "baseline");
@@ -1662,7 +1812,8 @@ public class BatchBlockStitcher {
         }
     }
 
-    private static void writeBlocks(Path outputFile, List<Block> blocks) throws IOException {
+    /** 供 Agent 局部重建输出使用；仍复用原有文本格式，不修改 baseline 文件。 */
+    public static void writeBlocks(Path outputFile, List<Block> blocks) throws IOException {
         try (BufferedWriter writer = Files.newBufferedWriter(outputFile, StandardCharsets.UTF_8)) {
             writer.write("blockCount=" + blocks.size());
             writer.newLine();

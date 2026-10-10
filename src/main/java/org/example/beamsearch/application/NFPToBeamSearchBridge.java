@@ -39,6 +39,21 @@ import java.util.regex.Pattern;
  */
 public class NFPToBeamSearchBridge {
 
+    /** Agent 先生成与正式桥接完全相同的矩形输入，用于等价分组；此方法不启动排样。 */
+    public static Path prepareAgentInput(Path nfpFile, Path caseFile, Path root) throws IOException {
+        List<BlockRecord> blocks = parseBlocks(nfpFile);
+        if (blocks.isEmpty()) throw new IOException("NFP 方案没有有效块");
+        Path directory = root.resolve(stripExtension(caseFile.getFileName().toString()));
+        Files.createDirectories(directory);
+        double[] plate = readPlate(caseFile);
+        Set<String> colors = new LinkedHashSet<>();
+        for (BlockRecord block : blocks) colors.add(block.backFrontPriority ? "1" : "0");
+        writeMaterial(directory.resolve("material.csv"), plate[0], plate[1], colors);
+        Path workpiece = directory.resolve("workpiece");
+        writeWorkpiece(workpiece, stripExtension(caseFile.getFileName().toString()), blocks);
+        return workpiece;
+    }
+
     // ---------- 数据模型 ----------
 
     private static class ItemRecord {

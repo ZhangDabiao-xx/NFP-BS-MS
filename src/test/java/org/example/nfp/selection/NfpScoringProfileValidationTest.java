@@ -13,7 +13,12 @@ class NfpScoringProfileValidationTest {
     @Test
     void acceptsWhitelistedProfileAndProducesStableHashAcrossTermOrder() {
         JsonObject first = profile("normalizedSBox", "sArea");
-        JsonObject second = profile("sArea", "normalizedSBox");
+        // 只调整项的顺序；原测试连 feature 对应的 weight 也交换，实际已是另一评分函数。
+        JsonObject second = first.deepCopy();
+        JsonArray reversed = new JsonArray();
+        reversed.add(first.getAsJsonArray("placementScore").get(1).deepCopy());
+        reversed.add(first.getAsJsonArray("placementScore").get(0).deepCopy());
+        second.add("placementScore", reversed);
         NfpScoringProfile left = NfpScoringProfile.fromJson(first, 5);
         NfpScoringProfile right = NfpScoringProfile.fromJson(second, 5);
         assertEquals(left.id(), right.id());

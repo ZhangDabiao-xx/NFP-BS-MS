@@ -8,6 +8,9 @@ package org.example.beamsearch.application;
  */
 public final class PackingRuntimeConfig {
 
+    /** Optional per-process budget used only by the bounded NFP Agent experiment runner. */
+    public static final String AGENT_EXPERIMENT_BUDGET_PROPERTY = "nfp.agent.packingBudgetMs";
+
     /** 单案例全局重排优化预算：十分钟。 */
     public static final long DEFAULT_TOTAL_SOLVE_TIME_MS = 600_000L;
     /** 动态 Beam Search 不限制最大宽度。 */
@@ -20,8 +23,21 @@ public final class PackingRuntimeConfig {
     private PackingRuntimeConfig() {
     }
 
-    /** @return 单案例全局重排优化预算，单位为毫秒。 */
+    /**
+     * Returns the normal baseline budget unless the experiment runner explicitly sets its
+     * Agent-only override.  Baseline executions never set this property, so their 600-second
+     * budget remains unchanged.
+     */
     public static long totalSolveTimeMs() {
+        String value = System.getProperty(AGENT_EXPERIMENT_BUDGET_PROPERTY);
+        if (value != null) {
+            try {
+                long configured = Long.parseLong(value);
+                if (configured > 0) return configured;
+            } catch (NumberFormatException ignored) {
+                // Invalid external configuration must not make a packing run fail.
+            }
+        }
         return DEFAULT_TOTAL_SOLVE_TIME_MS;
     }
 

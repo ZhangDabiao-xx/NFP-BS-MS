@@ -1,6 +1,8 @@
 package org.example.nfp.selection;
 
 import org.example.nfp.Block;
+import org.example.nfp.BBox;
+import org.example.nfp.NfpSearchSession;
 import org.example.nfp.Geometry;
 import org.example.nfp.PolygonItem;
 import org.example.nfp.PolygonStitcher;
@@ -10,7 +12,6 @@ import java.util.Map;
 
 /** Fixed Java definitions of all profile features; the Agent can choose weights, never formulas. */
 public final class NfpFeatureExtractor {
-    private static final double PLATE_AREA = 2440.0 * 1220.0;
     private NfpFeatureExtractor() { }
 
     public static Map<String, Double> placement(PolygonStitcher.StitchingCandidate candidate,
@@ -27,7 +28,19 @@ public final class NfpFeatureExtractor {
         return values;
     }
 
-    public static Map<String, Double> root(Block block, int remainingItemCount) {
+    /**
+     * Extracts root features using the actual remaining-item count of this branch.  The previous
+     * fixed divisor of 1,000 made this feature nearly constant for every state in one case.
+     */
+    public static Map<String, Double> root(Block block, int remainingItemCount, int totalItemCount) {
+        NfpSearchSession session = NfpSearchSession.current();
+        return root(block, remainingItemCount, totalItemCount,
+                session == null ? 2440 : session.plateLength, session == null ? 1220 : session.plateWidth);
+    }
+
+    /** 使用真实包围盒与案例板材尺寸；等面积细长块不能再与方形块得到相同特征。 */
+    public static Map<String, Double> root(Block block, int remainingItemCount, int totalItemCount,
+                                         double plateLength, double plateWidth) {
         Map<String, Double> values = new HashMap<>();
         Block.ItemPlacement last = block.placements.get(block.placements.size() - 1);
         put(values, "normalizedSBox", last.candidateNormalizedSBox); put(values, "sArea", last.candidateSArea);
@@ -41,9 +54,17 @@ public final class NfpFeatureExtractor {
         int cavity = 0, small = 0, rectangles = 0;
         for (int i = 1; i < block.placements.size(); i++) { Block.ItemPlacement placement = block.placements.get(i); if (placement.candidateCavityInsertion) cavity++; if (placement.item.smallItem) small++; if (placement.item.smallItem && placement.item.rectangular) rectangles++; }
         put(values, "cavityInsertionRatio", ratio(cavity, Math.max(1, block.memberCount() - 1))); put(values, "smallItemUsageRatio", ratio(small, Math.max(1, block.memberCount() - 1))); put(values, "smallRectangleUsageRatio", ratio(rectangles, Math.max(1, block.memberCount() - 1)));
-        put(values, "boxAreaToPlateArea", clamp(block.boxArea / PLATE_AREA));
-        double longSide = Math.max(0, Math.sqrt(Math.max(block.boxArea, 0))); put(values, "longSideToPlateLongSide", clamp(longSide / 2440.0)); put(values, "shortSideToPlateShortSide", clamp(longSide / 1220.0));
-        put(values, "sourceBoxSavingRatio", ratio(block.score2, block.sourceBoxAreaSum)); put(values, "remainingItemRatio", clamp(remainingItemCount / 1000.0));
+        put(values, "boxAreaToPlateArea", ratio(block.boxArea, plateLength * plateWidth));
+        BBox box = Geometry.polygonBBox(block.combinedCoordinates);
+        double longSide = Math.max(box.maxX - box.minX, box.maxY - box.minY);
+        double shortSide = Math.min(box.maxX - box.minX, box.maxY - box.minY);
+        put(values, "longSideToPlateLongSide", ratio(longSide, Math.max(plateLength, plateWidth)));
+        put(values, "shortSideToPlateShortSide", ratio(shortSide, Math.min(plateLength, plateWidth)));
+        // 允许角度数量相同不代表矩形阶段都能交换长宽，例如 [0,180] 与 [0,90]。
+        put(values, "canSwapSides", block.rotate.contains(90) || block.rotate.contains(270) ? 1 : 0);
+        put(values, "aspectRatio", ratio(shortSide, longSide));
+        put(values, "sourceBoxSavingRatio", ratio(block.score2, block.sourceBoxAreaSum));
+        put(values, "remainingItemRatio", ratio(remainingItemCount, Math.max(1, totalItemCount)));
         return values;
     }
 

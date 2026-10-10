@@ -43,18 +43,38 @@ final class NfpAgentExperienceStore {
         return false;
     }
 
+    /** 同一完整几何方案已经产生记录时，后续 Agent 尝试无需再次进入耗时排样。 */
+    boolean hasPlanSignature(String caseFingerprint, String codeFingerprint, String planSignature) {
+        for (var element : entries()) {
+            JsonObject entry = element.getAsJsonObject();
+            if (!matches(entry, caseFingerprint, codeFingerprint) || !entry.has("nfpSummary")) continue;
+            JsonObject summary = entry.getAsJsonObject("nfpSummary");
+            if (planSignature.equals(string(summary, "planSignature"))) return true;
+        }
+        return false;
+    }
+
     /** Provides an actual baseline plus compact, unique historical trials to the next model call. */
     JsonObject context(String caseFingerprint, String codeFingerprint) {
-        JsonObject context = new JsonObject(); JsonArray trials = new JsonArray(); Set<String> profileIds = new HashSet<>();
+        JsonObject context = new JsonObject(); JsonArray trials = new JsonArray(); JsonArray failures = new JsonArray(); Set<String> profileIds = new HashSet<>();
         JsonObject baseline = latestBaseline(caseFingerprint, codeFingerprint);
         if (baseline != null) context.add("fixedBaseline", compact(baseline));
         for (int index = entries().size() - 1; index >= 0 && trials.size() < 12; index--) {
             JsonObject entry = entries().get(index).getAsJsonObject();
-            if (!matches(entry, caseFingerprint, codeFingerprint) || "baseline".equals(string(entry, "outcome"))) continue;
+            String outcome = string(entry, "outcome");
+            // A trial without a baseline or a fallback failure contains no reliable learning signal.
+            if (!matches(entry, caseFingerprint, codeFingerprint)
+                    ) continue;
+            if (outcome.startsWith("skipped_") && failures.size() < 6) {
+                failures.add(compactFailure(entry));
+                continue;
+            }
+            if (!("improved".equals(outcome) || "equal".equals(outcome) || "regressed".equals(outcome))) continue;
             String profileId = string(entry, "profileId");
             if (!profileId.isBlank() && profileIds.add(profileId)) trials.add(compact(entry));
         }
-        context.add("previousTrials", trials); JsonArray prohibited = new JsonArray(); profileIds.forEach(prohibited::add); context.add("prohibitedProfileIds", prohibited);
+        context.add("previousTrials", trials); context.add("structuralFailures", failures);
+        JsonArray prohibited = new JsonArray(); profileIds.forEach(prohibited::add); context.add("prohibitedProfileIds", prohibited);
         context.addProperty("rule", "若已有 fixedBaseline，必须基于上轮结果改变评分项；不得返回 prohibitedProfileIds 中的 profileId。");
         return context;
     }
@@ -81,6 +101,9 @@ final class NfpAgentExperienceStore {
 
     private JsonArray entries() { return document.getAsJsonArray("experiences"); }
     private static boolean matches(JsonObject entry, String caseFingerprint, String codeFingerprint) { return caseFingerprint.equals(string(entry, "caseFingerprint")) && codeFingerprint.equals(string(entry, "codeFingerprint")); }
-    private static JsonObject compact(JsonObject entry) { JsonObject value = new JsonObject(); for (String name : new String[]{"iteration", "profileId", "outcome", "packingQuality", "baselineDelta", "nfpSummary", "hypothesis"}) if (entry.has(name)) value.add(name, entry.get(name).deepCopy()); return value; }
+    // 反馈必须包含可执行评分配置，否则模型只能看到结果与 hash，无法判断哪些权重没有效果。
+    private static JsonObject compact(JsonObject entry) { JsonObject value = new JsonObject(); for (String name : new String[]{"iteration", "profileId", "profile", "outcome", "packingQuality", "baselineDelta", "nfpSummary", "packingDiagnosis", "hypothesis"}) if (entry.has(name)) value.add(name, entry.get(name).deepCopy()); return value; }
+    /** Provides failed structural promises to the next LLM call without treating them as quality observations. */
+    private static JsonObject compactFailure(JsonObject entry) { JsonObject value = compact(entry); for (String name : new String[]{"skipReason", "profile"}) if (entry.has(name)) value.add(name, entry.get(name).deepCopy()); return value; }
     private static String string(JsonObject value, String name) { return value.has(name) && value.get(name).isJsonPrimitive() ? value.get(name).getAsString() : ""; }
 }

@@ -10,9 +10,6 @@ import java.nio.file.Paths;
 
 public class LoadingTestRun {
 
-    /** 全局重排优化的总时间预算，不包含初始排样、普通件插入、NFP 拼接和组块生成，单位为毫秒。 */
-    private static final long TOTAL_SOLVE_TIME_MS = PackingRuntimeConfig.totalSolveTimeMs();
-
     /**
      * 读取桥接层生成的板材与工件文件，执行优先级排样并写出排样结果文件。
      *
@@ -24,6 +21,8 @@ public class LoadingTestRun {
      */
     public static String[] runWithImprove(String materialInPath, String workPieceInPath, String outPath) throws IOException {
         long startTime = System.currentTimeMillis();
+        // 每次调用独立读取 Agent 分档预算；未设置实验覆盖值时仍使用 baseline 的 600 秒。
+        long totalSolveTimeMs = PackingRuntimeConfig.totalSolveTimeMs();
 
         ProblemLoader problemLoader = new ProblemLoader(workPieceInPath);
         problemLoader.loadContainer(materialInPath);
@@ -38,8 +37,20 @@ public class LoadingTestRun {
         String logPath = oPath.resolve("optimized.log").toString().replace("\\", "/");
         PrintStream out = new PrintStream(new FileOutputStream(logPath), true, "UTF-8");
         System.setOut(out);
+        try {
+            return writePackingResult(instances, totalSolveTimeMs, oPath, workPieceInPath, startTime, oldout);
+        } finally {
+            // 分档实验会在同一 JVM 连续排样。正常/异常退出都关闭日志，避免 Windows 文件锁泄漏；
+            // 此处只管理输出资源，不修改 baseline 的排序、预算或求解算法。
+            System.setOut(oldout);
+            out.close();
+        }
+    }
 
-
+    /** 保留原求解及结果写出顺序，日志生命周期由外层统一管理。 */
+    private static String[] writePackingResult(ArrayList<Instance> instances, long totalSolveTimeMs,
+                                               Path oPath, String workPieceInPath, long startTime,
+                                               PrintStream oldout) throws IOException {
         int numOfWorkpiece = 0;
         for (Instance instance : instances) {
             numOfWorkpiece = numOfWorkpiece + instance.totalBoxCount;
@@ -52,7 +63,7 @@ public class LoadingTestRun {
         System.out.println("Start priority-first combined packing.");
         ExecutionResult exeResult = PriorityFirstPacker.solveWithTotalTime(
                 instances,
-                TOTAL_SOLVE_TIME_MS);
+                totalSolveTimeMs);
         // 保留原近似矩形利用率，同时额外计算真实多边形面积口径的 U、N、Uagv。
         exeResult.setAvgUtilization();
         exeResult.setActualUtilizationMetrics();
@@ -69,7 +80,7 @@ public class LoadingTestRun {
         pwStatistics = new PrintWriter(new BufferedWriter(new OutputStreamWriter(new FileOutputStream(statisticsPath), StandardCharsets.UTF_8)));
         pwStatistics.println("BatchNo, BoardNo, Color, Specification, BoardArea, WorkPiecesQty, WorkPiecesArea, Ratio, OddArea, PriorityQty, OrdinaryQty, PriorityArea, OrdinaryArea");
 
-        File dir = new File(outPath, "orderId/");
+        File dir = oPath.resolve("orderId").toFile();
         if (dir.exists()) {
             File[] files = dir.listFiles();
             for (File file : files) {
