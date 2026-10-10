@@ -52,13 +52,13 @@
 
     <build>
         <plugins>
-            <!-- 默认执行统一求解入口；两个可视化入口通过 -Dexec.mainClass 单独指定。 -->
+            <!-- 默认执行确定性的基准求解入口；Agent 与可视化均通过 -Dexec.mainClass 显式指定。 -->
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>exec-maven-plugin</artifactId>
                 <version>3.1.0</version>
                 <configuration>
-                    <mainClass>org.example.application.IntegratedPackingApplication</mainClass>
+                    <mainClass>org.example.application.BaselinePackingApplication</mainClass>
                 </configuration>
             </plugin>
 
@@ -68,7 +68,7 @@
                 <version>3.2.5</version>
             </plugin>
 
-            <!-- 打包统一求解入口及其运行时依赖 -->
+            <!-- 打包基准求解入口及其运行时依赖 -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>
@@ -83,7 +83,7 @@
                             <createDependencyReducedPom>false</createDependencyReducedPom>
                             <transformers>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                                    <mainClass>org.example.application.IntegratedPackingApplication</mainClass>
+                                    <mainClass>org.example.application.BaselinePackingApplication</mainClass>
                                 </transformer>
                             </transformers>
                         </configuration>

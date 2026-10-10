@@ -112,8 +112,8 @@ public final class PackingResultVisualizer {
      * @throws IOException 当排样结果无法读取或 PNG 文件无法写入时抛出
      */
     public static void main(String[] args) throws IOException {
-        String resultDiectory = "data\\BA06_Packing\\agent";
-        String outputDirectory = "data\\BA06_PackingPicture";
+        String resultDiectory = "data\\BA01_Packing";
+        String outputDirectory = "data\\BA01_PackingPicture";
 
         String caseName = args.length == 3 ? args[2] : "";
         visualize(Path.of(resultDiectory), Path.of(outputDirectory), caseName);

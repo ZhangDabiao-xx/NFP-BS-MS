@@ -25,7 +25,7 @@ import java.util.Set;
 
 import static org.example.agent.NfpExperimentEvaluator.*;
 
-/** Agent 专属的有界优化器；不改变 IntegratedPackingApplication 的 baseline 路径。 */
+/** Agent 专属的有界优化器；不改变 {@code BaselinePackingApplication} 的基准路径。 */
 final class NfpAgentOptimizer {
     record Settings(int rounds, int quickCandidates, long quickMs, long mediumMs, long finalMs,
                     long wallMs, long nfpMs, boolean useLlm) {
