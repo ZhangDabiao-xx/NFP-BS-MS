@@ -48,6 +48,20 @@ NFP Agent 的实验产物写在 `BA06_Packing/<案例名>/llm/nfp-agent/`，不�
 
 调用远程模型前，在 `src/main/java/org/example/agent/DeepSeekConfig.java` 中配置 API Key、URL 与模型。不要提交真实密钥。
 
+## CLASSData 纯矩形入口
+
+`org.example.application.RectanglePackingApplication` 独立处理 CLASSData 的纯矩形案例，不经过 NFP，也不改变不规则图形 baseline。入口顶部的三个常量用于配置：
+
+- `INPUT_PATH`：CLASSData 根目录、编号子目录，或一个 `.txt` 案例；
+- `OUTPUT_DIRECTORY`：结果根目录；
+- `ALLOW_ROTATION`：所有矩形共用的 90° 旋转开关。
+
+每个 `.txt` 的每行是两个矩形尺寸。程序从相同编号的 `material_XX.csv` 读取板材规格，将全部工件标记为优先件后复用现有优先件排样和全局重排优化。
+
+```powershell
+mvn exec:java -Dexec.mainClass=org.example.application.RectanglePackingApplication
+```
+
 ## 可视化入口
 
 ```powershell
