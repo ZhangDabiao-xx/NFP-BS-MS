@@ -20,6 +20,23 @@ public class LoadingTestRun {
      * @throws IOException 当输入文件无法读取或结果文件无法写入时抛出
      */
     public static String[] runWithImprove(String materialInPath, String workPieceInPath, String outPath) throws IOException {
+        return runPacking(materialInPath, workPieceInPath, outPath);
+    }
+
+    /**
+     * 保留 CLASSData 矩形入口的兼容方法。
+     *
+     * <p>矩形和混合案例共用同一个受限初始排样流程，避免入口之间的策略分叉。</p>
+     */
+    public static String[] runRectangleWithImprove(String materialInPath,
+                                                   String workPieceInPath,
+                                                   String outPath) throws IOException {
+        return runWithImprove(materialInPath, workPieceInPath, outPath);
+    }
+
+    private static String[] runPacking(String materialInPath,
+                                       String workPieceInPath,
+                                       String outPath) throws IOException {
         long startTime = System.currentTimeMillis();
         // 每次调用独立读取 Agent 分档预算；未设置实验覆盖值时仍使用 baseline 的 600 秒。
         long totalSolveTimeMs = PackingRuntimeConfig.totalSolveTimeMs();
@@ -38,7 +55,13 @@ public class LoadingTestRun {
         PrintStream out = new PrintStream(new FileOutputStream(logPath), true, "UTF-8");
         System.setOut(out);
         try {
-            return writePackingResult(instances, totalSolveTimeMs, oPath, workPieceInPath, startTime, oldout);
+            return writePackingResult(
+                    instances,
+                    totalSolveTimeMs,
+                    oPath,
+                    workPieceInPath,
+                    startTime,
+                    oldout);
         } finally {
             // 分档实验会在同一 JVM 连续排样。正常/异常退出都关闭日志，避免 Windows 文件锁泄漏；
             // 此处只管理输出资源，不修改 baseline 的排序、预算或求解算法。
@@ -61,9 +84,7 @@ public class LoadingTestRun {
         // 600 秒由 PriorityFirstPacker 在优先件和普通件全局重排阶段之间统一分配；
         // 初始排样和普通件插入 Sp 独立计时，不扣减该预算。
         System.out.println("Start priority-first combined packing.");
-        ExecutionResult exeResult = PriorityFirstPacker.solveWithTotalTime(
-                instances,
-                totalSolveTimeMs);
+        ExecutionResult exeResult = PriorityFirstPacker.solveWithTotalTime(instances, totalSolveTimeMs);
         // 保留原近似矩形利用率，同时额外计算真实多边形面积口径的 U、N、Uagv。
         exeResult.setAvgUtilization();
         exeResult.setActualUtilizationMetrics();

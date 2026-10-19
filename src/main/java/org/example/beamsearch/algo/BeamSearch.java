@@ -17,7 +17,7 @@ public class BeamSearch {
      * 连续完成多少轮“全部低利用率板材均未减少板材数量”后停止全局重排。
      * 该值只作为无改进保护，真正的主停止条件仍然是 maxTime。
      */
-    private static final int MAX_NO_IMPROVEMENT_SWEEPS = 3;
+    private static final int MAX_NO_IMPROVEMENT_SWEEPS = 10;
 
     private long finishTime = 0;
     /** 最近一次 ImproveByRepack 的只读监控结果。 */
@@ -98,7 +98,12 @@ public class BeamSearch {
             int boardTime = (int) Math.min(Integer.MAX_VALUE, Math.max(1, remainingTime));
 
             // 把单张板材的搜索抽成独立方法，后续阶段可以从已有空间继续搜索。
-            endState = searchOneBoard(initialState, boardTime, minCon, 0);
+            endState = searchOneBoard(
+                    initialState,
+                    boardTime,
+                    minCon,
+                    0,
+                    PackingRuntimeConfig.maxBeamWidth());
 
             allBlocks = endState.availableBlocks;
 
@@ -126,6 +131,107 @@ public class BeamSearch {
         }
 
         return exeResult;
+    }
+
+    /**
+     * 使用固定的单板预算完成全部新板排样。
+     *
+     * <p>时间限制只约束一张板的 Beam 扩展，而不会中止整个案例；即使某张板的
+     * 受限搜索没有产生放置，也会退回到确定性的贪心装载，保证所有可放工件
+     * 仍能继续排完。矩形、优先件、普通件和 NFP 组块的新板阶段共用本方法。</p>
+     *
+     * @param perBoardTimeMs 每张新板的 Beam Search 预算，单位为毫秒
+     * @param minCon 原有的最低装载约束参数
+     * @param maxBeamWidth 本次搜索可达到的最大 Beam 宽度
+     * @return 完整排样结果；不可放入任何板材的输入会明确失败，而不会生成空板循环
+     */
+    public ExecutionResult solveWithPerBoardTimeLimit(long perBoardTimeMs,
+                                                       int minCon,
+                                                       int maxBeamWidth) {
+        ExecutionResult exeResult = new ExecutionResult();
+        int containerNum = 1;
+        State endState = null;
+        long start = System.currentTimeMillis();
+        int boardTime = toPositiveIntMillis(perBoardTimeMs);
+        int boundedBeamWidth = Math.max(4, maxBeamWidth);
+
+        GeneralBlock[] allBlocks = new BlockGenerator(inst).generateSingleBlock(true);
+        while (allBlocks.length > 0) {
+            System.out.println("Start nesting on the " + containerNum
+                    + "th large board, remaining blocks count: " + allBlocks.length
+                    + ", per-board search budget: " + boardTime + "ms, max beam width: "
+                    + boundedBeamWidth);
+            State initialState = containerNum == 1
+                    ? State.createInitState(inst, spaceManager, allBlocks)
+                    : State.initState(endState, spaceManager);
+
+            endState = searchOneBoard(
+                    initialState,
+                    boardTime,
+                    minCon,
+                    0,
+                    boundedBeamWidth);
+            if (!hasPlacedWorkpiece(initialState, endState)) {
+                endState = completeBoardGreedily(initialState);
+            }
+            if (!hasPlacedWorkpiece(initialState, endState)) {
+                throw new IllegalStateException(
+                        "Initial packing could not place any remaining workpiece on a new board.");
+            }
+
+            allBlocks = endState.availableBlocks;
+            exeResult.solution = endState.toSolution();
+            exeResult.solutions.add(exeResult.solution);
+            exeResult.boardStates.add(createBoardStateSnapshot(exeResult.solution));
+            exeResult.unplacedBoxes = new ArrayList<>();
+            System.out.println("Utilization of the " + containerNum + "th large board: "
+                    + exeResult.solution.getUtilization() + ", Time taken for this board: "
+                    + ((System.currentTimeMillis() - start) * 0.001) + "s");
+            System.out.println("-------------------------------------------------------------------");
+            containerNum++;
+        }
+
+        if (endState != null) {
+            fillUnplacedBoxes(exeResult, endState.getFreeBoxes(), null);
+        } else {
+            fillUnplacedBoxes(exeResult, initialFreeBoxes(null), null);
+        }
+        return exeResult;
+    }
+
+    /** 将毫秒预算安全地收敛到 searchOneBoard 使用的 int 范围。 */
+    private static int toPositiveIntMillis(long timeMs) {
+        return (int) Math.min(Integer.MAX_VALUE, Math.max(1L, timeMs));
+    }
+
+    /** 判断受限 Beam Search 是否至少成功放入了一件工件。 */
+    private static boolean hasPlacedWorkpiece(State initialState, State candidateState) {
+        if (initialState == null || candidateState == null) {
+            return false;
+        }
+        int[] initialFreeBoxes = initialState.getFreeBoxes();
+        int[] candidateFreeBoxes = candidateState.getFreeBoxes();
+        int length = Math.min(initialFreeBoxes.length, candidateFreeBoxes.length);
+        for (int index = 0; index < length; index++) {
+            if (candidateFreeBoxes[index] < initialFreeBoxes[index]) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 当受限 Beam Search 在异常短预算内没有形成叶节点时，以原有最佳块排序
+     * 完成当前板材。该路径只用于保证进度，不参与正常候选比较。
+     */
+    private State completeBoardGreedily(State initialState) {
+        State state = initialState;
+        while (state.hasFreeSpace()) {
+            Space space = state.chooseBestSpace();
+            GeneralBlock block = state.chooseBestBlock(space);
+            state = block == null ? state.deleteSpace(space) : state.packBlock(space, block);
+        }
+        return state;
     }
 
     /**
@@ -175,14 +281,15 @@ public class BeamSearch {
     private State searchOneBoard(State initialState,
                                  int timeLimit,
                                  int minCon,
-                                 int volumeType) {
+                                 int volumeType,
+                                 int maxBeamWidth) {
         Node bestNode = new Node();
         long startTime = System.currentTimeMillis();
         finishTime = startTime + Math.max(1, timeLimit);
 
         int availableBlockCount = initialState.availableBlocks.length;
         for (int width = 4;
-             width <= PackingRuntimeConfig.maxBeamWidth() && System.currentTimeMillis() < finishTime;
+             width <= maxBeamWidth && System.currentTimeMillis() < finishTime;
              width <<= 1) {
             if (width > availableBlockCount / 3 && width != 4 && minCon > 330) {
                 break;
@@ -239,7 +346,7 @@ public class BeamSearch {
             }
 
             if (width >= availableBlockCount
-                    || width >= PackingRuntimeConfig.maxBeamWidth()
+                    || width >= maxBeamWidth
                     || width > Integer.MAX_VALUE / 2) {
                 break;
             }
