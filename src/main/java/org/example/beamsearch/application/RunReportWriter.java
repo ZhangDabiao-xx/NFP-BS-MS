@@ -67,6 +67,9 @@ public final class RunReportWriter {
         report.add("timingMs", timing(result));
         report.add("repackMonitoring", repackMonitoring(result));
         report.add("verification", verification(result, inputWorkpieceCount, placedWorkpieceCount));
+        if (result.rectangleLowerBound != null) {
+            report.add("rectangleLowerBound", rectangleLowerBound(result));
+        }
 
         Path llmDirectory = outputDirectory.resolve(LLM_DIRECTORY_NAME);
         Files.createDirectories(llmDirectory);
@@ -74,6 +77,26 @@ public final class RunReportWriter {
         String json = new GsonBuilder().setPrettyPrinting().create().toJson(report);
         Files.writeString(reportPath, json, StandardCharsets.UTF_8);
         return reportPath;
+    }
+
+    /** 仅矩形案例增加此信息，混合排样的报告字段保持原样。 */
+    private static JsonObject rectangleLowerBound(ExecutionResult result) {
+        var bound = result.rectangleLowerBound;
+        JsonObject detail = new JsonObject();
+        detail.addProperty("scope", "whole_rectangle_case");
+        detail.addProperty("allowRotation", bound.allowRotation());
+        detail.addProperty("lowerBound", bound.lowerBound());
+        detail.addProperty("areaBound", bound.areaBound());
+        detail.addProperty("dffBound", bound.dffBound());
+        detail.addProperty("bmBound", bound.bmBound());
+        detail.addProperty("ccm1Bound", bound.ccm1Bound());
+        detail.addProperty("calculationTimeMs", bound.elapsedNanos() / 1_000_000.0);
+        detail.addProperty("initialBoardCount", result.priorityRepackStatistics.boardCountBefore);
+        detail.addProperty("finalBoardCount", solutionCount(result));
+        detail.addProperty("boardGap", solutionCount(result) - bound.lowerBound());
+        detail.addProperty("reached", solutionCount(result) == bound.lowerBound());
+        detail.addProperty("stopReason", result.priorityRepackStatistics.stopReason);
+        return detail;
     }
 
     /** 将各排样阶段已经记录的实际耗时写入报告。 */

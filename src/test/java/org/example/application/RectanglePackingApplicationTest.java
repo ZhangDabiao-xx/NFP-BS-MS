@@ -1,5 +1,9 @@
 package org.example.application;
 
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import org.example.beamsearch.application.LoadingTestRun;
+import org.example.beamsearch.application.PackingRuntimeConfig;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -8,6 +12,8 @@ import java.nio.file.Path;
 import java.time.Duration;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -39,5 +45,86 @@ class RectanglePackingApplicationTest {
         String log = Files.readString(caseOutput.resolve("optimized.log"));
         assertTrue(log.contains("Initial-packing policy"));
         assertTrue(log.contains("per-board search budget=1000ms"));
+        JsonObject report = readReport(caseOutput);
+        assertEquals(1, report.getAsJsonObject("rectangleLowerBound").get("lowerBound").getAsInt());
+        assertTrue(report.getAsJsonObject("rectangleLowerBound").get("allowRotation").getAsBoolean());
+        assertFalse(report.getAsJsonObject("repackMonitoring").getAsJsonObject("priority")
+                .get("executed").getAsBoolean());
+        assertEquals("lower_bound_reached_before_optimization",
+                report.getAsJsonObject("rectangleLowerBound").get("stopReason").getAsString());
+    }
+
+    @Test
+    void rotationFlagSelectsTheBoundAndEachCaseGetsItsOwnCalculation() throws Exception {
+        Path input = temporary.resolve("CLASSData");
+        Files.createDirectories(input.resolve("07"));
+        Files.writeString(input.resolve("material_07.csv"), "Color,Length,Width\n1,10,10\n");
+        Files.writeString(input.resolve("07/A.txt"), "6 4\n6 4\n6 4\n6 4\n6 4\n");
+        Files.writeString(input.resolve("07/B.txt"), "10 10\n10 10\n10 10\n10 10\n");
+        for (boolean rotation : new boolean[]{false, true}) {
+            Path output = temporary.resolve("results-" + rotation);
+            assertTimeoutPreemptively(Duration.ofSeconds(10),
+                    () -> RectanglePackingApplication.run(input, output, rotation));
+            for (String name : new String[]{"A", "B"}) {
+                Path result = output.resolve("07").resolve(name);
+                JsonObject report = readReport(result);
+                JsonObject bound = report.getAsJsonObject("rectangleLowerBound");
+                int expected = name.equals("B") ? 4 : rotation ? 2 : 3;
+                assertEquals(expected, bound.get("lowerBound").getAsInt());
+                assertEquals(expected, report.get("boardCount").getAsInt());
+                assertEquals(rotation, bound.get("allowRotation").getAsBoolean());
+                assertTrue(bound.get("reached").getAsBoolean());
+                assertTrue(report.getAsJsonObject("verification").get("passed").getAsBoolean());
+                assertEquals(1, Files.readAllLines(result.resolve("optimized.log")).stream()
+                        .filter(line -> line.startsWith("Rectangle case lower bound=")).count());
+                assertTrue(Files.readString(result.resolve("total.txt")).contains("Rectangle case lower bound: " + expected));
+            }
+        }
+    }
+
+    @Test
+    void genericEntryStaysUnboundedAfterRectangleEntryInTheSameProcess() throws Exception {
+        Path input = temporary.resolve("CLASSData");
+        Files.createDirectories(input.resolve("07"));
+        Files.writeString(input.resolve("material_07.csv"), "Color,Length,Width\n1,10,10\n");
+        Path source = input.resolve("07/A.txt");
+        Files.writeString(source, "6 4\n6 4\n6 4\n6 4\n6 4\n");
+        Path rectangleOutput = temporary.resolve("rectangle");
+        RectanglePackingApplication.run(source, rectangleOutput, false);
+
+        Path genericOutput = temporary.resolve("generic");
+        Files.createDirectories(genericOutput);
+        Path bridge = rectangleOutput.resolve("A/input");
+        String oldBudget = System.getProperty(PackingRuntimeConfig.AGENT_EXPERIMENT_BUDGET_PROPERTY);
+        System.setProperty(PackingRuntimeConfig.AGENT_EXPERIMENT_BUDGET_PROPERTY, "1");
+        try {
+            LoadingTestRun.runWithImprove(bridge.resolve("material.csv").toString(),
+                    bridge.resolve("workpiece.csv").toString(), genericOutput.toString());
+        } finally {
+            if (oldBudget == null) {
+                System.clearProperty(PackingRuntimeConfig.AGENT_EXPERIMENT_BUDGET_PROPERTY);
+            } else {
+                System.setProperty(PackingRuntimeConfig.AGENT_EXPERIMENT_BUDGET_PROPERTY, oldBudget);
+            }
+        }
+        assertFalse(readReport(genericOutput).has("rectangleLowerBound"));
+        assertFalse(Files.readString(genericOutput.resolve("optimized.log")).contains("Rectangle case lower bound="));
+        assertFalse(readReport(genericOutput).getAsJsonObject("repackMonitoring").getAsJsonObject("priority")
+                .get("stopReason").getAsString().startsWith("lower_bound_reached"));
+    }
+
+    @Test
+    void filteredRectangleInputCannotBeCertifiedAsACompleteCase() throws Exception {
+        Path input = temporary.resolve("CLASSData");
+        Files.createDirectories(input.resolve("07"));
+        Files.writeString(input.resolve("material_07.csv"), "Color,Length,Width\n1,10,10\n");
+        Path source = input.resolve("07/A.txt");
+        Files.writeString(source, "20 20\n5 5\n");
+        assertThrows(java.io.IOException.class,
+                () -> RectanglePackingApplication.run(source, temporary.resolve("result"), false));
+    }
+
+    private static JsonObject readReport(Path output) throws Exception {
+        return JsonParser.parseString(Files.readString(output.resolve("llm/run-report.json"))).getAsJsonObject();
     }
 }

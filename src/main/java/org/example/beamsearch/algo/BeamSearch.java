@@ -17,7 +17,7 @@ public class BeamSearch {
      * 连续完成多少轮“全部低利用率板材均未减少板材数量”后停止全局重排。
      * 该值只作为无改进保护，真正的主停止条件仍然是 maxTime。
      */
-    private static final int MAX_NO_IMPROVEMENT_SWEEPS = 10;
+    private static final int MAX_NO_IMPROVEMENT_SWEEPS = 25;
 
     private long finishTime = 0;
     /** 最近一次 ImproveByRepack 的只读监控结果。 */
@@ -861,6 +861,15 @@ public class BeamSearch {
      * 下一张可删除的板材，直到达到时间上限或连续多轮完整扫描都没有减板。</p>
      */
     public ExecutionResult ImproveByRepack(ExecutionResult executionResult, double maxTime, Random random) {
+        return ImproveByRepack(executionResult, maxTime, random, 0);
+    }
+
+    /** 0 禁用下界停止，原有混合排样调用继续保持此值。 */
+    public ExecutionResult ImproveByRepack(ExecutionResult executionResult, double maxTime, Random random,
+                                           int lowerBound) {
+        if (lowerBound < 0) {
+            throw new IllegalArgumentException("Lower bound must be nonnegative.");
+        }
         System.out.println("Start improving solution by repacking.");
         long startTime = System.currentTimeMillis();
         int containerNum = executionResult.solutions.size();
@@ -869,6 +878,14 @@ public class BeamSearch {
         statistics.requestedTimeLimitMs = Math.max(0L, Math.round(maxTime * 1000.0));
         statistics.boardCountBefore = containerNum;
         lastRepackStatistics = statistics;
+        if (lowerBound > 0 && containerNum < lowerBound) {
+            throw new IllegalStateException("Rectangle lower bound exceeds the current board count.");
+        }
+        if (lowerBound > 0 && containerNum == lowerBound) {
+            statistics.stopReason = "lower_bound_reached_before_optimization";
+            statistics.boardCountAfter = containerNum;
+            return executionResult;
+        }
         List<Integer> locations = new ArrayList<>();
 
         int location;
@@ -1092,6 +1109,12 @@ public class BeamSearch {
                 containerNum = executionResult.solutions.size();
                 locations.clear();
                 noImprovementSweeps = 0;
+                // 仅在完整新解已提交、实际板数已减少后判断，不把局部未排面积下降当成减板。
+                if (lowerBound > 0 && containerNum == lowerBound) {
+                    statistics.stopReason = "lower_bound_reached_after_reduction";
+                    System.out.println("Rectangle lower bound reached after reduction: " + lowerBound + " boards.");
+                    break;
+                }
                 continue;
             }
 

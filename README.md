@@ -58,6 +58,12 @@ NFP Agent 的实验产物写在 `BA06_Packing/<案例名>/llm/nfp-agent/`，不�
 
 每个 `.txt` 的每行是两个矩形尺寸。程序从相同编号的 `material_XX.csv` 读取板材规格，将全部工件标记为优先件后复用现有优先件排样和全局重排优化。
 
+该入口按完整案例计算一次矩形板数下界，并使用同一个 `ALLOW_ROTATION` 参数决定下界的旋转条件。
+初始解达到下界时跳过全局重排；成功减板后达到下界时立即结束后续重排。默认使用面积、DFF 和适用时的 BM 下界，
+不启用较耗时的 CCM_1。下界计算耗时单独记录，不扣减重排预算。`optimized.log`、`total.txt` 和
+`llm/run-report.json` 会记录下界、旋转条件及停止原因。混合排样与 Agent 原有调用路径不启用此功能。
+下界模块与独立验证方法见 [lb 说明](src/main/java/org/example/beamsearch/lb/README.md)。
+
 ```powershell
 mvn exec:java -Dexec.mainClass=org.example.application.RectanglePackingApplication
 ```

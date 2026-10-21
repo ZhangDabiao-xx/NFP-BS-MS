@@ -9,6 +9,7 @@ import org.example.beamsearch.common.RepackStatistics;
 import org.example.beamsearch.common.Space;
 import org.example.beamsearch.common.SpaceComparator;
 import org.example.beamsearch.spacemanager.SpaceManager;
+import org.example.beamsearch.lb.solver.RectangleLowerBoundSolver;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -75,7 +76,7 @@ public final class PriorityFirstPacker {
      */
     public static ExecutionResult solveWithTotalTime(List<Instance> groupedInstances,
                                                      long totalTimeMs) {
-        return solveWithInitialPackingPolicy(groupedInstances, totalTimeMs);
+        return solveWithInitialPackingPolicy(groupedInstances, totalTimeMs, null);
     }
 
     /**
@@ -93,8 +94,25 @@ public final class PriorityFirstPacker {
         return solveWithTotalTime(groupedInstances, totalTimeMs);
     }
 
+    /** 仅纯矩形路径使用显式传入的完整案例下界，沿用原有初始排样与状态整理流程。 */
+    public static ExecutionResult solveRectangleWithTotalTime(List<Instance> groupedInstances,
+                                                               long totalTimeMs,
+                                                               RectangleLowerBoundSolver.Result caseLowerBound) {
+        if (caseLowerBound == null || groupedInstances == null || groupedInstances.isEmpty()
+                || collectBoxes(groupedInstances).stream().anyMatch(box -> !isPriorityBox(box))) {
+            throw new IllegalArgumentException("Rectangle-only packing requires a case lower bound and priority items.");
+        }
+        ExecutionResult result = solveWithInitialPackingPolicy(
+                groupedInstances, totalTimeMs, caseLowerBound.lowerBound());
+        result.rectangleLowerBound = caseLowerBound;
+        // 下界独立计时，不扣减全局重排预算，但计入纯矩形案例的总排样耗时。
+        result.totalPackingTimeMs += caseLowerBound.elapsedNanos() / 1_000_000L;
+        return result;
+    }
+
     private static ExecutionResult solveWithInitialPackingPolicy(List<Instance> groupedInstances,
-                                                                  long totalTimeMs) {
+                                                                  long totalTimeMs,
+                                                                  Integer rectangleLowerBound) {
         if (groupedInstances == null || groupedInstances.isEmpty()) {
             return emptyResult();
         }
@@ -185,10 +203,11 @@ public final class PriorityFirstPacker {
                 priorityWorkpieceCount,
                 totalWorkpieceCount);
         long priorityOptimizeStartNanos = System.nanoTime();
-        priorityResult = GlobalRepackOptimizer.optimize(
-                priorityInstance,
-                priorityResult,
-                PackingRuntimeConfig.capRepackTimeMs(priorityOptimizeTimeLimitMs));
+        long priorityRepackBudgetMs = PackingRuntimeConfig.capRepackTimeMs(priorityOptimizeTimeLimitMs);
+        priorityResult = rectangleLowerBound == null
+                ? GlobalRepackOptimizer.optimize(priorityInstance, priorityResult, priorityRepackBudgetMs)
+                : GlobalRepackOptimizer.optimize(
+                        priorityInstance, priorityResult, priorityRepackBudgetMs, rectangleLowerBound);
         long priorityOptimizeTimeMs = elapsedMillis(priorityOptimizeStartNanos);
         requireAllWorkpiecesPlaced(priorityResult, priorityInstance, "priority packing");
         RepackStatistics priorityRepackStatistics = priorityResult.repackStatistics;

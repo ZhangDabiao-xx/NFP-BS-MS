@@ -1,5 +1,6 @@
 package org.example.beamsearch.application;
 
+import com.google.gson.JsonParser;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -8,6 +9,7 @@ import java.nio.file.Path;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PriorityFirstPackerCompletenessTest {
@@ -26,11 +28,11 @@ class PriorityFirstPackerCompletenessTest {
         Files.writeString(workpieces, String.join("\n",
                 "BatchNo,UPI,Qty,Color,Length,Width,IsSpecial,Rotatable,ActualWorkpieceArea",
                 "batch,priority-1,1,1,40,40,0,0,1600",
-                "batch,priority-2,1,1,40,40,0,0,1600",
+                "batch,priority-2,1,1,40,40,0,1,1600",
                 "batch,priority-3,1,1,40,40,0,0,1600",
                 "batch,priority-4,1,1,40,40,0,0,1600",
                 "batch,ordinary-1,1,0,40,20,0,0,800",
-                "batch,ordinary-2,1,0,40,20,0,0,800",
+                "batch,ordinary-2,1,0,40,20,0,1,800",
                 "batch,ordinary-3,1,0,40,20,0,0,800",
                 ""));
 
@@ -54,5 +56,8 @@ class PriorityFirstPackerCompletenessTest {
         String log = Files.readString(output.resolve("optimized.log"));
         assertTrue(log.contains("Initial-packing policy"));
         assertTrue(log.contains("Ordinary insertion budget=10000ms."));
+        assertFalse(log.contains("Rectangle case lower bound="));
+        assertFalse(JsonParser.parseString(Files.readString(output.resolve("llm/run-report.json")))
+                .getAsJsonObject().has("rectangleLowerBound"));
     }
 }

@@ -1,138 +1,206 @@
 package org.example.beamsearch.lb.solver;
 
-
 import org.example.beamsearch.lb.entity.Item;
 import org.example.beamsearch.lb.util.CommonUtil;
 import org.example.beamsearch.lb.util.DffUtil;
 
+import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.function.LongUnaryOperator;
 
-public class CCM_LowerBound_Solver {
+/** Fixed-orientation CCM bounds and an orientation-safe extension of the DFF area bound. */
+public final class CCM_LowerBound_Solver {
+    private CCM_LowerBound_Solver() { }
 
-    private static int LB_CCM_1(int C, int halfBinC, int step, List<Integer> cs) {
-        int res = 0;
-        for (int u = 0; u <= 2; u++) {
-            for (int k = 1; k <= halfBinC; k += step) {
-                double tempRes = 0;
-                for (int c : cs) {
-                    tempRes += ((double) DffUtil.dff(u, k, C, c, cs) / DffUtil.dff(u, k, C, C, cs));
-                }
-                res = Math.max(res, CommonUtil.ceilToInt(tempRes));
-            }
-        }
-        return res;
+    public static int LB_CCM_2(int width, int height, Item[] items) {
+        return LB_CCM_2(width, height, items, false);
     }
 
-    public static int LB_CCM_1(int W, int H, Item[] items) {
-        int lb = 1;
-        int S = W * H;
-        int halfBinW = W / 2;
-        int halfBinH = H / 2;
-        int halfBinS = S / 2;
+    /**
+     * For each DFF pair, minimize EACH physical item's transformed area over its feasible
+     * orientations, then sum and round up. Fixed-orientation bounds cannot be reused directly.
+     */
+    public static int LB_CCM_2(int width, int height, Item[] items, boolean allowRotation) {
+        return dffBound(LowerBoundInput.prepare(width, height, items, allowRotation));
+    }
 
-        List<Item> itemListSortByS = new ArrayList<>(Arrays.asList(items));
-        itemListSortByS.sort(Item.itemComparatorByIncreaseS);
+    static int dffBound(LowerBoundInput input) {
+        if (input.items().length == 0) {
+            return 0;
+        }
+        List<AxisScale> widths = scales(input.width(), input.items(), true);
+        List<AxisScale> heights = scales(input.height(), input.items(), false);
+        int bound = 0;
+        for (AxisScale x : widths) {
+            for (AxisScale y : heights) {
+                bound = Math.max(bound, transformedAreaBound(x, y));
+            }
+        }
+        return bound;
+    }
 
-        List<Item> itemListSortByW = new ArrayList<>(Arrays.asList(items));
-        itemListSortByW.sort(Item.itemComparatorByIncreaseW);
+    private record AxisScale(long capacity, long[] original, long[] rotated) { }
 
-        List<Item> itemListSortByH = new ArrayList<>(Arrays.asList(items));
-        itemListSortByH.sort(Item.itemComparatorByIncreaseH);
+    private static List<AxisScale> scales(int capacity, Item[] items, boolean widthAxis) {
+        long[] original = new long[items.length];
+        long[] rotated = new long[items.length];
+        List<Long> domain = new ArrayList<>();
+        for (int i = 0; i < items.length; i++) {
+            Item item = items[i];
+            original[i] = widthAxis ? item.w : item.h;
+            rotated[i] = item.rotatable ? (widthAxis ? item.h : item.w) : original[i];
+            domain.add(original[i]);
+            if (item.rotatable) {
+                domain.add(rotated[i]);
+            }
+        }
+        long[] sizes = domain.stream().mapToLong(Long::longValue).toArray();
+        List<AxisScale> result = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        addScale(result, seen, capacity, original, rotated, x -> x);
+        for (long k : CommonUtil.parameters(capacity, CommonUtil.parameterLimit(items.length))) {
+            for (int type = 0; type < 3; type++) {
+                addScale(result, seen, capacity, original, rotated, DffUtil.function(type, k, capacity, sizes));
+            }
+        }
+        return result;
+    }
 
+    private static void addScale(List<AxisScale> result, Set<String> seen, long capacity,
+                                 long[] original, long[] rotated, LongUnaryOperator function) {
+        long transformedCapacity = function.applyAsLong(capacity);
+        if (transformedCapacity == 0) {
+            return; // Empty DDFF domain: it contributes no bound and must not be divided by zero.
+        }
+        long[] a = new long[original.length];
+        long[] b = new long[rotated.length];
+        long divisor = transformedCapacity;
+        for (int i = 0; i < a.length; i++) {
+            a[i] = function.applyAsLong(original[i]);
+            b[i] = function.applyAsLong(rotated[i]);
+            divisor = gcd(divisor, gcd(a[i], b[i]));
+        }
+        transformedCapacity /= divisor;
+        for (int i = 0; i < a.length; i++) {
+            a[i] /= divisor;
+            b[i] /= divisor;
+        }
+        String key = transformedCapacity + ":" + Arrays.toString(a) + ":" + Arrays.toString(b);
+        if (seen.add(key)) {
+            result.add(new AxisScale(transformedCapacity, a, b));
+        }
+    }
 
-        int cnt = Math.max(1, (int) Math.sqrt(1000000d / items.length));
-        int stepW = Math.max(1, halfBinW / cnt);
-        int stepH = Math.max(1, halfBinH / cnt);
-        int stepS = Math.max(1, halfBinS / cnt);
+    private static int transformedAreaBound(AxisScale x, AxisScale y) {
+        try {
+            long denominator = Math.multiplyExact(x.capacity, y.capacity);
+            long sum = 0;
+            for (int i = 0; i < x.original.length; i++) {
+                long original = Math.multiplyExact(x.original[i], y.original[i]);
+                long rotated = Math.multiplyExact(x.rotated[i], y.rotated[i]);
+                sum = Math.addExact(sum, Math.min(original, rotated));
+            }
+            return CommonUtil.ceilRatio(sum, denominator);
+        } catch (ArithmeticException overflow) {
+            // Large dimensions or totals: exact fallback, never floating-point rounding or clipping.
+            BigInteger sum = BigInteger.ZERO;
+            for (int i = 0; i < x.original.length; i++) {
+                BigInteger a = BigInteger.valueOf(x.original[i]).multiply(BigInteger.valueOf(y.original[i]));
+                BigInteger b = BigInteger.valueOf(x.rotated[i]).multiply(BigInteger.valueOf(y.rotated[i]));
+                sum = sum.add(a.min(b));
+            }
+            return CommonUtil.ceilRatio(sum,
+                    BigInteger.valueOf(x.capacity).multiply(BigInteger.valueOf(y.capacity)));
+        }
+    }
 
-        for (int p = 1; p <= halfBinH; p += stepH) {
-            for (int q = 1; q <= halfBinW; q += stepW) {
-                int largesSize = 0;
-                List<Integer> list = new ArrayList<>();
-                List<Integer> smalls = new ArrayList<>();
-                for (Item item : itemListSortByS) {
+    /** CCM_1's geometric partitions require fixed orientations. */
+    public static int LB_CCM_1(int width, int height, Item[] items) {
+        return partitionBound(LowerBoundInput.prepare(width, height, items, false));
+    }
 
-                    if (item.w > W - q && item.h > H - p) {
-                        largesSize++;
-                    } else if (item.w >= q && item.h > H - p) {
-                        list.add(item.s);
-                    } else if (item.w > W - q && item.h >= p) {
-                        list.add(item.s);
+    static int partitionBound(LowerBoundInput input) {
+        Item[] items = input.items();
+        if (items.length == 0) {
+            return 0;
+        }
+        int width = input.width();
+        int height = input.height();
+        long area = (long) width * height;
+        int limit = CommonUtil.parameterLimit(items.length);
+        int bound = RectangleLowerBoundSolver.areaBound(input);
+        for (long p : CommonUtil.parameters(height, limit)) {
+            for (long q : CommonUtil.parameters(width, limit)) {
+                int large = 0;
+                List<Long> areas = new ArrayList<>();
+                List<Long> tallWidths = new ArrayList<>();
+                List<Long> wideHeights = new ArrayList<>();
+                for (Item item : items) {
+                    if (item.w > width - q && item.h > height - p) {
+                        large++;
                     } else if (item.w >= q && item.h >= p) {
-                        list.add(item.s);
-                        smalls.add(item.s);
+                        areas.add((long) item.w * item.h);
+                        if (item.h > height - p) {
+                            tallWidths.add((long) item.w);
+                        } else if (item.w > width - q) {
+                            wideHeights.add((long) item.h);
+                        }
                     }
                 }
-
-                List<Integer> talls = new ArrayList<>();
-                for (Item item : itemListSortByW) {
-                    if (item.w > W - q && item.h > H - p) {
-
-                    } else if (item.w >= q && item.h > H - p) {
-                        talls.add(item.w);
-                    }
-                }
-
-                List<Integer> wides = new ArrayList<>();
-                for (Item item : itemListSortByH) {
-                    if (item.w > W - q && item.h > H - p) {
-
-                    } else if (item.w >= q && item.h > H - p) {
-
-                    } else if (item.w > W - q && item.h >= p) {
-                        wides.add(item.h);
-                    }
-                }
-
-                int res1 = LB_CCM_1(S, halfBinS, stepS, list);
-
-                int res2 = LB_CCM_1(H, halfBinH, stepH, wides);
-
-                res2 += LB_CCM_1(W, halfBinW, stepW, talls);
-
-                lb = Math.max(lb, largesSize + Math.max(res1, res2));
-
+                int areaPart = oneDimensionalBound(area, areas, limit);
+                // Tall and wide classes cannot share a bin; their separate bounds may be added.
+                int sidePart = oneDimensionalBound(width, tallWidths, limit)
+                        + oneDimensionalBound(height, wideHeights, limit);
+                bound = Math.max(bound, large + Math.max(areaPart, sidePart));
             }
         }
-        return lb;
+        return bound;
     }
 
-    public static int LB_CCM_2(int W, int H, Item[] items) {
-        int lb = 1;
-        int n = items.length;
-        int[] ws = new int[n];
-        for (int i = 0; i < items.length; i++) {
-            ws[i] = items[i].w;
+    private static int oneDimensionalBound(long capacity, List<Long> values, int limit) {
+        if (values.isEmpty()) {
+            return 0;
         }
-        Arrays.sort(ws);
-        int[] hs = new int[n];
-        for (int i = 0; i < items.length; i++) {
-            hs[i] = items[i].h;
-        }
-        Arrays.sort(hs);
-        int halfBinW = W / 2;
-        int halfBinH = H / 2;
-
-        int cnt = Math.max(1, (int) Math.sqrt(1000000d / n));
-        int stepX = Math.max(1, halfBinW / cnt);
-        int stepY = Math.max(1, halfBinH / cnt);
-        for (int u = 0; u <= 2; u++) {
-            for (int v = 0; v <= 2; v++) {
-                for (int k = 1; k <= halfBinW; k += stepX) {
-                    for (int l = 1; l <= halfBinH; l += stepY) {
-                        double fracLb = 0d;
-                        for (int j = 0; j < n; j++) {
-
-                            fracLb += (DffUtil.dff(u, k, W, items[j].w, ws) * DffUtil.dff(v, l, H, items[j].h, hs));
-                        }
-                        fracLb /= (DffUtil.dff(u, k, W, W, ws) * DffUtil.dff(v, l, H, H, hs));
-                        lb = Math.max(lb, CommonUtil.ceilToInt(fracLb));
-                    }
+        long[] sizes = values.stream().mapToLong(Long::longValue).toArray();
+        int bound = sumBound(capacity, sizes, x -> x);
+        for (long k : CommonUtil.parameters(capacity, limit)) {
+            for (int type = 0; type < 3; type++) {
+                LongUnaryOperator function = DffUtil.function(type, k, capacity, sizes);
+                long denominator = function.applyAsLong(capacity);
+                if (denominator > 0) {
+                    bound = Math.max(bound, sumBound(denominator, sizes, function));
                 }
             }
         }
-        return lb;
+        return bound;
+    }
+
+    private static int sumBound(long denominator, long[] values, LongUnaryOperator function) {
+        try {
+            long sum = 0;
+            for (long value : values) {
+                sum = Math.addExact(sum, function.applyAsLong(value));
+            }
+            return CommonUtil.ceilRatio(sum, denominator);
+        } catch (ArithmeticException overflow) {
+            BigInteger sum = BigInteger.ZERO;
+            for (long value : values) {
+                sum = sum.add(BigInteger.valueOf(function.applyAsLong(value)));
+            }
+            return CommonUtil.ceilRatio(sum, BigInteger.valueOf(denominator));
+        }
+    }
+
+    private static long gcd(long a, long b) {
+        while (b != 0) {
+            long remainder = a % b;
+            a = b;
+            b = remainder;
+        }
+        return a;
     }
 }

@@ -23,7 +23,7 @@ public final class RectanglePackingApplication {
     /** 可设为 CLASSData 根目录、其中一个编号子目录，或一个单独的矩形数据 TXT 文件。 */
     private static final Path INPUT_PATH = Path.of("data", "CLASSData");
     /** 每个矩形案例的结果写入该目录下与输入相同的相对层级。 */
-    private static final Path OUTPUT_DIRECTORY = Path.of("data", "CLASSDataResult_NOROTATION3");
+    private static final Path OUTPUT_DIRECTORY = Path.of("data", "CLASSDataResult_NOROTATION8");
     /** 全部矩形共用的旋转设置：true 可旋转 90°，false 保持输入方向。 */
     private static final boolean ALLOW_ROTATION = false;
 
@@ -80,8 +80,9 @@ public final class RectanglePackingApplication {
             System.out.printf(Locale.ROOT,
                     "矩形案例: %s，工件=%d，板材=%.3f x %.3f，允许旋转=%s%n",
                     caseFile.getFileName(), rectangles.size(), board.length(), board.width(), allowRotation);
-            LoadingTestRun.runWithImprove(
-                    materialFile.toString(), workpieceFile.toString(), caseOutputDirectory.toString());
+            LoadingTestRun.runRectangleWithImprove(
+                    materialFile.toString(), workpieceFile.toString(), caseOutputDirectory.toString(),
+                    allowRotation);
         }
     }
 
