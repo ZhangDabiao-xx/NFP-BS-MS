@@ -39,6 +39,18 @@ public final class RepackStatistics {
     public long sameBoardRebuildTimeMs;
     /** 成功减少板材数量的次数。 */
     public long boardReductions;
+    /** 邻域扩张、减板后恢复次数及本次使用过的最大接收板数。 */
+    public long neighborhoodExpansions;
+    public long neighborhoodResets;
+    public int maxReceiverCount;
+    /** 三板统计单独记录，保留原一两板指标供 Agent 对比。 */
+    public long tripleCandidatesGenerated;
+    public long tripleRepackAttempts;
+    public long tripleRepackTimeMs;
+    public long tripleBoardReductions;
+    /** 部分搬运必须在残余单板重建成功后计为提交。 */
+    public long committedPartialTransfers;
+    public long rejectedPartialTransfers;
     /** 是否因达到本阶段时间上限退出。 */
     public boolean timeLimitReached;
 

@@ -150,6 +150,15 @@ public final class RunReportWriter {
         report.addProperty("sameBoardRebuildAttempts", nonNegative(value.sameBoardRebuildAttempts));
         report.addProperty("sameBoardRebuildTimeMs", nonNegative(value.sameBoardRebuildTimeMs));
         report.addProperty("boardReductions", nonNegative(value.boardReductions));
+        report.addProperty("neighborhoodExpansions", nonNegative(value.neighborhoodExpansions));
+        report.addProperty("neighborhoodResets", nonNegative(value.neighborhoodResets));
+        report.addProperty("maxReceiverCount", value.maxReceiverCount);
+        report.addProperty("tripleCandidatesGenerated", nonNegative(value.tripleCandidatesGenerated));
+        report.addProperty("tripleRepackAttempts", nonNegative(value.tripleRepackAttempts));
+        report.addProperty("tripleRepackTimeMs", nonNegative(value.tripleRepackTimeMs));
+        report.addProperty("tripleBoardReductions", nonNegative(value.tripleBoardReductions));
+        report.addProperty("committedPartialTransfers", nonNegative(value.committedPartialTransfers));
+        report.addProperty("rejectedPartialTransfers", nonNegative(value.rejectedPartialTransfers));
         report.addProperty("timeLimitReached", value.timeLimitReached);
         return report;
     }

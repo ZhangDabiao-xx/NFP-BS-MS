@@ -98,7 +98,9 @@ final class ProjectCodeMap {
                 "普通件和优先件共用的全局重排循环，包括待拆板选择、候选对顺序与停止条件。",
                 List.of(
                         "当前方法已有 MAX_NO_IMPROVEMENT_SWEEPS 无减板停止保护，不能重复添加。",
+                        "初始至少十板且连续两轮未减板时加入三板候选，减板后恢复一两板；部分搬运不重置无减板轮数。",
                         "不得增加时间上限、改变问题约束、删除可行性校验或修改 multipSolve 的调用语义。",
+                        "必须保留残余单板重建和完整布局校验后才提交的事务边界，不得改写邻域扩张阈值。",
                         "当前候选对在 pairSet 中生成，pairRepackAttempts 的主要计算发生在后续 multipSolve 调用。",
                         "优先目标是提高 Sp、So、N 和利用率；时间只在解质量不下降时作为次级目标。"),
                 List.of(
@@ -149,8 +151,8 @@ final class ProjectCodeMap {
                 List.of(
                         "这是二维排样：容器面积为 inst.length * inst.width。",
                         "Instance 只有 length 和 width 字段，不存在 height。",
-                        "Box.volume 在本项目中表示矩形面积，可用于必要但非充分的面积上界过滤。",
-                        "过滤条件只能跳过面积已超过目标板材总面积的候选，不能排除面积仍可能可行的候选。"));
+                        "Box.volume 在本项目中表示矩形面积；候选同时支持减板和部分搬运。",
+                        "不得因移出板与接收板工件总面积超过接收板总容量而过滤候选，残余可放回移出板的部分搬运仍可能有效。"));
 
         EditPoint multipSolveBlockOrder = new EditPoint(
                 "multip-solve-block-order",
