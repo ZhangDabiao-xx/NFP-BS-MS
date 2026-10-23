@@ -83,7 +83,7 @@ class RectanglePackingApplicationTest {
     }
 
     @Test
-    void genericEntryStaysUnboundedAfterRectangleEntryInTheSameProcess() throws Exception {
+    void genericEntryUsesItsOwnStageBoundAfterRectangleEntryInTheSameProcess() throws Exception {
         Path input = temporary.resolve("CLASSData");
         Files.createDirectories(input.resolve("07"));
         Files.writeString(input.resolve("material_07.csv"), "Color,Length,Width\n1,10,10\n");
@@ -109,8 +109,20 @@ class RectanglePackingApplicationTest {
         }
         assertFalse(readReport(genericOutput).has("rectangleLowerBound"));
         assertFalse(Files.readString(genericOutput.resolve("optimized.log")).contains("Rectangle case lower bound="));
-        assertFalse(readReport(genericOutput).getAsJsonObject("repackMonitoring").getAsJsonObject("priority")
-                .get("stopReason").getAsString().startsWith("lower_bound_reached"));
+        JsonObject priority = readReport(genericOutput).getAsJsonObject("repackMonitoring").getAsJsonObject("priority");
+        assertEquals("per_item_allowed_orientations",
+                priority.getAsJsonObject("stageLowerBound").get("rotationPolicy").getAsString());
+        assertEquals(0, priority.getAsJsonObject("stageLowerBound").get("rotatableItemCount").getAsInt());
+        assertEquals(3, priority.getAsJsonObject("stageLowerBound").get("lowerBound").getAsInt());
+        assertFalse(readReport(rectangleOutput.resolve("A")).getAsJsonObject("repackMonitoring")
+                .getAsJsonObject("priority").has("stageLowerBound"));
+        // 同一 JVM 回到可旋转纯矩形入口，不能继承混排阶段的固定方向下界或元数据。
+        Path rectangleAgain = temporary.resolve("rectangle-after-mixed");
+        RectanglePackingApplication.run(source, rectangleAgain, true);
+        JsonObject again = readReport(rectangleAgain.resolve("A"));
+        assertEquals(2, again.getAsJsonObject("rectangleLowerBound").get("lowerBound").getAsInt());
+        assertTrue(again.getAsJsonObject("rectangleLowerBound").get("allowRotation").getAsBoolean());
+        assertFalse(again.getAsJsonObject("repackMonitoring").getAsJsonObject("priority").has("stageLowerBound"));
     }
 
     @Test

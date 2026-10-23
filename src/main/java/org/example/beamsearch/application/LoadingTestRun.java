@@ -217,6 +217,8 @@ public class LoadingTestRun {
         pwTotal.println("Actual average utilization (Uagv): "
                 + formatPercent(exeResult.actualAverageUtilization) + "%");
         writeSolveTiming(pwTotal, exeResult);
+        writeStageLowerBound(pwTotal, "Priority", exeResult.priorityRepackStatistics);
+        writeStageLowerBound(pwTotal, "Ordinary", exeResult.ordinaryRepackStatistics);
         if (exeResult.rectangleLowerBound != null) {
             pwTotal.println("Rectangle case lower bound: " + exeResult.rectangleLowerBound.lowerBound());
             pwTotal.println("Rectangle allow rotation: " + exeResult.rectangleLowerBound.allowRotation());
@@ -299,6 +301,21 @@ public class LoadingTestRun {
                 "Rectangle case lower bound=%d, allow rotation=%s, items=%d, calculation=%.3fms.%n",
                 bound.lowerBound(), allowRotation, items.length, bound.elapsedNanos() / 1_000_000.0);
         return bound;
+    }
+
+    /** 混排分别报告两个局部案例的下界，不与纯矩形整案例下界混为一项。 */
+    private static void writeStageLowerBound(PrintWriter writer, String stage, RepackStatistics statistics) {
+        if (statistics.stageLowerBound == null) {
+            return;
+        }
+        StageLowerBound bound = statistics.stageLowerBound;
+        writer.println(stage + " stage lower bound: " + bound.lowerBound());
+        writer.println(stage + " stage lower-bound scope: " + bound.scope());
+        writer.println(stage + " stage lower-bound items: " + bound.itemCount()
+                + " (rotatable=" + bound.rotatableItemCount() + ", fixed=" + bound.fixedItemCount() + ")");
+        writer.println(stage + " stage lower-bound calculation time: "
+                + formatSeconds(bound.elapsedNanos() / 1_000_000L) + "s");
+        writer.println(stage + " stage lower bound reached: " + (statistics.boardCountAfter == bound.lowerBound()));
     }
 
     /** 将初始排样、全局优化、插入与总排样时间写入结果文件。 */

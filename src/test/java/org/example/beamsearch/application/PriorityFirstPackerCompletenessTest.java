@@ -18,7 +18,7 @@ class PriorityFirstPackerCompletenessTest {
     Path temporary;
 
     @Test
-    void expandedNeighborhoodIsLoggedForMixedPerItemRotationWithoutEnablingRectangleBound() throws Exception {
+    void priorityStageBoundSkipsUnnecessaryExpansionAndStillInsertsOrdinaryItems() throws Exception {
         Path material = temporary.resolve("material.csv");
         Path workpieces = temporary.resolve("workpiece.csv");
         Path output = temporary.resolve("adaptive-output");
@@ -43,15 +43,18 @@ class PriorityFirstPackerCompletenessTest {
         }
         assertEquals(13, Files.readAllLines(output.resolve("optimized.csv")).size());
         String log = Files.readString(output.resolve("optimized.log"));
-        assertTrue(log.contains("[Repack neighborhood expanded] receivers: 2 -> 3"));
+        assertTrue(log.contains("[Stage lower bound] scope=priority_rectangles, lowerBound=10"));
+        assertFalse(log.contains("[Repack neighborhood expanded]"));
         assertFalse(log.contains("Rectangle case lower bound="));
         var report = JsonParser.parseString(Files.readString(output.resolve("llm/run-report.json")))
                 .getAsJsonObject();
         assertFalse(report.has("rectangleLowerBound"));
         var priority = report.getAsJsonObject("repackMonitoring").getAsJsonObject("priority");
-        assertEquals(1, priority.get("neighborhoodExpansions").getAsInt());
-        assertTrue(priority.get("tripleRepackAttempts").getAsLong() > 0);
-        assertEquals(3, priority.get("maxReceiverCount").getAsInt());
+        assertEquals(0, priority.get("neighborhoodExpansions").getAsInt());
+        assertEquals(0, priority.get("tripleRepackAttempts").getAsLong());
+        assertFalse(priority.get("executed").getAsBoolean());
+        assertEquals(10, priority.getAsJsonObject("stageLowerBound").get("lowerBound").getAsInt());
+        assertTrue(Files.readString(output.resolve("total.txt")).contains("Priority stage lower bound: 10"));
         assertEquals(0, report.get("unplacedWorkpieceCount").getAsInt());
     }
 

@@ -10,6 +10,7 @@ import org.example.beamsearch.common.RepackStatistics;
 import org.example.beamsearch.common.Solution;
 import org.example.beamsearch.common.Space;
 import org.example.beamsearch.common.SpaceComparator;
+import org.example.beamsearch.common.StageLowerBound;
 import org.example.beamsearch.spacemanager.SpaceManager;
 
 import java.util.ArrayList;
@@ -52,7 +53,17 @@ public final class GlobalRepackOptimizer {
         return optimize(instance, result, timeLimitMs, 0);
     }
 
-    /** 显式下界只由纯矩形调用方提供；0 保留原混合排样行为。 */
+    /** 混排阶段显式启用下界，仍复用原有减板判断、合法性检查和自适应邻域。 */
+    static ExecutionResult optimizeWithStageLowerBound(Instance instance,
+                                                       ExecutionResult result,
+                                                       long timeLimitMs,
+                                                       StageLowerBound stageLowerBound) {
+        ExecutionResult optimized = optimize(instance, result, timeLimitMs, stageLowerBound.lowerBound());
+        optimized.repackStatistics.stageLowerBound = stageLowerBound;
+        return optimized;
+    }
+
+    /** 下界对应调用方提供的完整独立物品集合；0 保留不启用下界的兼容入口。 */
     public static ExecutionResult optimize(Instance instance,
                                             ExecutionResult result,
                                             long timeLimitMs,
@@ -79,7 +90,7 @@ public final class GlobalRepackOptimizer {
         }
         if (lowerBound > 0 && boardCountBefore == lowerBound) {
             statistics.stopReason = "lower_bound_reached_before_optimization";
-            System.out.println("Rectangle lower bound reached before optimization: " + lowerBound + " boards.");
+            System.out.println("Packing lower bound reached before optimization: " + lowerBound + " boards.");
         } else if (boardCountBefore >= 2 && timeLimitMs > 0) {
             Comparator<Space> comparator = SpaceComparator.getSpaceComparator(instance, 1);
             SpaceManager spaceManager = new SpaceManager(comparator);
@@ -125,10 +136,10 @@ public final class GlobalRepackOptimizer {
         return result;
     }
 
-    /** 下界相等只能为完整合法的解证明最优；该校验不在混合排样路径执行。 */
+    /** 下界相等只能为完整合法的阶段解证明板数最优；纯矩形和混排阶段共用该校验。 */
     private static void validateBoundedResult(Instance instance, ExecutionResult result, int lowerBound) {
         if (result.solutions.size() < lowerBound) {
-            throw new IllegalStateException("Rectangle lower bound exceeds the feasible board count.");
+            throw new IllegalStateException("Packing lower bound exceeds the feasible board count.");
         }
         IdentityHashMap<Box, Integer> indices = new IdentityHashMap<>();
         int[] placed = new int[instance.boxes.length];

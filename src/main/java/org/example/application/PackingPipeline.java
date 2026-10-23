@@ -18,9 +18,9 @@ import java.util.List;
  */
 public final class PackingPipeline {
     /** NFP 拼接结果目录名称。 */
-    private static final String NFP_RESULT_DIRECTORY_NAME = "BA02_NFP";
+    private static final String NFP_RESULT_DIRECTORY_NAME = "BA04_NFP";
     /** 矩形排样结果目录名称。 */
-    private static final String PACKING_RESULT_DIRECTORY_NAME = "BA02_Packing";
+    private static final String PACKING_RESULT_DIRECTORY_NAME = "BA04_Packing";
     /** NFP 到排样的中间文件目录名称。 */
     private static final String BRIDGE_DIRECTORY_NAME = "material";
 

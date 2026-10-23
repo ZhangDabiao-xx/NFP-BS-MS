@@ -894,7 +894,7 @@ public class BeamSearch {
         return ImproveByRepack(executionResult, maxTime, random, 0);
     }
 
-    /** 0 禁用下界停止，原有混合排样调用继续保持此值。 */
+    /** 0 禁用下界停止；正数对应纯矩形整案例或混排当前阶段的矩形集合下界。 */
     public ExecutionResult ImproveByRepack(ExecutionResult executionResult, double maxTime, Random random,
                                            int lowerBound) {
         if (lowerBound < 0) {
@@ -914,7 +914,7 @@ public class BeamSearch {
         statistics.maxReceiverCount = receiverLimit;
         lastRepackStatistics = statistics;
         if (lowerBound > 0 && containerNum < lowerBound) {
-            throw new IllegalStateException("Rectangle lower bound exceeds the current board count.");
+            throw new IllegalStateException("Packing lower bound exceeds the current board count.");
         }
         if (lowerBound > 0 && containerNum == lowerBound) {
             statistics.stopReason = "lower_bound_reached_before_optimization";
@@ -1202,7 +1202,7 @@ public class BeamSearch {
                 // 仅在完整新解已提交、实际板数已减少后判断，不把局部未排面积下降当成减板。
                 if (lowerBound > 0 && containerNum == lowerBound) {
                     statistics.stopReason = "lower_bound_reached_after_reduction";
-                    System.out.println("Rectangle lower bound reached after reduction: " + lowerBound + " boards.");
+                    System.out.println("Packing lower bound reached after reduction: " + lowerBound + " boards.");
                     break;
                 }
                 continue;

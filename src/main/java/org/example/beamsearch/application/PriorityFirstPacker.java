@@ -8,6 +8,7 @@ import org.example.beamsearch.common.Instance;
 import org.example.beamsearch.common.RepackStatistics;
 import org.example.beamsearch.common.Space;
 import org.example.beamsearch.common.SpaceComparator;
+import org.example.beamsearch.common.StageLowerBound;
 import org.example.beamsearch.spacemanager.SpaceManager;
 import org.example.beamsearch.lb.solver.RectangleLowerBoundSolver;
 
@@ -156,11 +157,15 @@ public final class PriorityFirstPacker {
                     totalBudgetMs);
             long ordinarySolveTimeMs = elapsedMillis(ordinarySolveStartNanos);
 
+            // 无优先件时，全部普通矩形就是本阶段案例；初始解完成后仅计算一次下界。
+            StageLowerBound ordinaryBound = StageLowerBoundCalculator.calculate(
+                    ordinaryInstance, StageLowerBoundCalculator.ORDINARY);
             long ordinaryOptimizeStartNanos = System.nanoTime();
-            ordinaryResult = GlobalRepackOptimizer.optimize(
+            ordinaryResult = GlobalRepackOptimizer.optimizeWithStageLowerBound(
                     ordinaryInstance,
                     ordinaryResult,
-                    PackingRuntimeConfig.capRepackTimeMs(totalBudgetMs));
+                    PackingRuntimeConfig.capRepackTimeMs(totalBudgetMs),
+                    ordinaryBound);
             long ordinaryOptimizeTimeMs = elapsedMillis(ordinaryOptimizeStartNanos);
             requireAllWorkpiecesPlaced(ordinaryResult, ordinaryInstance, "ordinary packing");
 
@@ -195,6 +200,11 @@ public final class PriorityFirstPacker {
                 totalBudgetMs);
         long prioritySolveTimeMs = elapsedMillis(prioritySolveStartNanos);
 
+        // 纯矩形入口继续使用原先按 ALLOW_ROTATION 计算的整案例下界，不重复计算。
+        // 混排只对组合后的优先矩形计算局部下界，并保留每个 Box 的实际合法方向。
+        StageLowerBound priorityBound = rectangleLowerBound == null
+                ? StageLowerBoundCalculator.calculate(priorityInstance, StageLowerBoundCalculator.PRIORITY)
+                : null;
         // 目标函数首先最小化 Sp，因此必须在普通件插入前完成优先件全局优化。
         // 优化结束后 GlobalRepackOptimizer 会重新生成 boardStates，第二阶段
         // 只接收这批最终优先件板材，不会因为普通件插入而新增优先件板材。
@@ -205,7 +215,8 @@ public final class PriorityFirstPacker {
         long priorityOptimizeStartNanos = System.nanoTime();
         long priorityRepackBudgetMs = PackingRuntimeConfig.capRepackTimeMs(priorityOptimizeTimeLimitMs);
         priorityResult = rectangleLowerBound == null
-                ? GlobalRepackOptimizer.optimize(priorityInstance, priorityResult, priorityRepackBudgetMs)
+                ? GlobalRepackOptimizer.optimizeWithStageLowerBound(
+                        priorityInstance, priorityResult, priorityRepackBudgetMs, priorityBound)
                 : GlobalRepackOptimizer.optimize(
                         priorityInstance, priorityResult, priorityRepackBudgetMs, rectangleLowerBound);
         long priorityOptimizeTimeMs = elapsedMillis(priorityOptimizeStartNanos);
@@ -258,16 +269,21 @@ public final class PriorityFirstPacker {
                     totalBudgetMs);
             ordinarySolveTimeMs = elapsedMillis(ordinarySolveStartNanos);
 
+            // 仅包含插入后剩余的普通件，不能把已经进入优先板的物品再次计入下界。
+            // 下界独立计时，不消耗优先/普通件共享的优化预算，但计入总排样耗时。
+            StageLowerBound ordinaryBound = StageLowerBoundCalculator.calculate(
+                    remainingOrdinaryInstance, StageLowerBoundCalculator.REMAINING_ORDINARY);
             // 这里只优化普通件新开的板材。由于优先件板材已经在上一步锁定，
             // 该优化不会改变 Sp，只会尽量减少 So。普通件初始排样耗时不扣减
             // 此处预算，剩余时间只由已经发生的优先件全局优化决定。
             long ordinaryOptimizeStartNanos = System.nanoTime();
-            remainingResult = GlobalRepackOptimizer.optimize(
+            remainingResult = GlobalRepackOptimizer.optimizeWithStageLowerBound(
                     remainingOrdinaryInstance,
                     remainingResult,
                     PackingRuntimeConfig.capRepackTimeMs(remainingOptimizationBudget(
                             totalBudgetMs,
-                            usedOptimizationTimeMs)));
+                            usedOptimizationTimeMs)),
+                    ordinaryBound);
             ordinaryOptimizeTimeMs = elapsedMillis(ordinaryOptimizeStartNanos);
             requireAllWorkpiecesPlaced(
                     remainingResult, remainingOrdinaryInstance, "remaining ordinary packing");

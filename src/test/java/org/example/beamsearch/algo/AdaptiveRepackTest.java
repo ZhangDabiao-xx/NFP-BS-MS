@@ -22,7 +22,7 @@ class AdaptiveRepackTest {
             assertEquals(3, run.result.solutions.size());
             assertEquals(1, run.statistics.committedPartialTransfers);
             assertEquals(0, run.statistics.neighborhoodExpansions);
-            assertEquals(25, run.statistics.noImprovementSweeps);
+            assertEquals(configuredSweepLimit(), run.statistics.noImprovementSweeps);
             assertComplete(run.result, 6);
         }
     }
@@ -61,7 +61,7 @@ class AdaptiveRepackTest {
         Run run = run(search, seed(instance, repeated(9, 2)), 0);
         assertEquals(0, run.statistics.tripleRepackAttempts);
         assertEquals(0, run.statistics.neighborhoodExpansions);
-        assertEquals(25, run.statistics.noImprovementSweeps);
+        assertEquals(configuredSweepLimit(), run.statistics.noImprovementSweeps);
     }
 
     @Test
@@ -73,7 +73,7 @@ class AdaptiveRepackTest {
         assertEquals(1, run.statistics.neighborhoodExpansions);
         assertEquals(0, run.statistics.neighborhoodResets);
         assertEquals(1, run.statistics.committedPartialTransfers);
-        assertEquals(25, run.statistics.noImprovementSweeps);
+        assertEquals(configuredSweepLimit(), run.statistics.noImprovementSweeps);
         assertTrue(run.statistics.tripleRepackAttempts > 1);
         assertTrue(run.log.contains("[Repack neighborhood expanded] receivers: 2 -> 3"));
         assertComplete(run.result, 20);
@@ -232,6 +232,17 @@ class AdaptiveRepackTest {
         int[] values = new int[boards];
         Arrays.fill(values, count);
         return values;
+    }
+
+    /** 无减板保护是用户可调整参数，回归测试不固定某一次实验的参数值。 */
+    private static int configuredSweepLimit() {
+        try {
+            var field = BeamSearch.class.getDeclaredField("MAX_NO_IMPROVEMENT_SWEEPS");
+            field.setAccessible(true);
+            return field.getInt(null);
+        } catch (ReflectiveOperationException exception) {
+            throw new AssertionError(exception);
+        }
     }
 
     private static ExecutionResult seed(Instance instance, int... counts) {

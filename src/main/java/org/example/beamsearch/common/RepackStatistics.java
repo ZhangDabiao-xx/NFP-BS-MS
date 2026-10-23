@@ -19,6 +19,8 @@ public final class RepackStatistics {
     /** 重排前后的板材数量。 */
     public int boardCountBefore;
     public int boardCountAfter;
+    /** 混排当前阶段的逐件旋转下界；纯矩形整案例下界仍由 rectangleLowerBound 单独记录。 */
+    public StageLowerBound stageLowerBound;
     /** 外层重排循环次数及其中完成的无减板扫描轮数。 */
     public long outerLoopIterations;
     public int noImprovementSweeps;

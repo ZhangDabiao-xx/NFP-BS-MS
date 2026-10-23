@@ -107,6 +107,9 @@ public final class RunReportWriter {
         timing.addProperty("ordinaryInsertion", nonNegative(result.ordinaryInsertionTimeMs));
         timing.addProperty("ordinarySolve", nonNegative(result.ordinarySolveTimeMs));
         timing.addProperty("ordinaryOptimize", nonNegative(result.ordinaryOptimizeTimeMs));
+        // 下界开销单列；totalOptimization 仍只统计正式优化，totalPacking 包含下界计算。
+        timing.addProperty("priorityLowerBound", stageLowerBoundTimeMs(result.priorityRepackStatistics));
+        timing.addProperty("ordinaryLowerBound", stageLowerBoundTimeMs(result.ordinaryRepackStatistics));
         timing.addProperty("initialPacking", nonNegative(result.initialPackingTimeMs));
         timing.addProperty("totalOptimization", nonNegative(result.totalSolveTimeMs));
         timing.addProperty("totalPacking", nonNegative(result.totalPackingTimeMs));
@@ -160,7 +163,33 @@ public final class RunReportWriter {
         report.addProperty("committedPartialTransfers", nonNegative(value.committedPartialTransfers));
         report.addProperty("rejectedPartialTransfers", nonNegative(value.rejectedPartialTransfers));
         report.addProperty("timeLimitReached", value.timeLimitReached);
+        if (value.stageLowerBound != null) {
+            var bound = value.stageLowerBound;
+            var calculation = bound.calculation();
+            JsonObject detail = new JsonObject();
+            detail.addProperty("scope", bound.scope());
+            detail.addProperty("rotationPolicy", "per_item_allowed_orientations");
+            detail.addProperty("itemCount", bound.itemCount());
+            detail.addProperty("rotatableItemCount", bound.rotatableItemCount());
+            detail.addProperty("fixedItemCount", bound.fixedItemCount());
+            detail.addProperty("lowerBound", bound.lowerBound());
+            detail.addProperty("areaBound", calculation.areaBound());
+            detail.addProperty("dffBound", calculation.dffBound());
+            detail.addProperty("bmBound", calculation.bmBound());
+            detail.addProperty("ccm1Bound", calculation.ccm1Bound());
+            detail.addProperty("calculationTimeMs", bound.elapsedNanos() / 1_000_000.0);
+            detail.addProperty("initialBoardCount", value.boardCountBefore);
+            detail.addProperty("finalBoardCount", value.boardCountAfter);
+            detail.addProperty("boardGap", value.boardCountAfter - bound.lowerBound());
+            detail.addProperty("reached", value.boardCountAfter == bound.lowerBound());
+            report.add("stageLowerBound", detail);
+        }
         return report;
+    }
+
+    private static long stageLowerBoundTimeMs(RepackStatistics statistics) {
+        return statistics == null || statistics.stageLowerBound == null
+                ? 0L : statistics.stageLowerBound.elapsedNanos() / 1_000_000L;
     }
 
     /**

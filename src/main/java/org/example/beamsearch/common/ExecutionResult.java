@@ -19,7 +19,7 @@ public class ExecutionResult {
     /** 最终结果中只用于普通件新板的板材数，即 So。 */
     public int ordinaryBoardCount;
 
-    /** 仅纯矩形入口按完整案例计算一次；混合排样保持 null，不启用下界停止。 */
+    /** 仅纯矩形入口按完整案例计算一次；混排的阶段下界分别记录在两阶段 RepackStatistics 中。 */
     public RectangleLowerBoundSolver.Result rectangleLowerBound;
 
     /** 优先件新板求解阶段实际耗时，单位为毫秒。 */
