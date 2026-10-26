@@ -10,7 +10,6 @@ import org.example.beamsearch.common.RepackStatistics;
 import org.example.beamsearch.common.Solution;
 import org.example.beamsearch.common.Space;
 import org.example.beamsearch.common.SpaceComparator;
-import org.example.beamsearch.common.StageLowerBound;
 import org.example.beamsearch.spacemanager.SpaceManager;
 
 import java.util.ArrayList;
@@ -51,16 +50,6 @@ public final class GlobalRepackOptimizer {
                                             ExecutionResult result,
                                             long timeLimitMs) {
         return optimize(instance, result, timeLimitMs, 0);
-    }
-
-    /** 混排阶段显式启用下界，仍复用原有减板判断、合法性检查和自适应邻域。 */
-    static ExecutionResult optimizeWithStageLowerBound(Instance instance,
-                                                       ExecutionResult result,
-                                                       long timeLimitMs,
-                                                       StageLowerBound stageLowerBound) {
-        ExecutionResult optimized = optimize(instance, result, timeLimitMs, stageLowerBound.lowerBound());
-        optimized.repackStatistics.stageLowerBound = stageLowerBound;
-        return optimized;
     }
 
     /** 下界对应调用方提供的完整独立物品集合；0 保留不启用下界的兼容入口。 */

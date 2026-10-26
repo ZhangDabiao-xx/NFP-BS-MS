@@ -83,7 +83,7 @@ class RectanglePackingApplicationTest {
     }
 
     @Test
-    void genericEntryUsesItsOwnStageBoundAfterRectangleEntryInTheSameProcess() throws Exception {
+    void mixedEntryDisablesBoundsWhileRectangleEntriesKeepTheirOwnBoundsInTheSameProcess() throws Exception {
         Path input = temporary.resolve("CLASSData");
         Files.createDirectories(input.resolve("07"));
         Files.writeString(input.resolve("material_07.csv"), "Color,Length,Width\n1,10,10\n");
@@ -110,13 +110,13 @@ class RectanglePackingApplicationTest {
         assertFalse(readReport(genericOutput).has("rectangleLowerBound"));
         assertFalse(Files.readString(genericOutput.resolve("optimized.log")).contains("Rectangle case lower bound="));
         JsonObject priority = readReport(genericOutput).getAsJsonObject("repackMonitoring").getAsJsonObject("priority");
-        assertEquals("per_item_allowed_orientations",
-                priority.getAsJsonObject("stageLowerBound").get("rotationPolicy").getAsString());
-        assertEquals(0, priority.getAsJsonObject("stageLowerBound").get("rotatableItemCount").getAsInt());
-        assertEquals(3, priority.getAsJsonObject("stageLowerBound").get("lowerBound").getAsInt());
+        // 同一进程切换到混排时不计算阶段下界，也不能继承前一个矩形案例的停止条件。
+        assertFalse(priority.has("stageLowerBound"));
+        assertFalse(priority.get("stopReason").getAsString().startsWith("lower_bound_reached"));
+        assertFalse(Files.readString(genericOutput.resolve("optimized.log")).contains("[Stage lower bound]"));
         assertFalse(readReport(rectangleOutput.resolve("A")).getAsJsonObject("repackMonitoring")
                 .getAsJsonObject("priority").has("stageLowerBound"));
-        // 同一 JVM 回到可旋转纯矩形入口，不能继承混排阶段的固定方向下界或元数据。
+        // 同一 JVM 回到可旋转纯矩形入口，仍应计算并使用该案例自己的下界。
         Path rectangleAgain = temporary.resolve("rectangle-after-mixed");
         RectanglePackingApplication.run(source, rectangleAgain, true);
         JsonObject again = readReport(rectangleAgain.resolve("A"));

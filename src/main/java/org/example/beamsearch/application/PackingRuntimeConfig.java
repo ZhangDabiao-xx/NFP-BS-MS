@@ -12,7 +12,7 @@ public final class PackingRuntimeConfig {
     public static final String AGENT_EXPERIMENT_BUDGET_PROPERTY = "nfp.agent.packingBudgetMs";
 
     /** 单案例全局重排优化预算：十分钟。 */
-    public static final long DEFAULT_TOTAL_SOLVE_TIME_MS = 600_000L;
+    public static final long DEFAULT_TOTAL_SOLVE_TIME_MS = 800_000L;
     /** 动态 Beam Search 不限制最大宽度。 */
     public static final int DEFAULT_MAX_BEAM_WIDTH = Integer.MAX_VALUE;
     /** 全局重排除总预算外不再额外截断。 */
@@ -22,9 +22,9 @@ public final class PackingRuntimeConfig {
     /** 每张新板在初始 Beam Search 中的常规搜索预算。 */
     public static final long DEFAULT_INITIAL_BOARD_TIME_MS = 1_000L;
     /** 初始 Beam Search 的最大宽度。 */
-    public static final int DEFAULT_INITIAL_MAX_BEAM_WIDTH = 64;
+    public static final int DEFAULT_INITIAL_MAX_BEAM_WIDTH = 128;
     /** 普通件尝试插入优先板阶段的总时间上限。 */
-    public static final long DEFAULT_ORDINARY_INSERTION_TIME_MS = 10_000L;
+    public static final long DEFAULT_ORDINARY_INSERTION_TIME_MS = 100_000L;
 
     private PackingRuntimeConfig() {
     }

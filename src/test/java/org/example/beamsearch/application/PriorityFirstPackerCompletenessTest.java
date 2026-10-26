@@ -18,7 +18,7 @@ class PriorityFirstPackerCompletenessTest {
     Path temporary;
 
     @Test
-    void priorityStageBoundSkipsUnnecessaryExpansionAndStillInsertsOrdinaryItems() throws Exception {
+    void mixedPriorityOptimizationDoesNotStopAtTheLowerBoundAndPlacesAllItems() throws Exception {
         Path material = temporary.resolve("material.csv");
         Path workpieces = temporary.resolve("workpiece.csv");
         Path output = temporary.resolve("adaptive-output");
@@ -43,18 +43,18 @@ class PriorityFirstPackerCompletenessTest {
         }
         assertEquals(13, Files.readAllLines(output.resolve("optimized.csv")).size());
         String log = Files.readString(output.resolve("optimized.log"));
-        assertTrue(log.contains("[Stage lower bound] scope=priority_rectangles, lowerBound=10"));
-        assertFalse(log.contains("[Repack neighborhood expanded]"));
+        // 混排不再计算阶段下界，达到十板后也应按原优化规则继续搜索。
+        assertFalse(log.contains("[Stage lower bound]"));
+        assertFalse(log.contains("Packing lower bound reached"));
         assertFalse(log.contains("Rectangle case lower bound="));
         var report = JsonParser.parseString(Files.readString(output.resolve("llm/run-report.json")))
                 .getAsJsonObject();
         assertFalse(report.has("rectangleLowerBound"));
         var priority = report.getAsJsonObject("repackMonitoring").getAsJsonObject("priority");
-        assertEquals(0, priority.get("neighborhoodExpansions").getAsInt());
-        assertEquals(0, priority.get("tripleRepackAttempts").getAsLong());
-        assertFalse(priority.get("executed").getAsBoolean());
-        assertEquals(10, priority.getAsJsonObject("stageLowerBound").get("lowerBound").getAsInt());
-        assertTrue(Files.readString(output.resolve("total.txt")).contains("Priority stage lower bound: 10"));
+        assertTrue(priority.get("executed").getAsBoolean());
+        assertFalse(priority.has("stageLowerBound"));
+        assertFalse(priority.get("stopReason").getAsString().startsWith("lower_bound_reached"));
+        assertFalse(Files.readString(output.resolve("total.txt")).contains("stage lower bound"));
         assertEquals(0, report.get("unplacedWorkpieceCount").getAsInt());
     }
 
@@ -96,7 +96,7 @@ class PriorityFirstPackerCompletenessTest {
 
         String log = Files.readString(output.resolve("optimized.log"));
         assertTrue(log.contains("Initial-packing policy"));
-        assertTrue(log.contains("Ordinary insertion budget=10000ms."));
+        assertTrue(log.contains("Ordinary insertion budget=" + PackingRuntimeConfig.ordinaryInsertionTimeMs() + "ms."));
         assertFalse(log.contains("Rectangle case lower bound="));
         assertFalse(JsonParser.parseString(Files.readString(output.resolve("llm/run-report.json")))
                 .getAsJsonObject().has("rectangleLowerBound"));

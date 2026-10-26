@@ -17,7 +17,7 @@ public class BeamSearch {
      * 连续完成多少轮“全部低利用率板材均未减少板材数量”后停止全局重排。
      * 该值只作为无改进保护，真正的主停止条件仍然是 maxTime。
      */
-    private static final int MAX_NO_IMPROVEMENT_SWEEPS = 15;
+    private static final int MAX_NO_IMPROVEMENT_SWEEPS = 20;
 
     /** 按本阶段初始板数决定是否允许扩张；后续部分搬运不重置无减板轮数。 */
     private static final int MIN_INITIAL_BOARDS_FOR_EXPANSION = 10;

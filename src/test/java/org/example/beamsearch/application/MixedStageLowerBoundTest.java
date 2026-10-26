@@ -11,22 +11,19 @@ import static org.example.beamsearch.application.StageLowerBoundCalculatorTest.i
 
 class MixedStageLowerBoundTest {
     @Test
-    void reachingPriorityBoundStillRunsInsertionAndUsesBothItemsRotationRules() {
-        Box priority = box("priority-block", 2, 6, 10, false);
+    void priorityOptimizationRunsAtTheAreaBoundAndPreservesRotationRules() {
+        // 优先件已经占满两板，仍应进入优化；普通件独立排样以隔离插入预算设置。
+        Box priority = box("priority-block", 2, 10, 10, false);
         Box ordinaryFixed = ordinary(box("ordinary-fixed", 1, 4, 10, false));
         Box ordinaryRotating = ordinary(box("ordinary-rotating", 1, 10, 4, true));
         ExecutionResult result = PriorityFirstPacker.solveWithTotalTime(
                 List.of(instance(priority, ordinaryFixed, ordinaryRotating)), 1000);
         assertEquals(2, result.priorityBoardCount);
-        assertEquals(0, result.ordinaryBoardCount);
+        assertEquals(1, result.ordinaryBoardCount);
         assertEquals(4, pieceCount(result));
         assertNull(result.rectangleLowerBound);
-        assertFalse(result.priorityRepackStatistics.executed);
-        assertEquals("lower_bound_reached_before_optimization", result.priorityRepackStatistics.stopReason);
-        StageLowerBound bound = result.priorityRepackStatistics.stageLowerBound;
-        assertEquals(2, bound.lowerBound());
-        assertEquals(2, bound.itemCount());
-        assertEquals("no_remaining_ordinary_workpieces", result.ordinaryRepackStatistics.stopReason);
+        assertOptimizationWithoutBound(result.priorityRepackStatistics);
+        assertEquals("insufficient_boards", result.ordinaryRepackStatistics.stopReason);
         assertNull(result.ordinaryRepackStatistics.stageLowerBound);
         for (Solution board : result.solutions) {
             for (PlacedCuboid piece : board.getPlacedCuboid()) {
@@ -43,38 +40,33 @@ class MixedStageLowerBoundTest {
     }
 
     @Test
-    void remainingOrdinaryBoundExcludesItemsAlreadyInsertedInPriorityBoards() {
-        Box priority = box("priority-block", 1, 6, 10, false);
-        Box inserted = ordinary(box("inserted", 1, 4, 10, false));
+    void remainingOrdinaryOptimizationRunsEvenWhenItsAreaBoundIsReached() {
+        Box priority = box("priority-block", 1, 10, 10, false);
         Box remaining = ordinary(box("remaining", 2, 10, 10, true));
         ExecutionResult result = PriorityFirstPacker.solveWithTotalTime(
-                List.of(instance(priority, inserted, remaining)), 1000);
+                List.of(instance(priority, remaining)), 1000);
         assertEquals(1, result.priorityBoardCount);
         assertEquals(2, result.ordinaryBoardCount);
-        assertEquals(4, pieceCount(result));
-        StageLowerBound bound = result.ordinaryRepackStatistics.stageLowerBound;
-        assertEquals(StageLowerBoundCalculator.REMAINING_ORDINARY, bound.scope());
-        assertEquals(2, bound.itemCount());
-        assertEquals(2, bound.lowerBound());
-        assertFalse(result.ordinaryRepackStatistics.executed);
-        assertEquals("lower_bound_reached_before_optimization", result.ordinaryRepackStatistics.stopReason);
+        assertEquals(3, pieceCount(result));
+        assertNull(result.priorityRepackStatistics.stageLowerBound);
+        assertOptimizationWithoutBound(result.ordinaryRepackStatistics);
         assertTrue(result.unplacedBoxes.isEmpty());
     }
 
     @Test
-    void ordinaryOnlyCasesHaveAnIndependentBoundAndNoPriorityCalculation() {
+    void ordinaryOnlyMixedCasesAlsoOptimizeWithoutALowerBound() {
         Box fixed = ordinary(box("fixed", 2, 10, 10, false));
         ExecutionResult result = PriorityFirstPacker.solveWithTotalTime(List.of(instance(fixed)), 1000);
         assertEquals(0, result.priorityBoardCount);
         assertEquals(2, result.ordinaryBoardCount);
         assertNull(result.priorityRepackStatistics.stageLowerBound);
-        assertEquals(StageLowerBoundCalculator.ORDINARY, result.ordinaryRepackStatistics.stageLowerBound.scope());
-        assertEquals(2, result.ordinaryRepackStatistics.stageLowerBound.lowerBound());
-        assertFalse(result.ordinaryRepackStatistics.executed);
+        assertOptimizationWithoutBound(result.ordinaryRepackStatistics);
+        assertEquals(2, pieceCount(result));
+        assertTrue(result.unplacedBoxes.isEmpty());
     }
 
     @Test
-    void reductionStopsAtComputedMixedRotationBoundInEitherStage() {
+    void unboundedOptimizationContinuesAfterReductionInEitherStage() {
         for (String scope : List.of(StageLowerBoundCalculator.PRIORITY, StageLowerBoundCalculator.REMAINING_ORDINARY)) {
             Box fixed = box("fixed", 2, 6, 6, false);
             Box rotating = box("rotating", 2, 6, 4, true);
@@ -91,18 +83,24 @@ class MixedStageLowerBoundTest {
             }
             seed.solution = seed.solutions.get(3);
             seed.setAvgUtilization();
-            StageLowerBound bound = StageLowerBoundCalculator.calculate(instance, scope);
-            assertEquals(2, bound.lowerBound());
-            assertEquals(2, bound.rotatableItemCount());
-            ExecutionResult result = GlobalRepackOptimizer.optimizeWithStageLowerBound(instance, seed, 1000, bound);
+            // 与混排入口一致，不传下界；减到两板后仍继续扫描而不是按下界退出。
+            ExecutionResult result = GlobalRepackOptimizer.optimize(instance, seed, 1000);
             assertEquals(2, result.solutions.size());
             assertEquals(4, pieceCount(result));
             assertEquals(2, result.boardStates.size());
-            assertSame(bound, result.repackStatistics.stageLowerBound);
+            assertOptimizationWithoutBound(result.repackStatistics);
             assertEquals(2, result.repackStatistics.boardReductions);
-            assertEquals("lower_bound_reached_after_reduction", result.repackStatistics.stopReason);
+            assertTrue(result.repackStatistics.noImprovementSweeps > 0);
             assertTrue(result.unplacedBoxes.isEmpty());
         }
+    }
+
+    /** 即使板数已最优，混排仍应尝试重排，且不产生阶段下界元数据。 */
+    private static void assertOptimizationWithoutBound(RepackStatistics statistics) {
+        assertTrue(statistics.executed);
+        assertNull(statistics.stageLowerBound);
+        assertFalse(statistics.stopReason.startsWith("lower_bound_reached"));
+        assertTrue(statistics.pairRepackAttempts > 0);
     }
 
     private static Box ordinary(Box box) {
