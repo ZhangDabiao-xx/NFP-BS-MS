@@ -1,6 +1,7 @@
 package org.example.application;
 
 import org.example.beamsearch.application.NFPToBeamSearchBridge;
+import org.example.beamsearch.application.PackingConvergenceRecorder;
 import org.example.nfp.BatchBlockStitcher;
 
 import java.io.IOException;
@@ -18,9 +19,9 @@ import java.util.List;
  */
 public final class PackingPipeline {
     /** NFP 拼接结果目录名称。 */
-    private static final String NFP_RESULT_DIRECTORY_NAME = "BA04_NFP";
+    private static final String NFP_RESULT_DIRECTORY_NAME = "BA06_NFP";
     /** 矩形排样结果目录名称。 */
-    private static final String PACKING_RESULT_DIRECTORY_NAME = "BA04_Packing";
+    private static final String PACKING_RESULT_DIRECTORY_NAME = "BA06_Packing";
     /** NFP 到排样的中间文件目录名称。 */
     private static final String BRIDGE_DIRECTORY_NAME = "material";
 
@@ -34,8 +35,13 @@ public final class PackingPipeline {
      * @throws IOException 当案例输入不可用或自动创建的结果目录无法读写时抛出。
      */
     public static void run(Path casePath) throws IOException {
+        run(casePath, null);
+    }
+
+    /** 只有混合入口显式传入启用配置时，才为每个案例采集收敛数据。 */
+    public static void run(Path casePath, PackingConvergenceRecorder.Config statistics) throws IOException {
         OutputDirectories outputDirectories = resolveOutputDirectories(casePath);
-        run(casePath, outputDirectories.nfpResultDirectory(), outputDirectories.packingResultDirectory());
+        run(casePath, outputDirectories.nfpResultDirectory(), outputDirectories.packingResultDirectory(), statistics);
     }
 
     /**
@@ -49,6 +55,14 @@ public final class PackingPipeline {
     public static void run(Path casePath,
                            Path nfpResultDirectory,
                            Path packingResultDirectory) throws IOException {
+        run(casePath, nfpResultDirectory, packingResultDirectory, null);
+    }
+
+    /** 保留原有无统计入口；统计文件独立写入配置指定目录，不改变排样输出路径。 */
+    public static void run(Path casePath,
+                           Path nfpResultDirectory,
+                           Path packingResultDirectory,
+                           PackingConvergenceRecorder.Config statistics) throws IOException {
         Files.createDirectories(nfpResultDirectory);
         Files.createDirectories(packingResultDirectory);
         List<Path> caseJsonFiles = resolveCaseJsonFiles(casePath);
@@ -61,12 +75,17 @@ public final class PackingPipeline {
             if (nfpResultFile == null || !Files.isRegularFile(nfpResultFile)) {
                 throw new IOException("NFP 拼接结果不存在: " + nfpResultFile);
             }
-            Path casePackingDirectory = NFPToBeamSearchBridge.packCase(
-                    nfpResultFile,
-                    caseJsonFile,
-                    packingResultDirectory.resolve(BRIDGE_DIRECTORY_NAME),
-                    packingResultDirectory);
-            System.out.println("案例完成: " + caseJsonFile.getFileName() + " -> " + casePackingDirectory);
+            String fileName = caseJsonFile.getFileName().toString();
+            String caseName = fileName.substring(0, fileName.lastIndexOf('.'));
+            // 作用域覆盖一次完整排样，退出后统一写盘；不会把 NFP 时间计入阶段曲线。
+            try (PackingConvergenceRecorder ignored = PackingConvergenceRecorder.openCase(statistics, caseName)) {
+                Path casePackingDirectory = NFPToBeamSearchBridge.packCase(
+                        nfpResultFile,
+                        caseJsonFile,
+                        packingResultDirectory.resolve(BRIDGE_DIRECTORY_NAME),
+                        packingResultDirectory);
+                System.out.println("案例完成: " + caseJsonFile.getFileName() + " -> " + casePackingDirectory);
+            }
         }
     }
 

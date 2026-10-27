@@ -11,8 +11,8 @@ public final class PackingRuntimeConfig {
     /** Optional per-process budget used only by the bounded NFP Agent experiment runner. */
     public static final String AGENT_EXPERIMENT_BUDGET_PROPERTY = "nfp.agent.packingBudgetMs";
 
-    /** 单案例全局重排优化预算：十分钟。 */
-    public static final long DEFAULT_TOTAL_SOLVE_TIME_MS = 800_000L;
+    /** 单案例全局重排优化预算： */
+    public static final long DEFAULT_TOTAL_SOLVE_TIME_MS = 600_000L;
     /** 动态 Beam Search 不限制最大宽度。 */
     public static final int DEFAULT_MAX_BEAM_WIDTH = Integer.MAX_VALUE;
     /** 全局重排除总预算外不再额外截断。 */

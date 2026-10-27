@@ -57,6 +57,15 @@ public final class GlobalRepackOptimizer {
                                             ExecutionResult result,
                                             long timeLimitMs,
                                             int lowerBound) {
+        return optimize(instance, result, timeLimitMs, lowerBound, null);
+    }
+
+    /** 混排调用方显式标记阶段；未开启案例记录器时仍完全沿用原求解流程。 */
+    public static ExecutionResult optimize(Instance instance,
+                                            ExecutionResult result,
+                                            long timeLimitMs,
+                                            int lowerBound,
+                                            String progressStage) {
         if (lowerBound < 0) {
             throw new IllegalArgumentException("Lower bound must be nonnegative.");
         }
@@ -77,6 +86,8 @@ public final class GlobalRepackOptimizer {
         if (lowerBound > 0) {
             validateBoundedResult(instance, result, lowerBound);
         }
+        PackingConvergenceRecorder.Stage progress =
+                PackingConvergenceRecorder.startStage(progressStage, instance, result);
         if (lowerBound > 0 && boardCountBefore == lowerBound) {
             statistics.stopReason = "lower_bound_reached_before_optimization";
             System.out.println("Packing lower bound reached before optimization: " + lowerBound + " boards.");
@@ -96,7 +107,8 @@ public final class GlobalRepackOptimizer {
                     result,
                     repackTimeSeconds,
                     new Random(1L),
-                    lowerBound);
+                    lowerBound,
+                    progress);
             if (optimized != null) {
                 result = optimized;
             }
@@ -108,6 +120,11 @@ public final class GlobalRepackOptimizer {
             statistics.stopReason = boardCountBefore < 2
                     ? "insufficient_boards"
                     : "non_positive_time_limit";
+        }
+
+        // 结束点在状态整理前采集；CSV 延迟到整个案例退出后写出。
+        if (progress != null) {
+            progress.finish(result, statistics);
         }
 
         // ImproveByRepack() 可能替换 Solution 和 PlacedCuboid，旧 boardStates

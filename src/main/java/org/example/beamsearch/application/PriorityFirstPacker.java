@@ -161,7 +161,8 @@ public final class PriorityFirstPacker {
             ordinaryResult = GlobalRepackOptimizer.optimize(
                     ordinaryInstance,
                     ordinaryResult,
-                    PackingRuntimeConfig.capRepackTimeMs(totalBudgetMs));
+                    PackingRuntimeConfig.capRepackTimeMs(totalBudgetMs),
+                    0, PackingConvergenceRecorder.ORDINARY);
             long ordinaryOptimizeTimeMs = elapsedMillis(ordinaryOptimizeStartNanos);
             requireAllWorkpiecesPlaced(ordinaryResult, ordinaryInstance, "ordinary packing");
 
@@ -208,7 +209,8 @@ public final class PriorityFirstPacker {
         // 只有纯矩形入口传入案例下界；混排不计算或启用下界停止判断。
         priorityResult = rectangleLowerBound == null
                 ? GlobalRepackOptimizer.optimize(
-                        priorityInstance, priorityResult, priorityRepackBudgetMs)
+                        priorityInstance, priorityResult, priorityRepackBudgetMs,
+                        0, PackingConvergenceRecorder.PRIORITY)
                 : GlobalRepackOptimizer.optimize(
                         priorityInstance, priorityResult, priorityRepackBudgetMs, rectangleLowerBound);
         long priorityOptimizeTimeMs = elapsedMillis(priorityOptimizeStartNanos);
@@ -271,7 +273,8 @@ public final class PriorityFirstPacker {
                     remainingResult,
                     PackingRuntimeConfig.capRepackTimeMs(remainingOptimizationBudget(
                             totalBudgetMs,
-                            usedOptimizationTimeMs)));
+                            usedOptimizationTimeMs)),
+                    0, PackingConvergenceRecorder.ORDINARY);
             ordinaryOptimizeTimeMs = elapsedMillis(ordinaryOptimizeStartNanos);
             requireAllWorkpiecesPlaced(
                     remainingResult, remainingOrdinaryInstance, "remaining ordinary packing");

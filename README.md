@@ -30,6 +30,29 @@ mvn exec:java '-Dexec.args="data/inputData2/Cabinet1.json data/custom-nfp data/c
 
 输入可以是一个 JSON 案例或案例目录。传入三个参数时，第二、第三个参数分别是 NFP 与排样输出目录；桥接文件写入 `<packingOutputDirectory>/material/<案例名>/`。只传输入时，结果仍自动写入输入目录同级的 `BA06_NFP` 和 `BA06_Packing`。
 
+## 混合排样收敛统计
+
+在 `BaselinePackingApplication` 顶部集中设置三个参数：
+
+- `ENABLE_CONVERGENCE_STATISTICS`：默认 `false`，只有设为 `true` 才采集和写出统计文件；
+- `CONVERGENCE_SAMPLE_INTERVAL_MS`：默认 `1000` 毫秒，在局部尝试结束后按实际时间采样；
+- `CONVERGENCE_OUTPUT_DIRECTORY`：默认 `data/packingConvergence`，可修改为其他目录。
+
+启用后，每个案例输出 `<统计目录>/<案例名>/priority_optimization.csv` 和
+`ordinary_optimization.csv`。两阶段分别从零计时，不包含 NFP、初始排样和普通件插入。
+除常规采样外，初始点、历史最高评分刷新、成功减板和最终点始终保留，因此行间隔不一定相等。
+没有对应优化阶段时，该 CSV 写入 `skipped` 行，评分留空。纯矩形入口及原有无配置调用不启用此功能。
+
+绘图使用 `elapsed_ms` 作横坐标，`score_u_squared`（当前评分）或
+`best_score_u_squared`（历史最好评分）作纵坐标。历史最好评分适合画阶梯图；当前评分为稀疏采样值，不能视为全部提交的精确轨迹。评分为整体矩形利用率的平方：
+`U = S / ((Nb - 1 + min(Uj)) * W * H)`，`score = U * U`。
+面积统一采用传入优化阶段的矩形面积（NFP 拼接块的外接矩形），单位为平方毫米；
+分子 `S` 为该阶段固定的全部输入矩形面积，各板 `Uj` 同样使用矩形占用面积，最低利用率板作为计算上的末板。
+CSV 总面积列名为 `total_rectangle_area`；时间与评分列名保持不变，现有按评分列绘图的程序可继续读取。
+最终排样报告中的真实多边形利用率统计保持不变，因此其数值不必与收敛 CSV 相同。
+旧 CSV 仍为原面积口径，不能通过改列名转换；需要重新求解才能生成矩形口径的收敛数据。
+搜索中仅缓存数值，整个案例结束后统一写盘；采样步长很小时会增加统计开销。
+
 ## Agent 启动入口
 
 `org.example.agent.AgentOptimizationApplication` 是唯一的 Agent 启动入口，必须显式指定模式：

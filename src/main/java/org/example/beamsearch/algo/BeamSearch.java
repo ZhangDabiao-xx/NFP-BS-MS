@@ -2,6 +2,7 @@ package org.example.beamsearch.algo;
 
 import org.example.beamsearch.blockgenerator.BlockGenerator;
 import org.example.beamsearch.application.PackingRuntimeConfig;
+import org.example.beamsearch.application.PackingConvergenceRecorder;
 import org.example.beamsearch.blockgenerator.GeneralBlock;
 import org.example.beamsearch.common.*;
 import org.example.beamsearch.spacemanager.SpaceManager;
@@ -897,6 +898,12 @@ public class BeamSearch {
     /** 0 禁用下界停止；正数对应纯矩形整案例或混排当前阶段的矩形集合下界。 */
     public ExecutionResult ImproveByRepack(ExecutionResult executionResult, double maxTime, Random random,
                                            int lowerBound) {
+        return ImproveByRepack(executionResult, maxTime, random, lowerBound, null);
+    }
+
+    /** 可选的只读收敛采样器；原有入口传 null，不分配采样数据或改变搜索行为。 */
+    public ExecutionResult ImproveByRepack(ExecutionResult executionResult, double maxTime, Random random,
+                                           int lowerBound, PackingConvergenceRecorder.Stage progress) {
         if (lowerBound < 0) {
             throw new IllegalArgumentException("Lower bound must be nonnegative.");
         }
@@ -1159,11 +1166,21 @@ public class BeamSearch {
                             executionResult.solutions = committed;
                             executionResult.setAvgUtilization();
                             statistics.committedPartialTransfers++;
+                            // 接收板和残余板全部提交后，才统计完整阶段解。
+                            if (progress != null) {
+                                progress.committed(executionResult, statistics, false);
+                            }
                         } else if (triple) {
                             statistics.tripleBoardReductions++;
                         }
                         improvedInCurrentPass = true;
                     }
+                }
+
+                // 失败尝试也推进时间轴；读取缓存评分，不扫描布局或写文件。
+                // 即将减板时等待外层完成提交，避免记录临时缺少移出板的状态。
+                if (progress != null && !unplacedBox.isEmpty()) {
+                    progress.sampleIfDue(statistics);
                 }
 
                 if (index < candidates.size() - 1) {
@@ -1191,6 +1208,9 @@ public class BeamSearch {
                 // 更新状态并清空旧索引，下一轮必须基于新解重新选择板材。
                 executionResult.setAvgUtilization();
                 containerNum = executionResult.solutions.size();
+                if (progress != null) {
+                    progress.committed(executionResult, statistics, true);
+                }
                 locations.clear();
                 noImprovementSweeps = 0;
                 if (receiverLimit == EXPANDED_RECEIVER_LIMIT) {
