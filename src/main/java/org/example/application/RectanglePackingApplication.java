@@ -23,7 +23,7 @@ public final class RectanglePackingApplication {
     /** 可设为 CLASSData 根目录、其中一个编号子目录，或一个单独的矩形数据 TXT 文件。 */
     private static final Path INPUT_PATH = Path.of("data", "CLASSData");
     /** 每个矩形案例的结果写入该目录下与输入相同的相对层级。 */
-    private static final Path OUTPUT_DIRECTORY = Path.of("data", "CLASSDataResult_NOROTATION10");
+    private static final Path OUTPUT_DIRECTORY = Path.of("data", "CLASSDataResult_NOROTATION11");
     /** 全部矩形共用的旋转设置：true 可旋转 90°，false 保持输入方向。 */
     private static final boolean ALLOW_ROTATION = false;
 
