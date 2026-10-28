@@ -1,6 +1,8 @@
 package org.example.beamsearch.application;
 
 import org.example.beamsearch.common.*;
+import org.example.beamsearch.lb.entity.Item;
+import org.example.beamsearch.lb.solver.RectangleLowerBoundSolver;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
@@ -9,9 +11,6 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 
 public class LoadingTestRun {
-
-    /** 全局重排优化的总时间预算，不包含初始排样、普通件插入、NFP 拼接和组块生成，单位为毫秒。 */
-    private static final long TOTAL_SOLVE_TIME_MS = PackingRuntimeConfig.totalSolveTimeMs();
 
     /**
      * 读取桥接层生成的板材与工件文件，执行优先级排样并写出排样结果文件。
@@ -23,12 +22,49 @@ public class LoadingTestRun {
      * @throws IOException 当输入文件无法读取或结果文件无法写入时抛出
      */
     public static String[] runWithImprove(String materialInPath, String workPieceInPath, String outPath) throws IOException {
+        return runPacking(materialInPath, workPieceInPath, outPath);
+    }
+
+    /**
+     * 保留 CLASSData 矩形入口的兼容方法。
+     *
+     * <p>矩形和混合案例共用同一个受限初始排样流程，避免入口之间的策略分叉。</p>
+     */
+    public static String[] runRectangleWithImprove(String materialInPath,
+                                                   String workPieceInPath,
+                                                   String outPath) throws IOException {
+        return runWithImprove(materialInPath, workPieceInPath, outPath);
+    }
+
+    /** 纯矩形入口显式传入统一旋转条件；其他入口不会进入案例下界计算。 */
+    public static String[] runRectangleWithImprove(String materialInPath,
+                                                   String workPieceInPath,
+                                                   String outPath,
+                                                   boolean allowRotation) throws IOException {
+        return runPacking(materialInPath, workPieceInPath, outPath, allowRotation);
+    }
+
+    private static String[] runPacking(String materialInPath,
+                                       String workPieceInPath,
+                                       String outPath) throws IOException {
+        return runPacking(materialInPath, workPieceInPath, outPath, null);
+    }
+
+    private static String[] runPacking(String materialInPath,
+                                       String workPieceInPath,
+                                       String outPath,
+                                       Boolean rectangleRotation) throws IOException {
         long startTime = System.currentTimeMillis();
+        // 每次调用独立读取 Agent 分档预算；未设置实验覆盖值时仍使用 baseline 的 600 秒。
+        long totalSolveTimeMs = PackingRuntimeConfig.totalSolveTimeMs();
 
         ProblemLoader problemLoader = new ProblemLoader(workPieceInPath);
         problemLoader.loadContainer(materialInPath);
         ArrayList<Instance> instances = problemLoader.LoadInstancesFromCsv(true, outPath);
         if (instances.size() == 0) {
+            if (rectangleRotation != null) {
+                throw new IOException("纯矩形案例没有完整的可排样工件，不能计算案例下界。");
+            }
             return null;
         }
 
@@ -38,8 +74,27 @@ public class LoadingTestRun {
         String logPath = oPath.resolve("optimized.log").toString().replace("\\", "/");
         PrintStream out = new PrintStream(new FileOutputStream(logPath), true, "UTF-8");
         System.setOut(out);
+        try {
+            return writePackingResult(
+                    instances,
+                    totalSolveTimeMs,
+                    oPath,
+                    workPieceInPath,
+                    startTime,
+                    oldout,
+                    rectangleRotation);
+        } finally {
+            // 分档实验会在同一 JVM 连续排样。正常/异常退出都关闭日志，避免 Windows 文件锁泄漏；
+            // 此处只管理输出资源，不修改 baseline 的排序、预算或求解算法。
+            System.setOut(oldout);
+            out.close();
+        }
+    }
 
-
+    /** 保留原求解及结果写出顺序，日志生命周期由外层统一管理。 */
+    private static String[] writePackingResult(ArrayList<Instance> instances, long totalSolveTimeMs,
+                                               Path oPath, String workPieceInPath, long startTime,
+                                               PrintStream oldout, Boolean rectangleRotation) throws IOException {
         int numOfWorkpiece = 0;
         for (Instance instance : instances) {
             numOfWorkpiece = numOfWorkpiece + instance.totalBoxCount;
@@ -50,9 +105,11 @@ public class LoadingTestRun {
         // 600 秒由 PriorityFirstPacker 在优先件和普通件全局重排阶段之间统一分配；
         // 初始排样和普通件插入 Sp 独立计时，不扣减该预算。
         System.out.println("Start priority-first combined packing.");
-        ExecutionResult exeResult = PriorityFirstPacker.solveWithTotalTime(
-                instances,
-                TOTAL_SOLVE_TIME_MS);
+        RectangleLowerBoundSolver.Result caseLowerBound = rectangleRotation == null ? null
+                : calculateRectangleLowerBound(instances, workPieceInPath, rectangleRotation);
+        ExecutionResult exeResult = caseLowerBound == null
+                ? PriorityFirstPacker.solveWithTotalTime(instances, totalSolveTimeMs)
+                : PriorityFirstPacker.solveRectangleWithTotalTime(instances, totalSolveTimeMs, caseLowerBound);
         // 保留原近似矩形利用率，同时额外计算真实多边形面积口径的 U、N、Uagv。
         exeResult.setAvgUtilization();
         exeResult.setActualUtilizationMetrics();
@@ -69,7 +126,7 @@ public class LoadingTestRun {
         pwStatistics = new PrintWriter(new BufferedWriter(new OutputStreamWriter(new FileOutputStream(statisticsPath), StandardCharsets.UTF_8)));
         pwStatistics.println("BatchNo, BoardNo, Color, Specification, BoardArea, WorkPiecesQty, WorkPiecesArea, Ratio, OddArea, PriorityQty, OrdinaryQty, PriorityArea, OrdinaryArea");
 
-        File dir = new File(outPath, "orderId/");
+        File dir = oPath.resolve("orderId").toFile();
         if (dir.exists()) {
             File[] files = dir.listFiles();
             for (File file : files) {
@@ -160,11 +217,31 @@ public class LoadingTestRun {
         pwTotal.println("Actual average utilization (Uagv): "
                 + formatPercent(exeResult.actualAverageUtilization) + "%");
         writeSolveTiming(pwTotal, exeResult);
+        writeStageLowerBound(pwTotal, "Priority", exeResult.priorityRepackStatistics);
+        writeStageLowerBound(pwTotal, "Ordinary", exeResult.ordinaryRepackStatistics);
+        if (exeResult.rectangleLowerBound != null) {
+            pwTotal.println("Rectangle case lower bound: " + exeResult.rectangleLowerBound.lowerBound());
+            pwTotal.println("Rectangle allow rotation: " + exeResult.rectangleLowerBound.allowRotation());
+            pwTotal.println("Lower-bound calculation time: "
+                    + formatSeconds(exeResult.rectangleLowerBound.elapsedNanos() / 1_000_000L) + "s");
+            pwTotal.println("Board gap to lower bound: "
+                    + (containerCount - exeResult.rectangleLowerBound.lowerBound()));
+            pwTotal.println("Optimization stop reason: " + exeResult.priorityRepackStatistics.stopReason);
+        }
         pwTotal.println("Running time: " + ((System.currentTimeMillis() - startTime) / 1000d) + "s");
 
         pw.close();
         pwStatistics.close();
         pwTotal.close();
+
+        // 每次排样完成后写出同目录的 JSON 报告，供结果分析 Agent 直接读取。
+        // 写报告只读取最终结果，不影响既有 CSV、日志或算法决策。
+        Path runReportPath = RunReportWriter.write(
+                oPath,
+                oPath.getFileName() == null ? "unknown" : oPath.getFileName().toString(),
+                exeResult,
+                numOfWorkpiece,
+                workpieceNum);
         System.setOut(oldout);
 
         System.out.printf(Locale.ROOT,
@@ -179,6 +256,12 @@ public class LoadingTestRun {
                 formatSeconds(exeResult.totalSolveTimeMs),
                 formatSeconds(exeResult.ordinaryInsertionTimeMs),
                 formatSeconds(exeResult.totalPackingTimeMs));
+        System.out.println("运行报告: " + runReportPath.toAbsolutePath());
+        if (exeResult.rectangleLowerBound != null) {
+            System.out.println("矩形案例下界: " + exeResult.rectangleLowerBound.lowerBound()
+                    + ", 当前板数: " + containerCount
+                    + ", 停止原因: " + exeResult.priorityRepackStatistics.stopReason);
+        }
         if (numOfWorkpiece == workpieceNum) {
             System.out.println("The algorithm executed successfully and the optimization results have been output.");
         } else {
@@ -189,6 +272,50 @@ public class LoadingTestRun {
                 formatPercent(exeResult.actualAverageUtilization) + "%",
                 exeResult.priorityBoardCount + "", exeResult.ordinaryBoardCount + "",
                 formatSeconds(exeResult.totalPackingTimeMs) + "s"};
+    }
+
+    /** 按原始案例计算一次，拒绝将被过滤或方向不一致的输入当成完整案例。 */
+    private static RectangleLowerBoundSolver.Result calculateRectangleLowerBound(
+            ArrayList<Instance> instances, String workPieceInPath, boolean allowRotation) throws IOException {
+        if (instances.size() != 1) {
+            throw new IOException("纯矩形下界入口只接受同一板材、统一优先级的单案例。");
+        }
+        Instance instance = instances.get(0);
+        Item[] items = Item.getItems(new File(workPieceInPath));
+        if (items.length == 0 || items.length != instance.totalBoxCount) {
+            throw new IOException("纯矩形输入存在被过滤的工件，不能对不完整案例判定达到下界。");
+        }
+        for (Item item : items) {
+            if (item.rotatable != allowRotation) {
+                throw new IOException("工件旋转标志与 RectanglePackingApplication.ALLOW_ROTATION 不一致。");
+            }
+        }
+        for (Box box : instance.boxes) {
+            if (Item.scale(box.length) != box.size[0] || Item.scale(box.width) != box.size[1]) {
+                throw new IOException("下界与排样的内部尺寸不一致。");
+            }
+        }
+        RectangleLowerBoundSolver.Result bound = RectangleLowerBoundSolver.solveDetailed(
+                instance.length, instance.width, items, allowRotation, false);
+        System.out.printf(Locale.ROOT,
+                "Rectangle case lower bound=%d, allow rotation=%s, items=%d, calculation=%.3fms.%n",
+                bound.lowerBound(), allowRotation, items.length, bound.elapsedNanos() / 1_000_000.0);
+        return bound;
+    }
+
+    /** 混排分别报告两个局部案例的下界，不与纯矩形整案例下界混为一项。 */
+    private static void writeStageLowerBound(PrintWriter writer, String stage, RepackStatistics statistics) {
+        if (statistics.stageLowerBound == null) {
+            return;
+        }
+        StageLowerBound bound = statistics.stageLowerBound;
+        writer.println(stage + " stage lower bound: " + bound.lowerBound());
+        writer.println(stage + " stage lower-bound scope: " + bound.scope());
+        writer.println(stage + " stage lower-bound items: " + bound.itemCount()
+                + " (rotatable=" + bound.rotatableItemCount() + ", fixed=" + bound.fixedItemCount() + ")");
+        writer.println(stage + " stage lower-bound calculation time: "
+                + formatSeconds(bound.elapsedNanos() / 1_000_000L) + "s");
+        writer.println(stage + " stage lower bound reached: " + (statistics.boardCountAfter == bound.lowerBound()));
     }
 
     /** 将初始排样、全局优化、插入与总排样时间写入结果文件。 */

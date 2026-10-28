@@ -7,69 +7,73 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-public class BM_LowerBound_Solver {
+/** BM_3 for fixed orientations. Use RectangleLowerBoundSolver for a rotation-aware bound. */
+public final class BM_LowerBound_Solver {
+    private BM_LowerBound_Solver() { }
 
-    private static int M(int W, List<Integer> ws) {
-        int res = 0;
-        for (Integer w : ws) {
-            W -= w;
-            if (W >= 0) {
-                res++;
-            } else {
+    private static int cardinality(int capacity, List<Integer> sizes) {
+        int count = 0;
+        for (int size : sizes) {
+            if (size > capacity) {
                 break;
             }
+            capacity -= size;
+            count++;
         }
-        return res;
+        return count;
     }
 
-    private static int mPiePie(Item item, List<Integer> ws, List<Integer> hs, int W, int H) {
-        return M(W - item.w, ws) * M(H, hs)
-                + M(W, ws) * M(H - item.h, hs)
-                - M(W - item.w, ws) * M(H - item.h, hs);
+    private static long residualCapacity(Item item, List<Integer> widths, List<Integer> heights,
+                                         int width, int height) {
+        long a = cardinality(width - item.w, widths);
+        long b = cardinality(height - item.h, heights);
+        return a * cardinality(height, heights) + cardinality(width, widths) * b - a * b;
     }
 
-    public static int LB_BM_3(int W, int H, Item[] items) {
-        int lb = 1;
-        int n = items.length;
-        int halfBinW = W / 2;
-        int halfBinH = H / 2;
+    public static int LB_BM_3(int width, int height, Item[] items) {
+        return fixedBound(LowerBoundInput.prepare(width, height, items, false));
+    }
 
-        int cnt = Math.max(1, (int) Math.sqrt(1000000d / n));
-        int stepX = Math.max(1, halfBinW / cnt);
-        int stepY = Math.max(1, halfBinH / cnt);
-        for (int p = 1; p <= halfBinH; p += stepX) {
-            for (int q = 1; q <= halfBinW; q += stepY) {
-                List<Integer> ws = new ArrayList<>(n);
-                List<Integer> hs = new ArrayList<>(n);
+    static int fixedBound(LowerBoundInput input) {
+        Item[] items = input.items();
+        if (items.length == 0) {
+            return 0;
+        }
+        int width = input.width();
+        int height = input.height();
+        int bound = RectangleLowerBoundSolver.areaBound(input);
+        int limit = CommonUtil.parameterLimit(items.length);
+        // p is a HEIGHT threshold; q is a WIDTH threshold.
+        for (long p : CommonUtil.parameters(height, limit)) {
+            for (long q : CommonUtil.parameters(width, limit)) {
+                List<Integer> widths = new ArrayList<>();
+                List<Integer> heights = new ArrayList<>();
                 for (Item item : items) {
-                    if (item.w > W - q && item.h > H - p) {
-
-                    } else if (item.w > halfBinW && item.h > halfBinH) {
-
-                    } else if (item.h >= p && item.w >= q) {
-                        ws.add(item.w);
-                        hs.add(item.h);
+                    if (!(item.w > width / 2 && item.h > height / 2) && item.w >= q && item.h >= p) {
+                        widths.add(item.w);
+                        heights.add(item.h);
                     }
                 }
-                Collections.sort(ws);
-                Collections.sort(hs);
-                int tempLb = 0;
-                int temp = 0;
+                Collections.sort(widths);
+                Collections.sort(heights);
+                int large = 0;
+                long remaining = 0;
                 for (Item item : items) {
-
-                    if (item.w > W - q && item.h > H - p) {
-                        tempLb++;
-                    } else if (item.w > halfBinW && item.h > halfBinH) {
-                        tempLb++;
-                        temp -= mPiePie(item, ws, hs, W, H);
-                    } else if (item.h >= p && item.w >= q) {
-                        temp++;
+                    if (item.w > width - q && item.h > height - p) {
+                        large++;
+                    } else if (item.w > width / 2 && item.h > height / 2) {
+                        large++;
+                        remaining = Math.subtractExact(remaining,
+                                residualCapacity(item, widths, heights, width, height));
+                    } else if (item.w >= q && item.h >= p) {
+                        remaining++;
                     }
                 }
-                lb = Math.max(lb, tempLb
-                        + Math.max(0, CommonUtil.ceilToInt((double) temp / (M(W, ws) * M(H, hs)))));
+                long capacity = (long) cardinality(width, widths) * cardinality(height, heights);
+                int extra = remaining > 0 && capacity > 0 ? CommonUtil.ceilRatio(remaining, capacity) : 0;
+                bound = Math.max(bound, large + extra);
             }
         }
-        return lb;
+        return bound;
     }
 }

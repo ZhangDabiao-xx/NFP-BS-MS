@@ -1,4 +1,6 @@
 package org.example.beamsearch.common;
+import org.example.beamsearch.lb.solver.RectangleLowerBoundSolver;
+
 import java.util.*;
 
 public class ExecutionResult {
@@ -17,6 +19,9 @@ public class ExecutionResult {
     /** 最终结果中只用于普通件新板的板材数，即 So。 */
     public int ordinaryBoardCount;
 
+    /** 仅纯矩形入口按完整案例计算一次；混排的阶段下界分别记录在两阶段 RepackStatistics 中。 */
+    public RectangleLowerBoundSolver.Result rectangleLowerBound;
+
     /** 优先件新板求解阶段实际耗时，单位为毫秒。 */
     public long prioritySolveTimeMs;
     /** 优先件全局优化阶段实际耗时，单位为毫秒。 */
@@ -27,6 +32,12 @@ public class ExecutionResult {
     public long ordinarySolveTimeMs;
     /** 普通件新板全局优化阶段实际耗时，单位为毫秒。 */
     public long ordinaryOptimizeTimeMs;
+    /** 优先件全局重排的轻量监控数据；未执行时记录明确原因。 */
+    public RepackStatistics priorityRepackStatistics = RepackStatistics.notRun("not_recorded");
+    /** 普通件新板全局重排的轻量监控数据；未执行时记录明确原因。 */
+    public RepackStatistics ordinaryRepackStatistics = RepackStatistics.notRun("not_recorded");
+    /** 当前独立阶段最近一次全局重排的原始监控数据，供协调器合并到最终结果。 */
+    public RepackStatistics repackStatistics = RepackStatistics.notRun("not_called");
     /**
      * 优先件与普通件全局重排优化的累计耗时，单位为毫秒。
      *

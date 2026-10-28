@@ -5,6 +5,12 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import org.example.nfp.selection.NfpFeatureExtractor;
+import org.example.nfp.selection.NfpSelectionModel;
+import org.example.nfp.selection.NfpScoringProfile;
+import org.example.nfp.selection.NfpSelectionStage;
+import org.example.nfp.selection.NfpSelectionTrace;
+import org.example.nfp.selection.ProfileDrivenNfpSelectionModel;
 
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -34,6 +40,8 @@ public class BatchBlockStitcher {
     private static final int DEFAULT_BEAM_WIDTH = 5;
     // 每个根工件至少保留多个最终候选，避免唯一候选被资源冲突淘汰后无法重新尝试其他方案。
     private static final int MIN_ROOT_CANDIDATE_COUNT = 5;
+    // Pareto 策略在同一根工件下最多额外保护的资源结构不同的候选数量。
+    private static final int MAX_DIVERSE_ROOT_CANDIDATES = 3;
     // 外层候选集合使用比根内 Beam 更宽的搜索，允许多个根工件的方案一起竞争。
     private static final int GLOBAL_PLAN_BEAM_MULTIPLIER = 4;
     // 非 smallItem 且初始填充率不高的非矩形工件被视为关键凹腔根工件。
@@ -50,6 +58,24 @@ public class BatchBlockStitcher {
     private static final double MIN_LARGE_OUTER_COMBINED_FILL_RATE = 0.90;
     // 机会成本只作为普通候选的调节项，不能抵消关键凹腔的直接填充收益。
     private static final double OPPORTUNITY_COST_WEIGHT = 0.35;
+
+    /*
+     * The model is prepared before search and kept thread-local only to avoid changing legacy
+     * public method signatures. No remote call or mutable Agent state is reachable from here.
+     */
+    private static final ThreadLocal<NfpSelectionModel> ACTIVE_SELECTION_MODEL = new ThreadLocal<>();
+    private static final ThreadLocal<NfpSelectionTrace> ACTIVE_SELECTION_TRACE = new ThreadLocal<>();
+    private static final ThreadLocal<SearchContext> ACTIVE_SEARCH_CONTEXT = new ThreadLocal<>();
+    private static final ThreadLocal<Integer> ACTIVE_GENERATION_CAP = new ThreadLocal<>();
+    /** Agent-only global Beam override; the legacy baseline keeps its historical width formula. */
+    private static final ThreadLocal<Integer> ACTIVE_GLOBAL_PLAN_WIDTH = new ThreadLocal<>();
+    /** Agent-only per-root terminal-candidate limit; baseline keeps MIN_ROOT_CANDIDATE_COUNT behavior. */
+    private static final ThreadLocal<Integer> ACTIVE_ROOT_CANDIDATE_LIMIT = new ThreadLocal<>();
+
+    /** Structured NFP result for callers that need metrics and trace artifacts. */
+    public record StitchingOutcome(Path outputFile, List<Block> blocks, NfpSelectionTrace trace, long nfpTimeMs) { }
+
+    private record SearchContext(int itemCount, double itemArea, int smallRectangleCount) { }
 
     /**
      * 对一个案例 JSON 文件或包含多个案例 JSON 文件的目录执行 NFP 拼接。
@@ -118,9 +144,33 @@ public class BatchBlockStitcher {
      * @return 写出的 NFP 拼接结果文件路径
      * @throws IOException 当案例读取或结果写入失败时抛出
      */
+    public static Path stitchCase(Path inputFile, Path outputDirectory) throws IOException {
+        // Preserve the original public convenience entry point for the disabled/fallback baseline.
+        return stitchCase(inputFile, outputDirectory, DEFAULT_BEAM_WIDTH);
+    }
+
     public static Path stitchCase(Path inputFile,
                                    Path outputDirectory,
                                    int beamWidth) throws IOException {
+        return stitchCase(inputFile, outputDirectory, beamWidth, NfpStitchingPolicy.BALANCED);
+    }
+
+    /** 使用默认 Beam 宽度和指定策略执行单案例拼接。 */
+    public static Path stitchCase(Path inputFile,
+                                   Path outputDirectory,
+                                   NfpStitchingPolicy policy) throws IOException {
+        return stitchCase(inputFile, outputDirectory, DEFAULT_BEAM_WIDTH, policy);
+    }
+
+    /**
+     * 对单个案例执行指定策略的 NFP 拼接。
+     *
+     * <p>策略只影响候选资源分配和排序；几何合法性检查仍由既有流程统一执行。</p>
+     */
+    public static Path stitchCase(Path inputFile,
+                                   Path outputDirectory,
+                                   int beamWidth,
+                                   NfpStitchingPolicy policy) throws IOException {
         if (inputFile == null || !Files.isRegularFile(inputFile)) {
             throw new IOException("案例文件不存在: " + inputFile);
         }
@@ -130,19 +180,49 @@ public class BatchBlockStitcher {
 
         Files.createDirectories(outputDirectory);
         List<PolygonItem> items = readItems(inputFile);//读取物品信息
+        NfpStitchingPolicy selectedPolicy = policy == null
+                ? NfpStitchingPolicy.BALANCED : policy;
         // 仅统计第一阶段组块搜索耗时，避免文件写入时间干扰每个案例的求解时间判断。
         long solveStartNanos = System.nanoTime();
-        List<Block> blocks = buildBlocks(items, beamWidth);
+        List<Block> blocks = buildBlocks(items, beamWidth, selectedPolicy);
         long solveElapsedNanos = System.nanoTime() - solveStartNanos;
         Path outputFile = outputDirectory.resolve(replaceExtension(inputFile.getFileName().toString(), ".txt"));
         writeBlocks(outputFile, blocks);
         System.out.printf(Locale.ROOT,
-                "%s -> %s, blocks=%d, solveTime=%.3f ms%n",
+                "%s -> %s, policy=%s, blocks=%d, solveTime=%.3f ms%n",
                 inputFile.getFileName(),
                 outputFile,
+                selectedPolicy.id(),
                 blocks.size(),
                 nanosToMillis(solveElapsedNanos));
         return outputFile;
+    }
+
+    /**
+     * Profile-driven entry point. Agent rankings use a raw-geometry session while the outer
+     * loop keeps committing conflict-free plans until all remaining items are accounted for.
+     */
+    public static StitchingOutcome stitchCase(Path inputFile, Path outputDirectory, int beamWidth,
+                                               NfpSelectionModel selectionModel, int generationCap,
+                                               int globalPlanWidth, NfpSelectionTrace trace) throws IOException {
+        if (selectionModel == null || !selectionModel.isProfileDriven()) {
+            Path output = stitchCase(inputFile, outputDirectory, beamWidth);
+            return new StitchingOutcome(output, List.of(), trace, 0L);
+        }
+        Files.createDirectories(outputDirectory);
+        List<PolygonItem> items = readItems(inputFile);
+        long started = System.nanoTime();
+        double[] plate = NfpSearchSession.plate(inputFile);
+        List<Block> blocks;
+        // 普通 Agent 单次入口也使用案例板材尺寸；实验入口可以复用已存在的跨 Profile 会话。
+        try (NfpSearchSession owned = NfpSearchSession.current() == null
+                ? new NfpSearchSession(plate[0], plate[1], 86_400_000) : null) {
+            blocks = buildBlocks(items, beamWidth, selectionModel, generationCap, globalPlanWidth, trace);
+        }
+        long elapsed = System.nanoTime() - started;
+        Path output = outputDirectory.resolve(replaceExtension(inputFile.getFileName().toString(), ".txt"));
+        writeBlocks(output, blocks);
+        return new StitchingOutcome(output, List.copyOf(blocks), trace, Math.round(nanosToMillis(elapsed)));
     }
 
     public static List<PolygonItem> readItems(Path inputFile) throws IOException {
@@ -187,7 +267,16 @@ public class BatchBlockStitcher {
     }
 
     public static List<Block> buildBlocks(List<PolygonItem> items, int beamWidth) {
+        return buildBlocks(items, beamWidth, NfpStitchingPolicy.BALANCED);
+    }
+
+    /** 使用已选策略构造组块，供 LLM 工作流在不改几何算法的前提下调用。 */
+    public static List<Block> buildBlocks(List<PolygonItem> items,
+                                          int beamWidth,
+                                          NfpStitchingPolicy policy) {
         int normalizedBeamWidth = Math.max(1, beamWidth);
+        NfpStitchingPolicy selectedPolicy = policy == null
+                ? NfpStitchingPolicy.BALANCED : policy;
         List<Block> finalBlocks = new ArrayList<>();
         List<Block> activeBlocks = new ArrayList<>();
         List<PolygonItem> orderedItems = orderItemsByFillRateDescending(items);
@@ -201,8 +290,73 @@ public class BatchBlockStitcher {
             }
         }
 
-        finalBlocks.addAll(stitchByBeamSearch(activeBlocks, normalizedBeamWidth));
+        finalBlocks.addAll(stitchByBeamSearch(activeBlocks, normalizedBeamWidth, selectedPolicy));
         return finalBlocks;
+    }
+
+    /** Executes the Agent profile locally; the legacy overload above remains an unchanged baseline. */
+    public static List<Block> buildBlocks(List<PolygonItem> items, int beamWidth,
+                                          NfpSelectionModel model, int generationCap,
+                                          int globalPlanWidth, NfpSelectionTrace trace) {
+        if (model == null || !model.isProfileDriven()) {
+            return buildBlocks(items, beamWidth, NfpStitchingPolicy.BALANCED);
+        }
+        int width = Math.max(1, beamWidth);
+        int cap = Math.max(width, generationCap);
+        int globalWidth = Math.max(width, globalPlanWidth);
+        SearchContext context = searchContext(items);
+        ACTIVE_SELECTION_MODEL.set(model); ACTIVE_SELECTION_TRACE.set(trace); ACTIVE_SEARCH_CONTEXT.set(context);
+        ACTIVE_GENERATION_CAP.set(cap);
+        ACTIVE_GLOBAL_PLAN_WIDTH.set(globalWidth);
+        NfpScoringProfile profile = ((ProfileDrivenNfpSelectionModel) model).profile();
+        ACTIVE_ROOT_CANDIDATE_LIMIT.set(profile.rootCandidateLimit());
+        try {
+            List<Block> singles = new ArrayList<>(); List<Block> active = new ArrayList<>();
+            for (PolygonItem item : orderItemsByFillRateDescending(items)) {
+                // Only a validated LARGE_BLOCK / ANTI_BASELINE Agent profile can admit near-rectangles
+                // into NFP roots.  Baseline continues to keep them as single blocks unconditionally.
+                if (shouldKeepAsSingleBlock(item) && !profile.includeNearRectangularRoots()) singles.add(Block.fromSingle(item));
+                else active.add(Block.fromSingle(item));
+            }
+            /*
+             * Agent and baseline must share the same outer search semantics.  The legacy path
+             * repeatedly commits a conflict-free plan and then regenerates candidates for the
+             * remaining items.  A previous Agent-only one-pass variant stopped after its first
+             * global plan, which made a score-profile experiment also change search depth.
+             *
+             * The active profile is still used at placement, root-beam and global-plan ranking
+             * points through the thread-local deterministic model.  NfpStitchingPolicy.BALANCED
+             * only supplies legacy guardrails; it does not choose Agent candidates in this mode.
+             */
+            singles.addAll(stitchByBeamSearch(active, width, NfpStitchingPolicy.BALANCED));
+            assertExactCoverage(items, singles);
+            if (trace != null) {
+                int compositeCount = 0;
+                for (Block block : singles) if (block.memberCount() > 1) compositeCount++;
+                // The final event is an auditable output summary after all profile-driven rounds.
+                trace.event("profile-output", "composite-blocks=" + compositeCount,
+                        compositeCount, singles.size(), compositeCount);
+            }
+            return singles;
+        } finally {
+            ACTIVE_SELECTION_MODEL.remove(); ACTIVE_SELECTION_TRACE.remove(); ACTIVE_SEARCH_CONTEXT.remove();
+            ACTIVE_GENERATION_CAP.remove(); ACTIVE_GLOBAL_PLAN_WIDTH.remove(); ACTIVE_ROOT_CANDIDATE_LIMIT.remove();
+        }
+    }
+
+    private static SearchContext searchContext(List<PolygonItem> items) {
+        double area = 0.0; int rectangles = 0;
+        for (PolygonItem item : items) { area += item.area; if (isSmallRectangleItem(item)) rectangles++; }
+        return new SearchContext(items.size(), area, rectangles);
+    }
+
+    /** Defensive final invariant: every input ID must appear in exactly one emitted block. */
+    private static void assertExactCoverage(List<PolygonItem> input, List<Block> output) {
+        Set<String> expected = new HashSet<>(); Set<String> actual = new HashSet<>();
+        for (PolygonItem item : input) if (!expected.add(item.id)) throw new IllegalArgumentException("输入包含重复工件 ID: " + item.id);
+        for (Block block : output) for (Block.ItemPlacement placement : block.placements)
+            if (!actual.add(placement.item.id)) throw new IllegalStateException("NFP 输出重复工件 ID: " + placement.item.id);
+        if (!expected.equals(actual)) throw new IllegalStateException("NFP 输出工件覆盖不完整。");
     }
 
     /**
@@ -241,7 +395,8 @@ public class BatchBlockStitcher {
      * @return 完成拼接或回退为单件后的结果块。
      */
     private static List<Block> stitchByBeamSearch(List<Block> initialBlocks,
-                                                   int beamWidth) {
+                                                   int beamWidth,
+                                                   NfpStitchingPolicy policy) {
         List<PolygonItem> availableItems = collectItems(initialBlocks);
         List<Block> result = new ArrayList<>();
 
@@ -250,22 +405,35 @@ public class BatchBlockStitcher {
         Map<String, PolygonStitcher.StitchingResult> nfpCache = new HashMap<>();
 
         while (!availableItems.isEmpty()) {
+            if (isProfileMode()) NfpSearchSession.checkDeadline();
             // 本轮先让所有不规则工件作为根工件生成各自的多个候选块，不能在生成阶段
             // 因为候选工件已出现在其他候选块中就提前排除它。
             int rootCandidateCount = Math.max(MIN_ROOT_CANDIDATE_COUNT, beamWidth);
+            if (isProfileMode() && ACTIVE_ROOT_CANDIDATE_LIMIT.get() != null) {
+                // Profile validation guarantees this is one of the bounded Agent-only values.
+                rootCandidateCount = Math.max(rootCandidateCount, ACTIVE_ROOT_CANDIDATE_LIMIT.get());
+            }
             List<CandidateBlock> candidateBlocks = buildAllRootCandidates(
-                    availableItems, beamWidth, rootCandidateCount, nfpCache);
-            List<CandidateBlock> scoredCandidates = calculateOpportunityCosts(candidateBlocks);
+                    availableItems, beamWidth, rootCandidateCount, nfpCache, policy);
+            List<CandidateBlock> scoredCandidates = calculateOpportunityCosts(candidateBlocks, policy);
 
             // 先从关键凹腔候选中预留小件，再过滤会抢占这些小件的普通候选。
             // 修改理由：机会成本只能软性调整排序，不能阻止普通高填充块提前消耗
             // 后续大凹腔真正需要的小件；这里增加显式资源约束，但不改变候选几何。
-            Set<String> reservedSmallItemIds = reserveCriticalSmallItems(scoredCandidates);
+            Set<String> reservedSmallItemIds = policy.reserveCriticalSmallItems()
+                    ? reserveCriticalSmallItems(scoredCandidates) : Set.of();
             List<CandidateBlock> selectableCandidates = filterReservedSmallItemConsumers(
                     scoredCandidates, reservedSmallItemIds);
+            selectableCandidates = filterSmallRectangleConsumersForPacking(
+                    selectableCandidates, policy);
             int globalPlanWidth = Math.max(rootCandidateCount,
                     beamWidth * GLOBAL_PLAN_BEAM_MULTIPLIER);
-            GlobalPlanState bestPlan = selectGlobalCandidatePlan(selectableCandidates, globalPlanWidth);
+            if (isProfileMode() && ACTIVE_GLOBAL_PLAN_WIDTH.get() != null) {
+                // Preserve the baseline formula while letting an Agent experiment configure its own bound.
+                globalPlanWidth = ACTIVE_GLOBAL_PLAN_WIDTH.get();
+            }
+            GlobalPlanState bestPlan = selectGlobalCandidatePlan(
+                    selectableCandidates, globalPlanWidth, policy);
 
             if (bestPlan == null || bestPlan.selectedCandidates.isEmpty()) {
                 // 当前剩余工件已经无法形成新的有效拼接块，剩余工件保持单件输出，
@@ -309,7 +477,8 @@ public class BatchBlockStitcher {
             List<PolygonItem> availableItems,
             int beamWidth,
             int candidateLimit,
-            Map<String, PolygonStitcher.StitchingResult> nfpCache) {
+            Map<String, PolygonStitcher.StitchingResult> nfpCache,
+            NfpStitchingPolicy policy) {
         List<CandidateBlock> candidateBlocks = new ArrayList<>();
         for (PolygonItem rootItem : availableItems) {
             if (isSmallRectangleItem(rootItem)) {
@@ -318,7 +487,7 @@ public class BatchBlockStitcher {
             }
 
             List<Block> rootCandidates = searchTopBlocksFromRoot(
-                    rootItem, availableItems, beamWidth, candidateLimit, nfpCache);
+                    rootItem, availableItems, beamWidth, candidateLimit, nfpCache, policy);
             for (Block rootCandidate : rootCandidates) {
                 if (rootCandidate.memberCount() > 1) {
                     // 单件结果不是竞争候选；它会在没有可行拼接时由外层统一输出。
@@ -339,7 +508,8 @@ public class BatchBlockStitcher {
      * 修改理由：仅比较候选块自身的 fillRate 会让 1.0 的小件互补块无条件压过
      * 大凹腔方案；同时把机会成本和小件预留分开，避免用一个权重同时承担两种职责。
      */
-    private static List<CandidateBlock> calculateOpportunityCosts(List<CandidateBlock> candidates) {
+    private static List<CandidateBlock> calculateOpportunityCosts(List<CandidateBlock> candidates,
+                                                                   NfpStitchingPolicy policy) {
         Map<String, Double> criticalItemValues = new HashMap<>();
         Map<String, Integer> criticalItemDemand = new HashMap<>();
         for (CandidateBlock candidate : candidates) {
@@ -367,7 +537,9 @@ public class BatchBlockStitcher {
                     }
                 }
             }
-            result.add(candidate.withOpportunityCost(opportunityCost));
+            // 策略仅改变机会成本的权重；候选本身仍来自同一套 NFP 几何约束。
+            result.add(candidate.withOpportunityCost(
+                    opportunityCost * policy.opportunityCostMultiplier()));
         }
         return result;
     }
@@ -446,6 +618,28 @@ public class BatchBlockStitcher {
         return result;
     }
 
+    /**
+     * 在“小矩形稀缺”策略下，不让第一阶段消耗可用于第二阶段填缝的小矩形。
+     *
+     * <p>这不是删除工件：被过滤的小件仍会作为单件进入矩形排样阶段。若存在
+     * 大件进入凹腔的合法候选，它仍可参与竞争，从而实现局部填充和后续填缝之间的取舍。</p>
+     */
+    private static List<CandidateBlock> filterSmallRectangleConsumersForPacking(
+            List<CandidateBlock> candidates,
+            NfpStitchingPolicy policy) {
+        if (!policy.preserveSmallRectanglesForPacking()) {
+            return candidates;
+        }
+
+        List<CandidateBlock> result = new ArrayList<>();
+        for (CandidateBlock candidate : candidates) {
+            if (candidate.addedSmallRectangleItemIds().isEmpty()) {
+                result.add(candidate);
+            }
+        }
+        return result;
+    }
+
     /** 判断两个小件 ID 集合是否有交集，避免使用复杂的集合链式表达式。 */
     private static boolean containsAny(Set<String> first, Set<String> second) {
         for (String itemId : first) {
@@ -468,38 +662,53 @@ public class BatchBlockStitcher {
      */
     private static GlobalPlanState selectGlobalCandidatePlan(
             List<CandidateBlock> candidates,
-            int planBeamWidth) {
+            int planBeamWidth,
+            NfpStitchingPolicy policy) {
         if (candidates.isEmpty()) {
             return null;
         }
 
         List<CandidateBlock> orderedCandidates = new ArrayList<>(candidates);
-        orderedCandidates.sort(BatchBlockStitcher::compareCandidateGenerationOrder);
+        orderedCandidates.sort((left, right) -> compareCandidateGenerationOrder(left, right, policy));
 
         List<GlobalPlanState> beam = new ArrayList<>();
         beam.add(GlobalPlanState.empty());
         for (CandidateBlock candidate : orderedCandidates) {
+            if (isProfileMode()) NfpSearchSession.checkDeadline();
             List<GlobalPlanState> nextStates = new ArrayList<>(beam);
             for (GlobalPlanState state : beam) {
                 if (!hasItemConflict(candidate.itemIds, state.usedItemIds)) {
                     nextStates.add(state.withCandidate(candidate));
                 }
             }
-            beam = selectBestGlobalPlans(nextStates, planBeamWidth);
+            beam = selectBestGlobalPlans(nextStates, planBeamWidth, policy);
         }
 
         GlobalPlanState bestPlan = GlobalPlanState.empty();
         for (GlobalPlanState state : beam) {
-            if (compareGlobalPlans(state, bestPlan) < 0) {
+            if (compareGlobalPlans(state, bestPlan, policy) < 0) {
                 bestPlan = state;
+            }
+        }
+        // A profile may explicitly permit an all-single plan. Otherwise select the best
+        // non-empty feasible plan even if its score is below the neutral empty baseline.
+        if (isProfileMode() && bestPlan.selectedCandidates.isEmpty()
+                && !((ProfileDrivenNfpSelectionModel) ACTIVE_SELECTION_MODEL.get()).profile().allowAllSingles()) {
+            for (GlobalPlanState state : beam) {
+                if (!state.selectedCandidates.isEmpty()
+                        && (bestPlan.selectedCandidates.isEmpty() || compareGlobalPlans(state, bestPlan, policy) < 0)) {
+                    bestPlan = state;
+                }
             }
         }
         return bestPlan.selectedCandidates.isEmpty() ? null : bestPlan;
     }
 
     /** 优先将关键凹腔候选送入全局 Beam，但最终优劣仍由完整状态评分决定。 */
-    private static int compareCandidateGenerationOrder(CandidateBlock left, CandidateBlock right) {
-        if (left.criticalCavity != right.criticalCavity) {
+    private static int compareCandidateGenerationOrder(CandidateBlock left,
+                                                       CandidateBlock right,
+                                                       NfpStitchingPolicy policy) {
+        if (policy.cavityFirst() && left.criticalCavity != right.criticalCavity) {
             return left.criticalCavity ? -1 : 1;
         }
         return compareCandidateBlocks(left.block, right.block);
@@ -507,8 +716,13 @@ public class BatchBlockStitcher {
 
     /** 保留全局候选集合中质量最高且签名不同的状态。 */
     private static List<GlobalPlanState> selectBestGlobalPlans(List<GlobalPlanState> states,
-                                                               int planBeamWidth) {
-        states.sort(BatchBlockStitcher::compareGlobalPlans);
+                                                               int planBeamWidth,
+                                                               NfpStitchingPolicy policy) {
+        states.sort((left, right) -> compareGlobalPlans(left, right, policy));
+        if (isProfileMode()) {
+            // This branch is reachable only from the Agent overload; baseline keeps its original sort-and-cut Beam.
+            return selectProfiledGlobalPlans(states, planBeamWidth);
+        }
         List<GlobalPlanState> selectedStates = new ArrayList<>();
         Set<String> signatures = new HashSet<>();
         for (GlobalPlanState state : states) {
@@ -523,20 +737,76 @@ public class BatchBlockStitcher {
         return selectedStates;
     }
 
+    /** Retains some structurally different global plans when an Agent profile requests diversity. */
+    private static List<GlobalPlanState> selectProfiledGlobalPlans(List<GlobalPlanState> ordered, int width) {
+        NfpScoringProfile profile = ((ProfileDrivenNfpSelectionModel) ACTIVE_SELECTION_MODEL.get()).profile();
+        int exploration = Math.min(Math.max(0, width - 1), profile.explorationSlots()
+                + (profile.diversityWeight() > 0.0 ? 1 : 0));
+        int primary = Math.max(1, width - exploration);
+        List<GlobalPlanState> selected = new ArrayList<>();
+        Set<String> signatures = new HashSet<>();
+        for (GlobalPlanState state : ordered) {
+            if (selected.size() >= primary) break;
+            if (signatures.add(state.signature())) selected.add(state);
+        }
+        while (selected.size() < width) {
+            GlobalPlanState best = null;
+            for (GlobalPlanState candidate : ordered) {
+                if (signatures.contains(candidate.signature())) continue;
+                if (best == null || profileGlobalDiversityScore(candidate, selected, profile)
+                        > profileGlobalDiversityScore(best, selected, profile)) best = candidate;
+            }
+            if (best == null) break;
+            signatures.add(best.signature());
+            selected.add(best);
+        }
+        return selected;
+    }
+
+    /** Positive diversityWeight rewards a plan that consumes a different item set from retained plans. */
+    private static double profileGlobalDiversityScore(GlobalPlanState candidate,
+                                                       List<GlobalPlanState> selected,
+                                                       NfpScoringProfile profile) {
+        double distance = 0.0;
+        for (GlobalPlanState retained : selected) distance += globalPlanDistance(candidate, retained);
+        if (!selected.isEmpty()) distance /= selected.size();
+        return profileGlobalScore(candidate) + profile.diversityWeight() * distance;
+    }
+
+    private static double globalPlanDistance(GlobalPlanState left, GlobalPlanState right) {
+        Set<String> union = new HashSet<>(left.usedItemIds);
+        union.addAll(right.usedItemIds);
+        if (union.isEmpty()) return 0.0;
+        Set<String> intersection = new HashSet<>(left.usedItemIds);
+        intersection.retainAll(right.usedItemIds);
+        return 1.0 - intersection.size() / (double) union.size();
+    }
+
     /**
      * 比较两组全局候选方案。
      *
      * 关键凹腔收益是第一优先级；随后比较被改善的关键凹腔数量、扣除资源机会成本
      * 后的总体收益，最后才使用普通填充率和 score2 作为平局规则。
      */
-    private static int compareGlobalPlans(GlobalPlanState left, GlobalPlanState right) {
-        if (Math.abs(left.criticalGain - right.criticalGain) > PolygonStitcher.SCORE_EPS) {
+    private static int compareGlobalPlans(GlobalPlanState left,
+                                          GlobalPlanState right,
+                                          NfpStitchingPolicy policy) {
+        if (isProfileMode()) {
+            double leftScore = profileGlobalScore(left);
+            double rightScore = profileGlobalScore(right);
+            if (Math.abs(leftScore - rightScore) > PolygonStitcher.SCORE_EPS) {
+                return Double.compare(rightScore, leftScore);
+            }
+            return left.signature().compareTo(right.signature());
+        }
+        if (policy.cavityFirst()
+                && Math.abs(left.criticalGain - right.criticalGain) > PolygonStitcher.SCORE_EPS) {
             return Double.compare(right.criticalGain, left.criticalGain);
         }
-        if (left.criticalRootCount != right.criticalRootCount) {
+        if (policy.cavityFirst() && left.criticalRootCount != right.criticalRootCount) {
             return Integer.compare(right.criticalRootCount, left.criticalRootCount);
         }
-        if (left.totalCavityInsertionCount != right.totalCavityInsertionCount) {
+        if (policy.cavityFirst() && left.totalCavityInsertionCount != right.totalCavityInsertionCount) {
             // 修改理由：两个方案的关键收益接近时，优先保留真实进入凹腔的拼接次数，
             // 使全局资源分配继续偏向“凹腔 + 小件”，而不是只追求外接框填充率。
             return Integer.compare(right.totalCavityInsertionCount, left.totalCavityInsertionCount);
@@ -644,7 +914,8 @@ public class BatchBlockStitcher {
             List<PolygonItem> remainingItems,
             int beamWidth,
             int candidateLimit,
-            Map<String, PolygonStitcher.StitchingResult> nfpCache) {
+            Map<String, PolygonStitcher.StitchingResult> nfpCache,
+            NfpStitchingPolicy policy) {
         Block rootBlock = Block.fromSingle(rootItem);
 
         // 小矩形只作为被插入物品，不作为根节点继续扩展，保持原有业务规则。
@@ -663,12 +934,14 @@ public class BatchBlockStitcher {
                     beamWidth,
                     candidateLimit,
                     penalizedFirstItemIds,
-                    nfpCache);
+                    nfpCache,
+                    policy);
 
             if (!searchResult.validCompletedStates.isEmpty()) {
                 List<RootBeamState> topStates = selectBestRootStates(
                         searchResult.validCompletedStates,
-                        candidateLimit);
+                        candidateLimit,
+                        policy);
                 List<Block> result = new ArrayList<>(topStates.size());
                 for (RootBeamState state : topStates) {
                     result.add(state.block);
@@ -712,7 +985,8 @@ public class BatchBlockStitcher {
             int beamWidth,
             int candidateLimit,
             Set<String> penalizedFirstItemIds,
-            Map<String, PolygonStitcher.StitchingResult> nfpCache) {
+            Map<String, PolygonStitcher.StitchingResult> nfpCache,
+            NfpStitchingPolicy policy) {
         Block rootBlock = Block.fromSingle(rootItem);
         RootBeamState initialState = RootBeamState.fromRoot(rootBlock);
 
@@ -722,9 +996,14 @@ public class BatchBlockStitcher {
         Set<String> exploredFirstItemIds = new HashSet<>();
 
         while (!beam.isEmpty()) {
+            if (isProfileMode()) NfpSearchSession.checkDeadline();
             List<RootBeamState> nextBeamCandidates = new ArrayList<>();
 
             for (RootBeamState state : beam) {
+                // Agent 可以主动停止在有效的 2/3 件中间块，不再只能选择无法继续扩展的终点。
+                if (isProfileMode() && state.block.memberCount() > 1 && !isLowQualityLargeOuterBlock(state.block)) {
+                    completedStates.add(state);
+                }
                 if (state.firstAddedItemId != null) {
                     // 该状态已经实际进入搜索，若整轮没有任何有效终止结果，
                     // 它的首层物品才有资格接受惩罚并在下一轮暂时排除。
@@ -760,7 +1039,12 @@ public class BatchBlockStitcher {
             // 修改理由：若根内只保留一个分支，外层即使使用全局 Beam 也看不到该根的替代方案。
             beam = selectBestRootStates(
                     nextBeamCandidates,
-                    Math.max(beamWidth, candidateLimit));
+                    isProfileMode() ? beamWidth : Math.max(beamWidth, candidateLimit),
+                    policy);
+            // 终态候选数与逐层 beam 宽度解耦，并限制中间状态存储量。
+            if (isProfileMode() && completedStates.size() > candidateLimit * 2) {
+                completedStates = selectBestRootStates(completedStates, candidateLimit, policy);
+            }
         }
 
         // 正常情况下每条路径最终都会进入 completedStates；这里保留防御性回退，
@@ -880,11 +1164,25 @@ public class BatchBlockStitcher {
      * @return 去重并保留必要大件外扩名额后的下一层根 Beam 状态。
      */
     private static List<RootBeamState> selectBestRootStates(List<RootBeamState> states,
-                                                            int beamWidth) {
+                                                            int beamWidth,
+                                                            NfpStitchingPolicy policy) {
         int normalizedBeamWidth = Math.max(1, beamWidth);
         List<RootBeamState> orderedStates = new ArrayList<>(states);
+        if (isProfileMode()) {
+            orderedStates.sort(BatchBlockStitcher::compareRootStatesByProfile);
+            List<RootBeamState> result = selectProfiledRootStates(orderedStates, normalizedBeamWidth);
+            NfpSelectionTrace trace = ACTIVE_SELECTION_TRACE.get();
+            if (trace != null && !result.isEmpty()) trace.event("root-beam", result.get(0).block.id,
+                    profileRootScore(result.get(0)), states.size(), result.size());
+            return result;
+        }
         // NFP 阶段始终使用综合评分和几何特征的固定比较器。
         orderedStates.sort(BatchBlockStitcher::compareRootStates);
+
+        if (policy.preserveDiverseRootCandidates()) {
+            return selectDiverseRootStates(orderedStates, normalizedBeamWidth);
+        }
+
         List<RootBeamState> selectedStates = new ArrayList<>();
         Set<String> signatures = new HashSet<>();
 
@@ -919,6 +1217,202 @@ public class BatchBlockStitcher {
         }
 
         return selectedStates;
+    }
+
+    /** Keeps ordinary scoring slots first, then bounded resource-distinct exploration slots. */
+    private static List<RootBeamState> selectProfiledRootStates(List<RootBeamState> ordered, int width) {
+        List<RootBeamState> selected = new ArrayList<>(); Set<String> signatures = new HashSet<>();
+        NfpScoringProfile profile = ((ProfileDrivenNfpSelectionModel) ACTIVE_SELECTION_MODEL.get()).profile();
+        // diversityWeight now changes retention: a positive value reserves one extra Agent-only
+        // exploration slot in addition to the explicit slot count.
+        int exploration = Math.min(Math.max(0, width - 1), profile.explorationSlots()
+                + (profile.diversityWeight() > 0.0 ? 1 : 0));
+        int primary = Math.max(0, width - exploration);
+        for (RootBeamState state : ordered) { if (selected.size() >= primary) break; if (signatures.add(rootStateSignature(state))) selected.add(state); }
+        Set<String> resourceSignatures = new HashSet<>(); for (RootBeamState state : selected) resourceSignatures.add(rootResourceSignature(state));
+        while (selected.size() < width) {
+            RootBeamState best = null;
+            for (RootBeamState candidate : ordered) {
+                if (signatures.contains(rootStateSignature(candidate)) || resourceSignatures.contains(rootResourceSignature(candidate))) continue;
+                if (best == null || profileRootDiversityScore(candidate, selected, profile)
+                        > profileRootDiversityScore(best, selected, profile)) best = candidate;
+            }
+            if (best == null) break;
+            signatures.add(rootStateSignature(best)); resourceSignatures.add(rootResourceSignature(best)); selected.add(best);
+        }
+        for (RootBeamState state : ordered) {
+            if (selected.size() >= width) break;
+            if (signatures.add(rootStateSignature(state))) selected.add(state);
+        }
+        return selected;
+    }
+
+    /** Scores a root against retained branches; this makes Agent diversity observable in the Beam. */
+    private static double profileRootDiversityScore(RootBeamState candidate, List<RootBeamState> selected,
+                                                    NfpScoringProfile profile) {
+        double distance = 0.0;
+        for (RootBeamState retained : selected) distance += rootDiversityDistance(candidate, retained);
+        if (!selected.isEmpty()) distance /= selected.size();
+        return profileRootScore(candidate) + profile.diversityWeight() * distance;
+    }
+
+    private static double rootDiversityDistance(RootBeamState left, RootBeamState right) {
+        double members = Math.min(1.0, Math.abs(left.block.memberCount() - right.block.memberCount()) / 3.0);
+        double fill = Math.min(1.0, Math.abs(left.block.fillRate - right.block.fillRate));
+        double resource = rootResourceSignature(left).equals(rootResourceSignature(right)) ? 0.0 : 1.0;
+        return 0.25 * members + 0.25 * fill + 0.50 * resource;
+    }
+
+    private static int compareRootStatesByProfile(RootBeamState left, RootBeamState right) {
+        double leftScore = profileRootScore(left), rightScore = profileRootScore(right);
+        if (Math.abs(leftScore - rightScore) > PolygonStitcher.SCORE_EPS) return Double.compare(rightScore, leftScore);
+        return rootStateSignature(left).compareTo(rootStateSignature(right));
+    }
+
+    private static boolean isProfileMode() { return ACTIVE_SELECTION_MODEL.get() != null && ACTIVE_SELECTION_MODEL.get().isProfileDriven(); }
+    private static double profileRootScore(RootBeamState state) {
+        SearchContext context = ACTIVE_SEARCH_CONTEXT.get();
+        int totalItems = context == null ? 0 : context.itemCount;
+        int remainingItems = Math.max(0, totalItems - state.usedItemIds.size());
+        return ACTIVE_SELECTION_MODEL.get().score(NfpSelectionStage.ROOT_BEAM,
+                NfpFeatureExtractor.root(state.block, remainingItems, totalItems));
+    }
+
+    private static double profileGlobalScore(GlobalPlanState state) {
+        SearchContext context = ACTIVE_SEARCH_CONTEXT.get(); if (context == null) return 0.0;
+        Map<String, Double> values = new HashMap<>(); int covered = state.usedItemIds.size();
+        double selectedArea = 0.0, fillTotal = 0.0, fillMinimum = 1.0, sourceSaving = 0.0;
+        for (CandidateBlock candidate : state.selectedCandidates) { selectedArea += candidate.block.areaSum; fillTotal += candidate.block.fillRate; fillMinimum = Math.min(fillMinimum, candidate.block.fillRate); sourceSaving += Math.max(0.0, candidate.block.score2); }
+        values.put("coveredItemRatio", ratio(covered, context.itemCount)); values.put("coveredActualAreaRatio", ratio(selectedArea, context.itemArea));
+        values.put("selectedBlockCountRatio", clamp(state.selectedCandidates.size() / (double) Math.max(1, context.itemCount)));
+        values.put("meanBlockFillRate", state.selectedCandidates.isEmpty() ? 0.0 : fillTotal / state.selectedCandidates.size()); values.put("minimumBlockFillRate", state.selectedCandidates.isEmpty() ? 0.0 : fillMinimum);
+        values.put("totalBoxSavingRatio", ratio(sourceSaving, context.itemArea)); values.put("totalCavityInsertionRatio", ratio(state.totalCavityInsertionCount, Math.max(1, covered)));
+        // 统计真正消耗的小矩形（含根），不能拿“非关键小件数”代替矩形资源数。
+        Set<String> usedSmallRectangles = new HashSet<>();
+        for (CandidateBlock candidate : state.selectedCandidates) {
+            for (Block.ItemPlacement placement : candidate.block.placements) {
+                if (placement.item.smallItem && placement.item.rectangular) usedSmallRectangles.add(placement.item.id);
+            }
+        }
+        values.put("remainingSmallRectangleRatio", clamp((context.smallRectangleCount - usedSmallRectangles.size()) / (double) Math.max(1, context.smallRectangleCount)));
+        values.put("predictedSingleItemRatio", clamp((context.itemCount - covered) / (double) Math.max(1, context.itemCount))); values.put("predictedSingleAreaRatio", clamp((context.itemArea - selectedArea) / Math.max(1.0, context.itemArea)));
+        values.put("criticalRootCoverageRatio", ratio(state.criticalRootCount, Math.max(1, context.itemCount)));
+        return ACTIVE_SELECTION_MODEL.get().score(NfpSelectionStage.GLOBAL_PLAN, values);
+    }
+
+    private static double ratio(double numerator, double denominator) { return denominator <= 0 ? 0.0 : clamp(numerator / denominator); }
+    private static double clamp(double value) { return !Double.isFinite(value) ? 0.0 : Math.max(0.0, Math.min(1.0, value)); }
+
+    /**
+     * 为 Pareto 策略保留局部高分与资源消耗不同的根候选。
+     *
+     * <p>普通 Beam 只保留按综合评分靠前的分支。某些分支虽然暂时无法继续扩展，
+     * 或者局部填充率低于“两个小矩形填腔”的方案，却能保留后续排样需要的长条小矩形。
+     * 本方法在每一层和最终终止集合中都保留最多三个互补候选，使这些有效终止分支能够
+     * 进入全局 Beam；其最终排样价值仍由后续确定性排样结果验证。</p>
+     */
+    private static List<RootBeamState> selectDiverseRootStates(
+            List<RootBeamState> orderedStates,
+            int beamWidth) {
+        List<RootBeamState> selected = new ArrayList<>();
+        Set<String> stateSignatures = new HashSet<>();
+        Set<String> resourceSignatures = new HashSet<>();
+
+        // 1) 始终保留局部综合评分最高的方案，维持原有高填充路径。
+        if (!orderedStates.isEmpty()) {
+            addRootState(selected, stateSignatures, resourceSignatures, orderedStates.get(0));
+        }
+
+        // Beam 宽度可能被调用方设为 1，此时不能因多样性策略突破原有搜索上限。
+        int diversityLimit = Math.min(MAX_DIVERSE_ROOT_CANDIDATES, beamWidth);
+
+        // 2) 保留消耗规则小矩形最少的不同资源方案，例如“一个宽矩形”替代“两个长条”。
+        List<RootBeamState> resourceSavingOrder = new ArrayList<>(orderedStates);
+        resourceSavingOrder.sort((left, right) -> {
+            int comparison = Integer.compare(addedSmallRectangleCount(left.block),
+                    addedSmallRectangleCount(right.block));
+            return comparison != 0 ? comparison : compareRootStates(left, right);
+        });
+        if (selected.size() < diversityLimit) {
+            addFirstDifferentResourceState(selected, stateSignatures, resourceSignatures, resourceSavingOrder);
+        }
+
+        // 3) 再保留填充率最高的不同资源方案，避免“不能继续扩展”的有效终止块被遗漏。
+        List<RootBeamState> fillRateOrder = new ArrayList<>(orderedStates);
+        fillRateOrder.sort((left, right) -> {
+            if (Math.abs(left.block.fillRate - right.block.fillRate) > PolygonStitcher.SCORE_EPS) {
+                return Double.compare(right.block.fillRate, left.block.fillRate);
+            }
+            return compareRootStates(left, right);
+        });
+        if (selected.size() < diversityLimit) {
+            addFirstDifferentResourceState(selected, stateSignatures, resourceSignatures, fillRateOrder);
+        }
+
+        // 三个多样性名额之外，继续按原综合评分补足 Beam 宽度，不改变搜索上限。
+        for (RootBeamState state : orderedStates) {
+            if (selected.size() >= beamWidth) {
+                break;
+            }
+            addRootState(selected, stateSignatures, resourceSignatures, state);
+        }
+        return selected;
+    }
+
+    /** 从排序列表中加入第一个资源结构不同的合法状态。 */
+    private static void addFirstDifferentResourceState(List<RootBeamState> selected,
+                                                       Set<String> stateSignatures,
+                                                       Set<String> resourceSignatures,
+                                                       List<RootBeamState> orderedStates) {
+        if (selected.size() >= MAX_DIVERSE_ROOT_CANDIDATES) {
+            return;
+        }
+        for (RootBeamState state : orderedStates) {
+            if (!resourceSignatures.contains(rootResourceSignature(state))) {
+                addRootState(selected, stateSignatures, resourceSignatures, state);
+                return;
+            }
+        }
+    }
+
+    /** 加入状态并同步记录几何签名与小矩形资源签名。 */
+    private static void addRootState(List<RootBeamState> selected,
+                                     Set<String> stateSignatures,
+                                     Set<String> resourceSignatures,
+                                     RootBeamState state) {
+        String stateSignature = rootStateSignature(state);
+        if (stateSignatures.add(stateSignature)) {
+            selected.add(state);
+            resourceSignatures.add(rootResourceSignature(state));
+        }
+    }
+
+    /**
+     * 使用新增规则小矩形 ID 描述一个根分支的资源消耗。
+     *
+     * <p>根工件本身不计入；同样不把小型异形件误当作第二阶段的矩形填缝资源。</p>
+     */
+    private static String rootResourceSignature(RootBeamState state) {
+        List<String> itemIds = new ArrayList<>();
+        for (int index = 1; index < state.block.placements.size(); index++) {
+            PolygonItem item = state.block.placements.get(index).item;
+            if (isSmallRectangleItem(item)) {
+                itemIds.add(item.id);
+            }
+        }
+        itemIds.sort(String::compareTo);
+        return itemIds.isEmpty() ? "no-small-rectangle" : String.join("|", itemIds);
+    }
+
+    /** 统计根分支新增的规则小矩形数量，供资源保留候选排序使用。 */
+    private static int addedSmallRectangleCount(Block block) {
+        int count = 0;
+        for (int index = 1; index < block.placements.size(); index++) {
+            if (isSmallRectangleItem(block.placements.get(index).item)) {
+                count++;
+            }
+        }
+        return count;
     }
 
     /**
@@ -1111,6 +1605,14 @@ public class BatchBlockStitcher {
         BBox box = Geometry.polygonBBox(combinedCoordinates);
         double length = box.maxX - box.minX;
         double width = box.maxY - box.minY;
+        NfpSearchSession session = isProfileMode() ? NfpSearchSession.current() : null;
+        if (session != null) {
+            // Agent 按真实板材双边检查；无会话的 baseline 保留原有边界逻辑。
+            double eps = PolygonStitcher.SCORE_EPS;
+            return (length <= session.plateLength + eps && width <= session.plateWidth + eps)
+                    || (canRotateInSecondStage(rotations) && width <= session.plateLength + eps
+                    && length <= session.plateWidth + eps);
+        }
         double longSide = Math.max(length, width);
         if (longSide > MAX_PACKABLE_BLOCK_LENGTH + PolygonStitcher.SCORE_EPS) {
             return false;
@@ -1145,8 +1647,21 @@ public class BatchBlockStitcher {
 
         List<Integer> relativeRotations = block.relativeRotationsFor(item);
         List<List<Point>> fixedPolygons = block.placedPolygons();
+        int effectiveGenerationCap = isProfileMode()
+                ? Math.max(candidateLimit, ACTIVE_GENERATION_CAP.get()) : candidateLimit;
+        if (isProfileMode() && NfpSearchSession.current() != null) {
+            // 先从共享的完整合法位置池按当前 Profile 排序，再截断和构建 Block。
+            for (PolygonStitcher.StitchingCandidate candidate : NfpSearchSession.current().candidates(
+                    block, item, relativeRotations, ACTIVE_SELECTION_MODEL.get(), effectiveGenerationCap)) {
+                NfpSearchSession.checkDeadline();
+                Block child = tryBuildChildBlock(block, item, candidate);
+                if (child != null) childBlocks.add(child);
+            }
+            return childBlocks;
+        }
         String cacheKey = stitchInputSignature(fixedPolygons, block.areaSum, block.boxArea,
-                item.points, item.area, relativeRotations, item.smallItem, candidateLimit);
+                item.points, item.area, relativeRotations, item.smallItem, effectiveGenerationCap)
+                + "|" + (isProfileMode() ? ACTIVE_SELECTION_MODEL.get().id() : "baseline");
         PolygonStitcher.StitchingResult nfpResult = nfpCache.get(cacheKey);
         if (nfpResult == null) {
             nfpResult = PolygonStitcher.findTopStitchesForFixedPolygons(
@@ -1157,7 +1672,9 @@ public class BatchBlockStitcher {
                     item.area,
                     relativeRotations,
                     item.smallItem,
-                    candidateLimit);
+                    effectiveGenerationCap,
+                    isProfileMode() ? ACTIVE_SELECTION_MODEL.get() : null,
+                    item);
             nfpCache.put(cacheKey, nfpResult);
         }
 
@@ -1167,7 +1684,7 @@ public class BatchBlockStitcher {
 
         // 每个候选位置都是独立的根 Beam 后继；某个位置因尺寸或旋转约束失败时，
         // 不能连带丢弃同一工件对的其他合法位置。
-        for (PolygonStitcher.StitchingCandidate candidate : nfpResult.topCandidates(candidateLimit)) {
+        for (PolygonStitcher.StitchingCandidate candidate : nfpResult.topCandidates(effectiveGenerationCap)) {
             Block childBlock = tryBuildChildBlock(block, item, candidate);
             if (childBlock != null) {
                 childBlocks.add(childBlock);
@@ -1295,7 +1812,8 @@ public class BatchBlockStitcher {
         }
     }
 
-    private static void writeBlocks(Path outputFile, List<Block> blocks) throws IOException {
+    /** 供 Agent 局部重建输出使用；仍复用原有文本格式，不修改 baseline 文件。 */
+    public static void writeBlocks(Path outputFile, List<Block> blocks) throws IOException {
         try (BufferedWriter writer = Files.newBufferedWriter(outputFile, StandardCharsets.UTF_8)) {
             writer.write("blockCount=" + blocks.size());
             writer.newLine();
@@ -1534,6 +2052,18 @@ public class BatchBlockStitcher {
                 }
             }
             return addedSmallItemIds;
+        }
+
+        /** 仅返回新增的规则小矩形，避免误把小型异形件也当作排样填缝资源。 */
+        private Set<String> addedSmallRectangleItemIds() {
+            Set<String> result = new HashSet<>();
+            for (Block.ItemPlacement placement : block.placements) {
+                if (!placement.item.id.equals(rootItem.id)
+                        && isSmallRectangleItem(placement.item)) {
+                    result.add(placement.item.id);
+                }
+            }
+            return result;
         }
 
         /** 全局方案比较使用的普通收益，机会成本只调节普通候选，不否决关键凹腔。 */

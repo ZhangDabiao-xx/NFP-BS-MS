@@ -6,6 +6,7 @@ import org.example.beamsearch.common.Box;
 import org.example.beamsearch.common.ExecutionResult;
 import org.example.beamsearch.common.Instance;
 import org.example.beamsearch.common.PlacedCuboid;
+import org.example.beamsearch.common.RepackStatistics;
 import org.example.beamsearch.common.Solution;
 import org.example.beamsearch.common.Space;
 import org.example.beamsearch.common.SpaceComparator;
@@ -13,6 +14,7 @@ import org.example.beamsearch.spacemanager.SpaceManager;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.IdentityHashMap;
 import java.util.Random;
 
 /**
@@ -47,16 +49,49 @@ public final class GlobalRepackOptimizer {
     public static ExecutionResult optimize(Instance instance,
                                             ExecutionResult result,
                                             long timeLimitMs) {
+        return optimize(instance, result, timeLimitMs, 0);
+    }
+
+    /** 下界对应调用方提供的完整独立物品集合；0 保留不启用下界的兼容入口。 */
+    public static ExecutionResult optimize(Instance instance,
+                                            ExecutionResult result,
+                                            long timeLimitMs,
+                                            int lowerBound) {
+        return optimize(instance, result, timeLimitMs, lowerBound, null);
+    }
+
+    /** 混排调用方显式标记阶段；未开启案例记录器时仍完全沿用原求解流程。 */
+    public static ExecutionResult optimize(Instance instance,
+                                            ExecutionResult result,
+                                            long timeLimitMs,
+                                            int lowerBound,
+                                            String progressStage) {
+        if (lowerBound < 0) {
+            throw new IllegalArgumentException("Lower bound must be nonnegative.");
+        }
         if (instance == null || result == null) {
             return result;
         }
+
+        long startNanos = System.nanoTime();
+        RepackStatistics statistics = new RepackStatistics();
+        statistics.requestedTimeLimitMs = Math.max(0L, timeLimitMs);
 
         // solve() 生成的 Box 通常已经是原对象，但重排过程中会使用 Box.copy()。
         // 先统一一次，保证重排和后续快照都使用同一组工件定义。
         normalizeResult(instance, result);
 
         int boardCountBefore = result.solutions.size();
-        if (boardCountBefore >= 2 && timeLimitMs > 0) {
+        statistics.boardCountBefore = boardCountBefore;
+        if (lowerBound > 0) {
+            validateBoundedResult(instance, result, lowerBound);
+        }
+        PackingConvergenceRecorder.Stage progress =
+                PackingConvergenceRecorder.startStage(progressStage, instance, result);
+        if (lowerBound > 0 && boardCountBefore == lowerBound) {
+            statistics.stopReason = "lower_bound_reached_before_optimization";
+            System.out.println("Packing lower bound reached before optimization: " + lowerBound + " boards.");
+        } else if (boardCountBefore >= 2 && timeLimitMs > 0) {
             Comparator<Space> comparator = SpaceComparator.getSpaceComparator(instance, 1);
             SpaceManager spaceManager = new SpaceManager(comparator);
             BeamSearch beamSearch = new BeamSearch(spaceManager, instance);
@@ -71,21 +106,89 @@ public final class GlobalRepackOptimizer {
             ExecutionResult optimized = beamSearch.ImproveByRepack(
                     result,
                     repackTimeSeconds,
-                    new Random(1L));
+                    new Random(1L),
+                    lowerBound,
+                    progress);
             if (optimized != null) {
                 result = optimized;
             }
+            statistics = beamSearch.getLastRepackStatistics();
 
             System.out.println("Global repack result: "
                     + boardCountBefore + " -> " + result.solutions.size() + " boards.");
+        } else {
+            statistics.stopReason = boardCountBefore < 2
+                    ? "insufficient_boards"
+                    : "non_positive_time_limit";
+        }
+
+        // 结束点在状态整理前采集；CSV 延迟到整个案例退出后写出。
+        if (progress != null) {
+            progress.finish(result, statistics);
         }
 
         // ImproveByRepack() 可能替换 Solution 和 PlacedCuboid，旧 boardStates
         // 已经不再对应当前布局，必须在阶段边界重新建立。
         normalizeResult(instance, result);
+        if (lowerBound > 0) {
+            validateBoundedResult(instance, result, lowerBound);
+        }
         rebuildBoardStates(instance, result);
         result.setAvgUtilization();
+        statistics.boardCountBefore = boardCountBefore;
+        statistics.boardCountAfter = result.solutions.size();
+        statistics.elapsedTimeMs = elapsedMillis(startNanos);
+        result.repackStatistics = statistics;
         return result;
+    }
+
+    /** 下界相等只能为完整合法的阶段解证明板数最优；纯矩形和混排阶段共用该校验。 */
+    private static void validateBoundedResult(Instance instance, ExecutionResult result, int lowerBound) {
+        if (result.solutions.size() < lowerBound) {
+            throw new IllegalStateException("Packing lower bound exceeds the feasible board count.");
+        }
+        IdentityHashMap<Box, Integer> indices = new IdentityHashMap<>();
+        int[] placed = new int[instance.boxes.length];
+        for (int i = 0; i < instance.boxes.length; i++) {
+            indices.put(instance.boxes[i], i);
+        }
+        for (Solution solution : result.solutions) {
+            ArrayList<PlacedCuboid> pieces = solution.getPlacedCuboid();
+            for (int i = 0; i < pieces.size(); i++) {
+                PlacedCuboid piece = pieces.get(i);
+                Integer index = indices.get(piece.box);
+                if (index == null) {
+                    throw new IllegalStateException("Unknown rectangle in lower-bound packing result.");
+                }
+                placed[index]++;
+                boolean validOrientation = false;
+                for (int[] variation : piece.box.variation) {
+                    validOrientation |= piece.length == variation[1] && piece.width == variation[0];
+                }
+                if (!validOrientation || piece.length <= 0 || piece.width <= 0 || piece.x < 0 || piece.y < 0
+                        || (long) piece.x + piece.length > instance.length
+                        || (long) piece.y + piece.width > instance.width) {
+                    throw new IllegalStateException("Invalid rectangle geometry in lower-bound packing result.");
+                }
+                for (int j = 0; j < i; j++) {
+                    PlacedCuboid other = pieces.get(j);
+                    if (piece.x < (long) other.x + other.length && other.x < (long) piece.x + piece.length
+                            && piece.y < (long) other.y + other.width && other.y < (long) piece.y + piece.width) {
+                        throw new IllegalStateException("Overlapping rectangles in lower-bound packing result.");
+                    }
+                }
+            }
+        }
+        for (int i = 0; i < placed.length; i++) {
+            if (placed[i] != instance.boxes[i].count) {
+                throw new IllegalStateException("Incomplete or duplicate rectangles in lower-bound packing result.");
+            }
+        }
+    }
+
+    /** 使用单调时钟记录监控耗时，不影响全局重排的既有时间判断。 */
+    private static long elapsedMillis(long startNanos) {
+        return Math.max(0L, (System.nanoTime() - startNanos) / 1_000_000L);
     }
 
     /**

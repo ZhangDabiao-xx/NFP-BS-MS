@@ -48,8 +48,8 @@ public final class OutputDataVisualizer {
      */
     public static void main(String[] args) throws IOException {
 
-        String nfpResultPath = "D:\\IDEA\\work\\NFP_BS\\NFPKSum\\data\\NFPJoint8_baseline";
-        String pictureDiectory = "data\\NFP_visual8";
+        String nfpResultPath = "data\\BA01_NFP";
+        String pictureDiectory = "data\\BA01_NFPPicture";
         visualize(Path.of(nfpResultPath), Path.of(pictureDiectory));
     }
 

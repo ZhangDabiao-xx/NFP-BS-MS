@@ -2,6 +2,7 @@ package org.example.beamsearch.algo;
 
 import org.example.beamsearch.blockgenerator.BlockGenerator;
 import org.example.beamsearch.application.PackingRuntimeConfig;
+import org.example.beamsearch.application.PackingConvergenceRecorder;
 import org.example.beamsearch.blockgenerator.GeneralBlock;
 import org.example.beamsearch.common.*;
 import org.example.beamsearch.spacemanager.SpaceManager;
@@ -17,9 +18,21 @@ public class BeamSearch {
      * 连续完成多少轮“全部低利用率板材均未减少板材数量”后停止全局重排。
      * 该值只作为无改进保护，真正的主停止条件仍然是 maxTime。
      */
-    private static final int MAX_NO_IMPROVEMENT_SWEEPS = 3;
+    private static final int MAX_NO_IMPROVEMENT_SWEEPS = 20;
+
+    /** 按本阶段初始板数决定是否允许扩张；后续部分搬运不重置无减板轮数。 */
+    private static final int MIN_INITIAL_BOARDS_FOR_EXPANSION = 10;
+    private static final int NO_REDUCTION_SWEEPS_BEFORE_EXPANSION = 2;
+    private static final int BASE_RECEIVER_LIMIT = 2;
+    private static final int EXPANDED_RECEIVER_LIMIT = 3;
+    /** 三板组合采用有界抽样，避免枚举所有三元组放大优化耗时。 */
+    private static final int TRIPLE_RECEIVER_POOL_SIZE = 8;
+    private static final int MAX_TRIPLE_CANDIDATES = 24;
+    private static final long TRIPLE_REPACK_TIME_LIMIT_MS = 500;
 
     private long finishTime = 0;
+    /** 最近一次 ImproveByRepack 的只读监控结果。 */
+    private RepackStatistics lastRepackStatistics = RepackStatistics.notRun("not_called");
 
     /**
      * 创建使用原有固定启发式候选排序的 Beam Search 求解器。
@@ -30,6 +43,11 @@ public class BeamSearch {
     public BeamSearch(SpaceManager spaceManager, Instance inst) {
         this.inst = inst;
         this.spaceManager = spaceManager;
+    }
+
+    /** 返回最近一次全局重排的统计数据，供运行报告汇总使用。 */
+    public RepackStatistics getLastRepackStatistics() {
+        return lastRepackStatistics;
     }
 
     /**
@@ -91,7 +109,12 @@ public class BeamSearch {
             int boardTime = (int) Math.min(Integer.MAX_VALUE, Math.max(1, remainingTime));
 
             // 把单张板材的搜索抽成独立方法，后续阶段可以从已有空间继续搜索。
-            endState = searchOneBoard(initialState, boardTime, minCon, 0);
+            endState = searchOneBoard(
+                    initialState,
+                    boardTime,
+                    minCon,
+                    0,
+                    PackingRuntimeConfig.maxBeamWidth());
 
             allBlocks = endState.availableBlocks;
 
@@ -119,6 +142,107 @@ public class BeamSearch {
         }
 
         return exeResult;
+    }
+
+    /**
+     * 使用固定的单板预算完成全部新板排样。
+     *
+     * <p>时间限制只约束一张板的 Beam 扩展，而不会中止整个案例；即使某张板的
+     * 受限搜索没有产生放置，也会退回到确定性的贪心装载，保证所有可放工件
+     * 仍能继续排完。矩形、优先件、普通件和 NFP 组块的新板阶段共用本方法。</p>
+     *
+     * @param perBoardTimeMs 每张新板的 Beam Search 预算，单位为毫秒
+     * @param minCon 原有的最低装载约束参数
+     * @param maxBeamWidth 本次搜索可达到的最大 Beam 宽度
+     * @return 完整排样结果；不可放入任何板材的输入会明确失败，而不会生成空板循环
+     */
+    public ExecutionResult solveWithPerBoardTimeLimit(long perBoardTimeMs,
+                                                       int minCon,
+                                                       int maxBeamWidth) {
+        ExecutionResult exeResult = new ExecutionResult();
+        int containerNum = 1;
+        State endState = null;
+        long start = System.currentTimeMillis();
+        int boardTime = toPositiveIntMillis(perBoardTimeMs);
+        int boundedBeamWidth = Math.max(4, maxBeamWidth);
+
+        GeneralBlock[] allBlocks = new BlockGenerator(inst).generateSingleBlock(true);
+        while (allBlocks.length > 0) {
+            System.out.println("Start nesting on the " + containerNum
+                    + "th large board, remaining blocks count: " + allBlocks.length
+                    + ", per-board search budget: " + boardTime + "ms, max beam width: "
+                    + boundedBeamWidth);
+            State initialState = containerNum == 1
+                    ? State.createInitState(inst, spaceManager, allBlocks)
+                    : State.initState(endState, spaceManager);
+
+            endState = searchOneBoard(
+                    initialState,
+                    boardTime,
+                    minCon,
+                    0,
+                    boundedBeamWidth);
+            if (!hasPlacedWorkpiece(initialState, endState)) {
+                endState = completeBoardGreedily(initialState);
+            }
+            if (!hasPlacedWorkpiece(initialState, endState)) {
+                throw new IllegalStateException(
+                        "Initial packing could not place any remaining workpiece on a new board.");
+            }
+
+            allBlocks = endState.availableBlocks;
+            exeResult.solution = endState.toSolution();
+            exeResult.solutions.add(exeResult.solution);
+            exeResult.boardStates.add(createBoardStateSnapshot(exeResult.solution));
+            exeResult.unplacedBoxes = new ArrayList<>();
+            System.out.println("Utilization of the " + containerNum + "th large board: "
+                    + exeResult.solution.getUtilization() + ", Time taken for this board: "
+                    + ((System.currentTimeMillis() - start) * 0.001) + "s");
+            System.out.println("-------------------------------------------------------------------");
+            containerNum++;
+        }
+
+        if (endState != null) {
+            fillUnplacedBoxes(exeResult, endState.getFreeBoxes(), null);
+        } else {
+            fillUnplacedBoxes(exeResult, initialFreeBoxes(null), null);
+        }
+        return exeResult;
+    }
+
+    /** 将毫秒预算安全地收敛到 searchOneBoard 使用的 int 范围。 */
+    private static int toPositiveIntMillis(long timeMs) {
+        return (int) Math.min(Integer.MAX_VALUE, Math.max(1L, timeMs));
+    }
+
+    /** 判断受限 Beam Search 是否至少成功放入了一件工件。 */
+    private static boolean hasPlacedWorkpiece(State initialState, State candidateState) {
+        if (initialState == null || candidateState == null) {
+            return false;
+        }
+        int[] initialFreeBoxes = initialState.getFreeBoxes();
+        int[] candidateFreeBoxes = candidateState.getFreeBoxes();
+        int length = Math.min(initialFreeBoxes.length, candidateFreeBoxes.length);
+        for (int index = 0; index < length; index++) {
+            if (candidateFreeBoxes[index] < initialFreeBoxes[index]) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 当受限 Beam Search 在异常短预算内没有形成叶节点时，以原有最佳块排序
+     * 完成当前板材。该路径只用于保证进度，不参与正常候选比较。
+     */
+    private State completeBoardGreedily(State initialState) {
+        State state = initialState;
+        while (state.hasFreeSpace()) {
+            Space space = state.chooseBestSpace();
+            GeneralBlock block = state.chooseBestBlock(space);
+            state = block == null ? state.deleteSpace(space) : state.packBlock(space, block);
+        }
+        return state;
     }
 
     /**
@@ -168,14 +292,15 @@ public class BeamSearch {
     private State searchOneBoard(State initialState,
                                  int timeLimit,
                                  int minCon,
-                                 int volumeType) {
+                                 int volumeType,
+                                 int maxBeamWidth) {
         Node bestNode = new Node();
         long startTime = System.currentTimeMillis();
         finishTime = startTime + Math.max(1, timeLimit);
 
         int availableBlockCount = initialState.availableBlocks.length;
         for (int width = 4;
-             width <= PackingRuntimeConfig.maxBeamWidth() && System.currentTimeMillis() < finishTime;
+             width <= maxBeamWidth && System.currentTimeMillis() < finishTime;
              width <<= 1) {
             if (width > availableBlockCount / 3 && width != 4 && minCon > 330) {
                 break;
@@ -232,7 +357,7 @@ public class BeamSearch {
             }
 
             if (width >= availableBlockCount
-                    || width >= PackingRuntimeConfig.maxBeamWidth()
+                    || width >= maxBeamWidth
                     || width > Integer.MAX_VALUE / 2) {
                 break;
             }
@@ -660,6 +785,12 @@ public class BeamSearch {
     }
 
     public ExecutionResult multipSolve(Instance newInst, int containerNum, boolean decNode) {
+        return multipSolve(newInst, containerNum, decNode, Long.MAX_VALUE);
+    }
+
+    /** 截止时间覆盖内部 Beam 扩展；超时时返回已找到的合法部分布局。 */
+    private ExecutionResult multipSolve(Instance newInst, int containerNum, boolean decNode,
+                                      long deadlineMillis) {
         ExecutionResult exeResult = new ExecutionResult();
 
         GeneralBlock[] allBlocks = new BlockGenerator(newInst).generateSingleBlock(false);
@@ -686,7 +817,7 @@ public class BeamSearch {
 
         int WIDTH = 10;
         if (decNode) {
-            WIDTH = allBlocks.length / 3;
+            WIDTH = Math.max(1, allBlocks.length / 3);
         }
         State state;
         state = State.createMultipleInitState(newInst, spaceManager, allBlocks, containerNum);
@@ -694,21 +825,32 @@ public class BeamSearch {
         Queue<Node> newNodes = new LinkedList<>();
         Node root = new Node();
         root.state = state;
+        bestNode = root;
         newNodes.add(root);
-        while (!newNodes.isEmpty() && newNodes != null) {
+        while (!newNodes.isEmpty() && System.currentTimeMillis() < deadlineMillis) {
             int limit = newNodes.size();
             TreeSet<Node> offspring = new TreeSet<Node>();
             for (int i = 0; i < limit; i++) {
+                if (System.currentTimeMillis() >= deadlineMillis) {
+                    break;
+                }
                 Node curNode = newNodes.poll();
                 ArrayList<Node> curChild = new ArrayList<Node>();
                 int childCount = (curNode.state.countPlacedBlock() == 0 ? WIDTH * WIDTH : WIDTH);
-                blockSearch(curNode.state, childCount, curChild, 1);
+                blockSearch(curNode.state, childCount, curChild, 1, deadlineMillis);
+                // 不完整搜索也保留实际已放面积最多的状态，不能使用贪心估分代表实际布局。
+                if (curNode.state.getPackedVolume() > bestNode.state.getPackedVolume()) {
+                    bestNode = curNode;
+                }
                 if (curChild.isEmpty()) {
-                    if (curNode.score >= bestNode.score) {
+                    if (curNode.state.getPackedVolume() >= bestNode.state.getPackedVolume()) {
                         bestNode = curNode;
                     }
                 } else {
                     for (int j = 0; j < curChild.size(); j++) {
+                        if (curChild.get(j).state.getPackedVolume() > bestNode.state.getPackedVolume()) {
+                            bestNode = curChild.get(j);
+                        }
                         update(offspring, WIDTH, curChild.get(j));
                     }
                 }
@@ -728,8 +870,9 @@ public class BeamSearch {
         exeResult.unplacedBoxes = new ArrayList<Box>();
         exeResult.unplacedBoxesVol = 0;
 
+        exeResult.unplacedCounts = bestNode.state.getFreeBoxes().clone();
         for (int i = 0; i < bestNode.state.getFreeBoxes().length; i++) {
-            if (bestNode.state.getFreeBoxes()[i] > 0) {
+            for (int remaining = 0; remaining < exeResult.unplacedCounts[i]; remaining++) {
                 exeResult.unplacedBoxes.add(newInst.boxes[i]);
                 exeResult.unplacedBoxesVol += newInst.boxes[i].volume;
             }
@@ -744,12 +887,47 @@ public class BeamSearch {
      * <p>修改原因：原实现一旦成功减少一张板材，就直接退出整个方法；
      * 同时一次候选遍历没有改进时也容易被误认为全局优化已经结束。
      * 现在只结束当前板材的局部尝试，成功减板后会基于最新结果继续寻找
-     * 下一张可删除的板材，直到达到时间上限或连续多轮完整扫描都没有减板。</p>
+     * 下一张可删除的板材，直到达到下界、时间上限或连续多轮完整扫描都没有减板。
+     * 初始至少十板时连续两轮未减板会加入三板候选，减板后恢复一两板候选；
+     * 部分搬运只有在残余可合法放回一张移出板后才提交，且不重置无减板轮数。</p>
      */
     public ExecutionResult ImproveByRepack(ExecutionResult executionResult, double maxTime, Random random) {
+        return ImproveByRepack(executionResult, maxTime, random, 0);
+    }
+
+    /** 0 禁用下界停止；正数对应纯矩形整案例或混排当前阶段的矩形集合下界。 */
+    public ExecutionResult ImproveByRepack(ExecutionResult executionResult, double maxTime, Random random,
+                                           int lowerBound) {
+        return ImproveByRepack(executionResult, maxTime, random, lowerBound, null);
+    }
+
+    /** 可选的只读收敛采样器；原有入口传 null，不分配采样数据或改变搜索行为。 */
+    public ExecutionResult ImproveByRepack(ExecutionResult executionResult, double maxTime, Random random,
+                                           int lowerBound, PackingConvergenceRecorder.Stage progress) {
+        if (lowerBound < 0) {
+            throw new IllegalArgumentException("Lower bound must be nonnegative.");
+        }
         System.out.println("Start improving solution by repacking.");
         long startTime = System.currentTimeMillis();
         int containerNum = executionResult.solutions.size();
+        RepackStatistics statistics = new RepackStatistics();
+        statistics.executed = true;
+        statistics.requestedTimeLimitMs = Math.max(0L, Math.round(maxTime * 1000.0));
+        statistics.boardCountBefore = containerNum;
+        long deadlineMillis = statistics.requestedTimeLimitMs >= Long.MAX_VALUE - startTime
+                ? Long.MAX_VALUE : startTime + statistics.requestedTimeLimitMs;
+        boolean expansionAllowed = containerNum >= MIN_INITIAL_BOARDS_FOR_EXPANSION;
+        int receiverLimit = BASE_RECEIVER_LIMIT;
+        statistics.maxReceiverCount = receiverLimit;
+        lastRepackStatistics = statistics;
+        if (lowerBound > 0 && containerNum < lowerBound) {
+            throw new IllegalStateException("Packing lower bound exceeds the current board count.");
+        }
+        if (lowerBound > 0 && containerNum == lowerBound) {
+            statistics.stopReason = "lower_bound_reached_before_optimization";
+            statistics.boardCountAfter = containerNum;
+            return executionResult;
+        }
         List<Integer> locations = new ArrayList<>();
 
         int location;
@@ -758,14 +936,18 @@ public class BeamSearch {
         int noImprovementSweeps = 0;
 
         while (true) {
+            statistics.outerLoopIterations++;
             // 时间上限仍然是全局优化的第一停止条件。
             if ((System.currentTimeMillis() - startTime) * 0.001 >= maxTime) {
+                statistics.timeLimitReached = true;
+                statistics.stopReason = "time_limit_reached";
                 break;
             }
 
             // 双重停止条件：连续完成多轮完整扫描且没有减少板材数量时，
             // 即使尚未耗尽时间，也停止对当前结果继续进行无效重排。
             if (noImprovementSweeps >= MAX_NO_IMPROVEMENT_SWEEPS) {
+                statistics.stopReason = "no_improvement_sweeps";
                 break;
             }
 
@@ -774,6 +956,7 @@ public class BeamSearch {
             containerNum = executionResult.solutions.size();
             if (containerNum <= 1) {
                 // 只剩一张板材时没有继续减板的可能。
+                statistics.stopReason = "single_board_remaining";
                 break;
             }
 
@@ -814,11 +997,23 @@ public class BeamSearch {
                 // 因为某一次局部尝试无效就直接停止整个优化。
                 locations.clear();
                 noImprovementSweeps++;
+                statistics.noImprovementSweeps = noImprovementSweeps;
                 System.out.println("Completed repack sweep without reducing board count. "
                         + "No-reduction sweeps: " + noImprovementSweeps
                         + "/" + MAX_NO_IMPROVEMENT_SWEEPS);
+                if (expansionAllowed && receiverLimit == BASE_RECEIVER_LIMIT
+                        && noImprovementSweeps >= NO_REDUCTION_SWEEPS_BEFORE_EXPANSION
+                        && noImprovementSweeps < MAX_NO_IMPROVEMENT_SWEEPS) {
+                    receiverLimit = EXPANDED_RECEIVER_LIMIT;
+                    statistics.neighborhoodExpansions++;
+                    statistics.maxReceiverCount = receiverLimit;
+                    // 标准输出由现有运行器写入 optimized.log，无需另建日志文件。
+                    System.out.println("[Repack neighborhood expanded] receivers: 2 -> 3; initial boards: "
+                            + statistics.boardCountBefore + "; no-reduction sweeps: " + noImprovementSweeps);
+                }
                 if (noImprovementSweeps >= MAX_NO_IMPROVEMENT_SWEEPS) {
                     // 这是无改进保护，不替代前面的时间限制。
+                    statistics.stopReason = "no_improvement_sweeps";
                     break;
                 }
                 continue;
@@ -827,6 +1022,7 @@ public class BeamSearch {
             // 只有确认当前板材满足低利用率条件后才记录，避免把 -1
             // 或不符合条件的索引混入本轮已尝试集合。
             locations.add(location);
+            statistics.candidateBoardAttempts++;
 
             for (int i = 0; i < executionResult.solutions.get(location).getPlacedCuboid().size(); i++) {
                 unplacedBox.add(executionResult.solutions.get(location).getPlacedCuboid().get(i).box.copy());
@@ -842,6 +1038,7 @@ public class BeamSearch {
                 }
             }
 
+            long pairGenerationStartNanos = System.nanoTime();
             ArrayList<Integer> pairSet = new ArrayList<>();
             for (int i = 0; i < newSolutions.size(); i++) {
                 if (newSolutions.get(i).getUtilization() > maxUtilization) {
@@ -862,6 +1059,8 @@ public class BeamSearch {
                 }
 
             }
+            statistics.pairCandidatesGenerated += pairSet.size();
+            statistics.pairGenerationTimeMs += elapsedMillis(pairGenerationStartNanos);
 
             // 修改原因：当前板材已经计入 locations，候选为空时只应跳过
             // 当前板材，继续扫描本轮其他低利用率板材。
@@ -871,11 +1070,22 @@ public class BeamSearch {
 
             Collections.shuffle(pairSet, random);
             int iteration = 0;
+            ArrayList<int[]> candidates = new ArrayList<>();
+            for (int pair : pairSet) {
+                int a = pair / containerNum;
+                int b = pair % containerNum;
+                candidates.add(a == b ? new int[]{a} : new int[]{a, b});
+            }
+            if (receiverLimit == EXPANDED_RECEIVER_LIMIT) {
+                ArrayList<int[]> triples = tripleCandidates(newSolutions, maxUtilization, random);
+                statistics.tripleCandidatesGenerated += triples.size();
+                candidates.addAll(triples);
+                Collections.shuffle(candidates, random);
+            }
             int index = 0;
             // 记录当前 pairSet 遍历是否产生过改进；它只控制是否重新
             // 从第一个候选开始，不再承担全局优化的停止职责。
             boolean improvedInCurrentPass = false;
-            boolean currentBoardImproved = false;
 
             // 修改原因：删除原来的 maxIter=1000 硬截止。当前候选有限，
             // 无改进时会在完整遍历后退出；有改进时重新遍历，最终由时间
@@ -886,48 +1096,94 @@ public class BeamSearch {
                 }
 
                 iteration++;
-                int a = pairSet.get(index) / containerNum;
-                int b = pairSet.get(index) % containerNum;
-
-                ArrayList<Box> boxs = new ArrayList<>(unplacedBox);
-
-                for (int i = 0; i < newSolutions.get(a).getPlacedCuboid().size(); i++) {
-                    boxs.add(newSolutions.get(a).getPlacedCuboid().get(i).box.copy());
+                int[] receivers = candidates.get(index);
+                boolean triple = receivers.length == EXPANDED_RECEIVER_LIMIT;
+                if (triple) {
+                    statistics.tripleRepackAttempts++;
+                } else {
+                    statistics.pairRepackAttempts++;
                 }
-                if (a != b) {
-                    for (int i = 0; i < newSolutions.get(b).getPlacedCuboid().size(); i++) {
-                        boxs.add(newSolutions.get(b).getPlacedCuboid().get(i).box.copy());
+                // Instance 会改写 typeNum/count，因此残余物品也必须复制，不能污染已提交布局。
+                ArrayList<Box> boxs = copyBoxes(unplacedBox);
+                for (int receiver : receivers) {
+                    for (PlacedCuboid piece : newSolutions.get(receiver).getPlacedCuboid()) {
+                        boxs.add(piece.box.copy());
                     }
                 }
 
                 Instance newInst = new Instance(inst, boxs);
-                ExecutionResult newSol;
-                if (a == b) {
-                    newSol = multipSolve(newInst, 1, decNode);
+                long pairRepackStartNanos = System.nanoTime();
+                long attemptDeadline = triple
+                        ? Math.min(deadlineMillis, System.currentTimeMillis() + TRIPLE_REPACK_TIME_LIMIT_MS)
+                        : deadlineMillis;
+                ExecutionResult newSol = solveRepackCandidate(newInst, receivers.length, decNode, attemptDeadline);
+                long pairRepackElapsedMs = elapsedMillis(pairRepackStartNanos);
+                if (triple) {
+                    statistics.tripleRepackTimeMs += pairRepackElapsedMs;
                 } else {
-                    newSol = multipSolve(newInst, 2, decNode);
+                    statistics.pairRepackTimeMs += pairRepackElapsedMs;
+                    statistics.longestPairRepackTimeMs = Math.max(
+                            statistics.longestPairRepackTimeMs, pairRepackElapsedMs);
                 }
 
-                if (newSol.unplacedBoxesVol < unplacedBoxVol) {
-                    System.out.println("iter" + iteration +
-                            "\t\t Improve solution by repack " + unplacedBoxVol / inst.length / inst.width
-                            + "->" + newSol.unplacedBoxesVol / inst.length / inst.width + " , unplacedBoxesSize:"
-                            + newSol.unplacedBoxes.size());
-                    System.out.println("currentRepackCostTime:" + ((System.currentTimeMillis() - startTime) * 0.001) + "s , currentRepackMaxTime:" + maxTime + "s");
-                    unplacedBox = newSol.unplacedBoxes;
-                    unplacedBoxVol = newSol.unplacedBoxesVol;
-                    if (a == b) {
-                        newSolutions.set(a, newSol.solutions.get(0));
-                    } else {
-                        newSolutions.set(a, newSol.solutions.get(0));
-                        newSolutions.set(b, newSol.solutions.get(1));
+                // 数量守恒、方向、边界及互不重叠全部通过后，才考虑面积进展。
+                if (validLocalResult(newInst, newSol, receivers.length)
+                        && newSol.unplacedBoxesVol < unplacedBoxVol) {
+                    Solution donor = null;
+                    boolean complete = newSol.unplacedBoxes.isEmpty();
+                    if (!complete) {
+                        long rebuildStartNanos = System.nanoTime();
+                        statistics.sameBoardRebuildAttempts++;
+                        Instance donorInst = new Instance(inst, copyBoxes(newSol.unplacedBoxes));
+                        ExecutionResult rebuilt = rebuildDonor(donorInst, deadlineMillis);
+                        if (validLocalResult(donorInst, rebuilt, 1) && rebuilt.unplacedBoxes.isEmpty()) {
+                            donor = rebuilt.solutions.get(0);
+                        }
+                        statistics.sameBoardRebuildTimeMs += elapsedMillis(rebuildStartNanos);
                     }
-                    // 记录当前板材的确发生过严格的重排改进。
-                    currentBoardImproved = true;
-                    improvedInCurrentPass = true;
+                    // 事务边界：剩余物品无法合法回到一张移出板时，接收板也不能更新。
+                    if (!complete && donor == null) {
+                        statistics.rejectedPartialTransfers++;
+                    } else {
+                        if (!triple) {
+                            statistics.successfulPairRepackAttempts++;
+                            statistics.successfulPairRepackTimeMs += pairRepackElapsedMs;
+                        }
+                        System.out.println("iter" + iteration +
+                                "\t\t Improve solution by repack " + unplacedBoxVol / inst.length / inst.width
+                                + "->" + newSol.unplacedBoxesVol / inst.length / inst.width + " , unplacedBoxesSize:"
+                                + newSol.unplacedBoxes.size());
+                        System.out.println("currentRepackCostTime:" + ((System.currentTimeMillis() - startTime) * 0.001)
+                                + "s , currentRepackMaxTime:" + maxTime + "s");
+                        unplacedBox = newSol.unplacedBoxes;
+                        unplacedBoxVol = newSol.unplacedBoxesVol;
+                        for (int i = 0; i < receivers.length; i++) {
+                            newSolutions.set(receivers[i], newSol.solutions.get(i));
+                        }
+                        if (!complete) {
+                            ArrayList<Solution> committed = new ArrayList<>(newSolutions);
+                            committed.add(location, donor);
+                            executionResult.solutions = committed;
+                            executionResult.setAvgUtilization();
+                            statistics.committedPartialTransfers++;
+                            // 接收板和残余板全部提交后，才统计完整阶段解。
+                            if (progress != null) {
+                                progress.committed(executionResult, statistics, false);
+                            }
+                        } else if (triple) {
+                            statistics.tripleBoardReductions++;
+                        }
+                        improvedInCurrentPass = true;
+                    }
                 }
 
-                if (index < pairSet.size() - 1) {
+                // 失败尝试也推进时间轴；读取缓存评分，不扫描布局或写文件。
+                // 即将减板时等待外层完成提交，避免记录临时缺少移出板的状态。
+                if (progress != null && !unplacedBox.isEmpty()) {
+                    progress.sampleIfDue(statistics);
+                }
+
+                if (index < candidates.size() - 1) {
                     index++;
                 } else {
                     if (improvedInCurrentPass) {
@@ -946,36 +1202,166 @@ public class BeamSearch {
             if (unplacedBox.size() == 0) {
                 System.out.println("Improved success. Continue searching for another removable board.");
                 executionResult.solutions = newSolutions;
+                statistics.boardReductions++;
 
                 // 修改原因：减板后平均利用率和板材数量都已变化，立即
                 // 更新状态并清空旧索引，下一轮必须基于新解重新选择板材。
                 executionResult.setAvgUtilization();
                 containerNum = executionResult.solutions.size();
+                if (progress != null) {
+                    progress.committed(executionResult, statistics, true);
+                }
                 locations.clear();
                 noImprovementSweeps = 0;
+                if (receiverLimit == EXPANDED_RECEIVER_LIMIT) {
+                    receiverLimit = BASE_RECEIVER_LIMIT;
+                    statistics.neighborhoodResets++;
+                    System.out.println("[Repack neighborhood restored] receivers: 3 -> 2 after board reduction; boards: "
+                            + containerNum);
+                }
+                // 仅在完整新解已提交、实际板数已减少后判断，不把局部未排面积下降当成减板。
+                if (lowerBound > 0 && containerNum == lowerBound) {
+                    statistics.stopReason = "lower_bound_reached_after_reduction";
+                    System.out.println("Packing lower bound reached after reduction: " + lowerBound + " boards.");
+                    break;
+                }
                 continue;
             }
 
-            // 时间耗尽时不再调用 getSolutions() 进行额外的重建排样，
-            // 避免已经达到预算后又执行一轮不可中断的求解。
-            if (!currentBoardImproved
-                    || (System.currentTimeMillis() - startTime) * 0.001 >= maxTime) {
-                continue;
-            }
+            // 部分搬运已逐次验证并提交；不清空 locations/无减板轮数，防止小幅搬运掩盖停滞。
+        }
+        if ("not_started".equals(statistics.stopReason)) {
+            statistics.stopReason = "completed";
+        }
+        statistics.noImprovementSweeps = noImprovementSweeps;
+        statistics.boardCountAfter = executionResult.solutions.size();
+        statistics.elapsedTimeMs = Math.max(0L, System.currentTimeMillis() - startTime);
+        return executionResult;
+    }
 
-            ArrayList<Solution> solutions = getSolutions(unplacedBox);
-            if (solutions.size() == 1) {
-                executionResult.solutions = newSolutions;
-                executionResult.solutions.add(location, solutions.get(0));
+    /** 默认仍使用原 Beam 求解；独立入口便于验证事务提交和邻域切换。 */
+    ExecutionResult solveRepackCandidate(Instance instance, int receivers, boolean decNode, long deadlineMillis) {
+        return multipSolve(instance, receivers, decNode, deadlineMillis);
+    }
 
-                // 当前板材未被删除，但其余板材已经发生严格改进。
-                // 修改原因：板材数量和索引没有变化，保留 locations 可以让
-                // 当前完整扫描继续处理其他板材；同数量重排也不能清零
-                // noImprovementSweeps，否则小规模案例可能反复重排到时间上限。
-                executionResult.setAvgUtilization();
+    /** 只重建一张移出板，不允许退化为多板；失败或超时直接放弃这次部分搬运。 */
+    ExecutionResult rebuildDonor(Instance instance, long deadlineMillis) {
+        GeneralBlock[] blocks = new BlockGenerator(instance).generateSingleBlock(true);
+        State state = State.createMultipleInitState(instance, spaceManager, blocks, 1);
+        while (state.hasFreeSpace() && System.currentTimeMillis() < deadlineMillis) {
+            Space space = state.chooseBestSpace();
+            GeneralBlock block = state.chooseBestBlock(space);
+            state = block == null ? state.deleteSpace(space) : state.packBlock(space, block);
+        }
+        ExecutionResult result = new ExecutionResult();
+        result.solutions.add(state.toSolution(0));
+        result.unplacedBoxes = new ArrayList<>();
+        for (int i = 0; i < instance.boxes.length; i++) {
+            for (int j = 0; j < state.getFreeBoxes()[i]; j++) {
+                result.unplacedBoxes.add(instance.boxes[i]);
             }
         }
-        return executionResult;
+        return result;
+    }
+
+    private static ArrayList<Box> copyBoxes(List<Box> boxes) {
+        ArrayList<Box> copies = new ArrayList<>();
+        for (Box box : boxes) {
+            copies.add(box.copy());
+        }
+        return copies;
+    }
+
+    /** 一半候选来自低利用率板，一半随机抽样，兼顾空余面积和不同空间形状。 */
+    private static ArrayList<int[]> tripleCandidates(List<Solution> boards, double maxUtilization, Random random) {
+        ArrayList<Integer> eligible = new ArrayList<>();
+        for (int i = 0; i < boards.size(); i++) {
+            if (boards.get(i).getUtilization() <= maxUtilization) {
+                eligible.add(i);
+            }
+        }
+        eligible.sort(Comparator.comparingDouble(i -> boards.get(i).getUtilization()));
+        int lowCount = Math.min(TRIPLE_RECEIVER_POOL_SIZE / 2, eligible.size());
+        ArrayList<Integer> pool = new ArrayList<>(eligible.subList(0, lowCount));
+        ArrayList<Integer> others = new ArrayList<>(eligible.subList(lowCount, eligible.size()));
+        Collections.shuffle(others, random);
+        pool.addAll(others.subList(0, Math.min(TRIPLE_RECEIVER_POOL_SIZE - pool.size(), others.size())));
+        ArrayList<int[]> triples = new ArrayList<>();
+        // 不使用总面积必须装入三板的过滤：未排面积下降且残余能回到移出板也有效。
+        for (int i = 0; i < pool.size(); i++) {
+            for (int j = i + 1; j < pool.size(); j++) {
+                for (int k = j + 1; k < pool.size(); k++) {
+                    triples.add(new int[]{pool.get(i), pool.get(j), pool.get(k)});
+                }
+            }
+        }
+        Collections.shuffle(triples, random);
+        return new ArrayList<>(triples.subList(0, Math.min(MAX_TRIPLE_CANDIDATES, triples.size())));
+    }
+
+    /** 局部物理物品逐一守恒，避免只比较面积而遗漏、重复工件或接纳非法布局。 */
+    private static boolean validLocalResult(Instance instance, ExecutionResult result, int boardCount) {
+        if (result == null || result.solutions.size() != boardCount || result.unplacedBoxes == null) {
+            return false;
+        }
+        IdentityHashMap<Box, Integer> remaining = new IdentityHashMap<>();
+        for (Box box : instance.boxes) {
+            remaining.put(box, box.count);
+        }
+        for (Solution board : result.solutions) {
+            if (board == null) {
+                return false;
+            }
+            List<PlacedCuboid> pieces = board.getPlacedCuboid();
+            for (int i = 0; i < pieces.size(); i++) {
+                PlacedCuboid piece = pieces.get(i);
+                if (piece == null || !consumeBox(remaining, piece.box)) {
+                    return false;
+                }
+                boolean orientation = false;
+                for (int[] variation : piece.box.variation) {
+                    orientation |= piece.length == variation[1] && piece.width == variation[0];
+                }
+                if (!orientation || piece.length <= 0 || piece.width <= 0 || piece.x < 0 || piece.y < 0
+                        || (long) piece.x + piece.length > instance.length
+                        || (long) piece.y + piece.width > instance.width) {
+                    return false;
+                }
+                for (int j = 0; j < i; j++) {
+                    PlacedCuboid other = pieces.get(j);
+                    if (piece.x < (long) other.x + other.length && other.x < (long) piece.x + piece.length
+                            && piece.y < (long) other.y + other.width && other.y < (long) piece.y + piece.width) {
+                        return false;
+                    }
+                }
+            }
+        }
+        double unplacedArea = 0;
+        for (Box box : result.unplacedBoxes) {
+            if (!consumeBox(remaining, box)) {
+                return false;
+            }
+            unplacedArea += box.volume;
+        }
+        if (remaining.values().stream().anyMatch(count -> count != 0)) {
+            return false;
+        }
+        result.unplacedBoxesVol = unplacedArea;
+        return true;
+    }
+
+    private static boolean consumeBox(IdentityHashMap<Box, Integer> counts, Box box) {
+        Integer count = counts.get(box);
+        if (count == null || count <= 0) {
+            return false;
+        }
+        counts.put(box, count - 1);
+        return true;
+    }
+
+    /** 统一将纳秒级监控时间转换为非负毫秒，不参与任何排样决策。 */
+    private static long elapsedMillis(long startNanos) {
+        return Math.max(0L, (System.nanoTime() - startNanos) / 1_000_000L);
     }
 
     public void update(TreeSet<Node> offspring, int WIDTH, Node v) {
@@ -1058,19 +1444,29 @@ public class BeamSearch {
      * @param volumeType 完整度评估所使用的体积类型。
      */
     private void blockSearch(State state, int width, ArrayList<Node> child, int volumeType) {
+        blockSearch(state, width, child, volumeType, Long.MAX_VALUE);
+    }
+
+    private void blockSearch(State state, int width, ArrayList<Node> child, int volumeType, long deadlineMillis) {
+        if (System.currentTimeMillis() >= deadlineMillis) {
+            return;
+        }
         if (state.hasFreeSpace()) {
             Space space = state.chooseBestSpace();
             List<GeneralBlock> candidate = state.chooseBestBlocks(space, width);
 
             if (candidate.size() == 0) {
                 State newState = state.deleteSpace(space);
-                blockSearch(newState, width, child, volumeType);
+                blockSearch(newState, width, child, volumeType, deadlineMillis);
             } else {
                 for (GeneralBlock pb : candidate) {
+                    if (System.currentTimeMillis() >= deadlineMillis) {
+                        break;
+                    }
                     State newState = state.packBlock(space, pb);
                     Node newNode = new Node();
                     newNode.state = newState;
-                    newNode.score = completeSolution(newNode.state, volumeType);
+                    newNode.score = completeSolution(newNode.state, volumeType, deadlineMillis);
                     child.add(newNode);
                 }
             }
@@ -1078,9 +1474,13 @@ public class BeamSearch {
     }
 
     private double completeSolution(State initState, int volumeType) {
+        return completeSolution(initState, volumeType, Long.MAX_VALUE);
+    }
+
+    private double completeSolution(State initState, int volumeType, long deadlineMillis) {
         double score = 0;
         State state = initState;
-        while (state.hasFreeSpace()) {
+        while (state.hasFreeSpace() && System.currentTimeMillis() < deadlineMillis) {
             Space space = state.chooseBestSpace();
             GeneralBlock block = state.chooseBestBlock(space);
             if (block == null) {
@@ -1098,35 +1498,4 @@ public class BeamSearch {
         return score;
     }
 
-    private ArrayList<Solution> getSolutions(ArrayList<Box> unplacedBoxes) {
-        ArrayList<Solution> solutions = new ArrayList<>();
-        Instance instance = new Instance(inst, unplacedBoxes);
-        GeneralBlock[] allBlocks = new BlockGenerator(instance).generateSingleBlock(true);
-        State endState = null;
-        int containerNum = 1;
-        while (allBlocks.length > 0) {
-            State state;
-            if (containerNum == 1) {
-                state = State.createMultipleInitState(instance, spaceManager, allBlocks, 1);
-            } else {
-                state = State.initState(endState, spaceManager);
-            }
-            while (state.hasFreeSpace()) {
-                Space space = state.chooseBestSpace();
-                GeneralBlock block = state.chooseBestBlock(space);
-                if (block == null) {
-                    state = state.deleteSpace(space);
-                } else {
-                    state = state.packBlock(space, block);
-                }
-            }
-            allBlocks = state.availableBlocks;
-            endState = state;
-            containerNum++;
-            Solution newSolution = state.toSolution();
-
-            solutions.add(newSolution);
-        }
-        return solutions;
-    }
 }

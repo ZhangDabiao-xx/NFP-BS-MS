@@ -1,5 +1,9 @@
 package org.example.nfp;
 
+import org.example.nfp.selection.NfpFeatureExtractor;
+import org.example.nfp.selection.NfpSelectionModel;
+import org.example.nfp.selection.NfpSelectionStage;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
@@ -261,6 +265,55 @@ public class PolygonStitcher {
             List<Integer> movingRotationDegrees,
             boolean requireCavityInsertion,
             int maxCandidates) {
+        return findTopStitchesForFixedPolygons(fixedPolygons, areaA, boxAArea, polygonB, areaB,
+                movingRotationDegrees, requireCavityInsertion, maxCandidates, null);
+    }
+
+    /**
+     * Agent-mode overload. Geometry still creates and filters candidates first; the supplied
+     * model only ranks the bounded, valid candidate pool and cannot alter coordinates or checks.
+     */
+    public static StitchingResult findTopStitchesForFixedPolygons(
+            List<List<Point>> fixedPolygons,
+            double areaA,
+            double boxAArea,
+            List<Point> polygonB,
+            double areaB,
+            List<Integer> movingRotationDegrees,
+            boolean requireCavityInsertion,
+            int maxCandidates,
+            NfpSelectionModel selectionModel) {
+        return findTopStitchesForFixedPolygonsInternal(fixedPolygons, areaA, boxAArea, polygonB, areaB,
+                movingRotationDegrees, requireCavityInsertion, maxCandidates, selectionModel, null);
+    }
+
+    /** Same bounded ranking path with the original item metadata for profile-only features. */
+    public static StitchingResult findTopStitchesForFixedPolygons(
+            List<List<Point>> fixedPolygons,
+            double areaA,
+            double boxAArea,
+            List<Point> polygonB,
+            double areaB,
+            List<Integer> movingRotationDegrees,
+            boolean requireCavityInsertion,
+            int maxCandidates,
+            NfpSelectionModel selectionModel,
+            PolygonItem profileMovingItem) {
+        return findTopStitchesForFixedPolygonsInternal(fixedPolygons, areaA, boxAArea, polygonB, areaB,
+                movingRotationDegrees, requireCavityInsertion, maxCandidates, selectionModel, profileMovingItem);
+    }
+
+    private static StitchingResult findTopStitchesForFixedPolygonsInternal(
+            List<List<Point>> fixedPolygons,
+            double areaA,
+            double boxAArea,
+            List<Point> polygonB,
+            double areaB,
+            List<Integer> movingRotationDegrees,
+            boolean requireCavityInsertion,
+            int maxCandidates,
+            NfpSelectionModel selectionModel,
+            PolygonItem profileMovingItem) {
         int candidateLimit = Math.max(1, maxCandidates);
         List<Point> firstFixedPolygon = fixedPolygons == null || fixedPolygons.isEmpty()
                 ? new ArrayList<>()
@@ -281,6 +334,7 @@ public class PolygonStitcher {
         List<StitchingCandidate> allValidCandidates = new ArrayList<>();
 
         for (Integer movingRotationDegree : normalizedRotations) {
+            NfpSearchSession.checkDeadline(); // 无 Agent 会话时为空操作，不改变 baseline 搜索。
             List<Point> rotatedPolygonB = Geometry.rotatePolygon(polygonB, movingRotationDegree);
             List<StitchingCandidate> rotationCandidates = new ArrayList<>();
             List<Point> rotationOuterNfp = new ArrayList<>();
@@ -289,6 +343,7 @@ public class PolygonStitcher {
             // 对复合块的每个成员分别建立 NFP。每个成员的 NFP 孔洞都是潜在的凹槽接触边界，
             // 不能只保留固定块的最大外轮廓。
             for (List<Point> fixedPolygon : fixedPolygons) {
+                NfpSearchSession.checkDeadline();
                 // 外部拼接只需要外 NFP；内 NFP 表示 B 完全位于 A 内部，最终会被重叠校验排除。
                 NFPResult nfpResult = NFPComputer.computeNFP(fixedPolygon, rotatedPolygonB, true, false);
                 if (!nfpResult.success) {
@@ -337,7 +392,13 @@ public class PolygonStitcher {
                     new ArrayList<>(), new ArrayList<>(), null);
         }
 
-        allValidCandidates.sort(PolygonStitcher::compareCandidates);
+        if (selectionModel == null || !selectionModel.isProfileDriven()) {
+            allValidCandidates.sort(PolygonStitcher::compareCandidates);
+        } else {
+            int remainingCount = fixedPolygons.size() + 1;
+            allValidCandidates.sort((left, right) -> compareBySelectionModel(
+                    left, right, polygonB, profileMovingItem, remainingCount, selectionModel));
+        }
         List<StitchingCandidate> retainedCandidates = selectTopDistinctCandidates(
                 allValidCandidates, candidateLimit);
         StitchingCandidate retainedBestCandidate = retainedCandidates.isEmpty()
@@ -346,6 +407,38 @@ public class PolygonStitcher {
 
         return new StitchingResult(true, true, "Best stitching placement found", firstFixedPolygon, polygonB,
                 bestOuterNfp, bestHoles, retainedCandidates, retainedCandidates, retainedBestCandidate);
+    }
+
+    /** Stable model ordering; legacy geometry fields remain the deterministic tie breakers. */
+    public static List<StitchingCandidate> rankAgentCandidates(StitchingResult raw, PolygonItem item,
+                                                               NfpSelectionModel model, int limit) {
+        // 排序副本，不能把某个 Profile 的顺序写回共享几何缓存。
+        List<StitchingCandidate> ranked = new ArrayList<>(raw.validCandidates);
+        ranked.sort((left, right) -> compareBySelectionModel(left, right, item.points, item, 0, model));
+        return selectTopDistinctCandidates(ranked, limit);
+    }
+
+    /** Stable model ordering; legacy geometry fields remain the deterministic tie breakers. */
+    private static int compareBySelectionModel(StitchingCandidate left,
+                                               StitchingCandidate right,
+                                               List<Point> originalMovingPolygon,
+                                               PolygonItem profileMovingItem,
+                                               int remainingCount,
+                                               NfpSelectionModel model) {
+        PolygonItem movingItem = profileMovingItem == null
+                ? new PolygonItem("selection-moving", false, new Point(0, 0), originalMovingPolygon, List.of(0), false)
+                : profileMovingItem;
+        double leftScore = model.score(NfpSelectionStage.PLACEMENT,
+                NfpFeatureExtractor.placement(left, movingItem, remainingCount));
+        double rightScore = model.score(NfpSelectionStage.PLACEMENT,
+                NfpFeatureExtractor.placement(right, movingItem, remainingCount));
+        if (Math.abs(leftScore - rightScore) > SCORE_EPS) {
+            return Double.compare(rightScore, leftScore);
+        }
+        String leftSignature = left.sourceType + "|" + left.movingRotationDegrees + "|" + left.edgeStartIndex + "|" + left.edgeEndIndex;
+        String rightSignature = right.sourceType + "|" + right.movingRotationDegrees + "|" + right.edgeStartIndex + "|" + right.edgeEndIndex;
+        int signatureComparison = leftSignature.compareTo(rightSignature);
+        return signatureComparison != 0 ? signatureComparison : compareCandidates(left, right);
     }
 
     public static double boundingBoxArea(List<Point> polygon) {
@@ -544,6 +637,7 @@ public class PolygonStitcher {
         BBox baseBox = boundingBoxOfPolygons(fixedPolygons);
         int vertexCount = contourPoints.size();
         for (int i = 0; i < vertexCount; i++) {
+            NfpSearchSession.checkDeadline(); // Agent 长轮廓采样也受协作式预算约束。
             Point current = contourPoints.get(i);
             Point next = contourPoints.get((i + 1) % vertexCount);
 
@@ -641,6 +735,7 @@ public class PolygonStitcher {
                                                                     int maxCandidates) {
         List<StitchingCandidate> geometricCandidates = new ArrayList<>();
         for (StitchingCandidate candidate : candidates) {
+            NfpSearchSession.checkDeadline();
             if (candidate.fillRateGain <= SCORE_EPS) {
                 continue;
             }
@@ -686,6 +781,7 @@ public class PolygonStitcher {
         List<StitchingCandidate> connectedCandidates = new ArrayList<>();
         int candidateLimit = Math.max(1, maxCandidates);
         for (StitchingCandidate candidate : geometricCandidates) {
+            NfpSearchSession.checkDeadline();
             // 修改理由：仅靠接触长度仍可能接受小间隙；对排序后的候选执行精确并集，
             // 确保送入 beam search 的位置确实属于同一连通块。
             if (hasSingleOuterUnionComponent(fixedPolygons, candidate.translatedPolygonB)) {
@@ -720,7 +816,8 @@ public class PolygonStitcher {
             List<StitchingCandidate> sortedCandidates,
             int maxCandidates) {
         int candidateLimit = Math.max(1, maxCandidates);
-        List<StitchingCandidate> selectedCandidates = new ArrayList<>(candidateLimit);
+        // Agent 原始候选池使用不截断模式；容量只按实际候选数分配。
+        List<StitchingCandidate> selectedCandidates = new ArrayList<>(Math.min(candidateLimit, sortedCandidates.size()));
         HashSet<String> signatures = new HashSet<>();
         for (StitchingCandidate candidate : sortedCandidates) {
             String signature = candidatePlacementSignature(candidate);

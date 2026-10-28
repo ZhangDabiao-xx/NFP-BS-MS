@@ -1,6 +1,7 @@
 package org.example.application;
 
 import org.example.beamsearch.application.NFPToBeamSearchBridge;
+import org.example.beamsearch.application.PackingConvergenceRecorder;
 import org.example.nfp.BatchBlockStitcher;
 
 import java.io.IOException;
@@ -9,40 +10,22 @@ import java.nio.file.Path;
 import java.util.List;
 
 /**
- * 项目的统一求解入口：依次完成 NFP 拼接、矩形化转换和优先级排样。
+ * 确定性的基准求解编排：依次完成 NFP 拼接、矩形化转换和优先级排样。
  *
  * <p>程序只需要案例路径。案例路径既可以是单个 JSON 文件，也可以是包含多个
  * JSON 案例的目录。NFP 结果目录和排样结果目录会按案例目录自动创建为同级目录。
  * 中间 {@code material.csv} 与 {@code workpiece} 文件统一写入
  * {@code <packingResultDirectory>/material/<caseName>/}。</p>
  */
-public final class IntegratedPackingApplication {
-
-    /** 未传入命令行参数时使用的默认案例目录；需要时只修改这一处路径即可。 */
-    private static final Path DEFAULT_CASE_PATH = Path.of("data", "inputData");
+public final class PackingPipeline {
     /** NFP 拼接结果目录名称。 */
-    private static final String NFP_RESULT_DIRECTORY_NAME = "NFPJoint10_evaluate";
+    private static final String NFP_RESULT_DIRECTORY_NAME = "BA06_NFP";
     /** 矩形排样结果目录名称。 */
-    private static final String PACKING_RESULT_DIRECTORY_NAME = "Result10_evaluate";
+    private static final String PACKING_RESULT_DIRECTORY_NAME = "BA06_Packing";
     /** NFP 到排样的中间文件目录名称。 */
     private static final String BRIDGE_DIRECTORY_NAME = "material";
 
-    private IntegratedPackingApplication() {
-    }
-
-    /**
-     * 启动一体化求解流程。
-     *
-     * @param args 可选的单个参数：案例 JSON 文件或案例目录；未提供时使用 {@link #DEFAULT_CASE_PATH}。
-     * @throws IOException 当案例、NFP 结果或排样结果无法读写时抛出。
-     */
-    public static void main(String[] args) throws IOException {
-        if (args.length > 1) {
-            printUsage();
-            return;
-        }
-        Path casePath = args.length == 1 ? Path.of(args[0]) : DEFAULT_CASE_PATH;
-        run(casePath);
+    private PackingPipeline() {
     }
 
     /**
@@ -52,8 +35,13 @@ public final class IntegratedPackingApplication {
      * @throws IOException 当案例输入不可用或自动创建的结果目录无法读写时抛出。
      */
     public static void run(Path casePath) throws IOException {
+        run(casePath, null);
+    }
+
+    /** 只有混合入口显式传入启用配置时，才为每个案例采集收敛数据。 */
+    public static void run(Path casePath, PackingConvergenceRecorder.Config statistics) throws IOException {
         OutputDirectories outputDirectories = resolveOutputDirectories(casePath);
-        run(casePath, outputDirectories.nfpResultDirectory(), outputDirectories.packingResultDirectory());
+        run(casePath, outputDirectories.nfpResultDirectory(), outputDirectories.packingResultDirectory(), statistics);
     }
 
     /**
@@ -67,49 +55,56 @@ public final class IntegratedPackingApplication {
     public static void run(Path casePath,
                            Path nfpResultDirectory,
                            Path packingResultDirectory) throws IOException {
+        run(casePath, nfpResultDirectory, packingResultDirectory, null);
+    }
+
+    /** 保留原有无统计入口；统计文件独立写入配置指定目录，不改变排样输出路径。 */
+    public static void run(Path casePath,
+                           Path nfpResultDirectory,
+                           Path packingResultDirectory,
+                           PackingConvergenceRecorder.Config statistics) throws IOException {
         Files.createDirectories(nfpResultDirectory);
         Files.createDirectories(packingResultDirectory);
-        List<Path> nfpResultFiles = BatchBlockStitcher.stitchCases(casePath, nfpResultDirectory);
-        if (nfpResultFiles.isEmpty()) {
+        List<Path> caseJsonFiles = resolveCaseJsonFiles(casePath);
+        if (caseJsonFiles.isEmpty()) {
             throw new IOException("未生成任何 NFP 拼接结果。");
         }
 
-        Path bridgeRootDirectory = packingResultDirectory.resolve(BRIDGE_DIRECTORY_NAME);
-        for (Path nfpResultFile : nfpResultFiles) {
+        for (Path caseJsonFile : caseJsonFiles) {
+            Path nfpResultFile = BatchBlockStitcher.stitchCase(caseJsonFile, nfpResultDirectory);
             if (nfpResultFile == null || !Files.isRegularFile(nfpResultFile)) {
                 throw new IOException("NFP 拼接结果不存在: " + nfpResultFile);
             }
-            Path caseJsonFile = resolveCaseJsonFile(casePath, nfpResultFile);
-            Path casePackingDirectory = NFPToBeamSearchBridge.packCase(
-                    nfpResultFile,
-                    caseJsonFile,
-                    bridgeRootDirectory,
-                    packingResultDirectory);
-            System.out.println("案例完成: " + caseJsonFile.getFileName() + " -> " + casePackingDirectory);
+            String fileName = caseJsonFile.getFileName().toString();
+            String caseName = fileName.substring(0, fileName.lastIndexOf('.'));
+            // 作用域覆盖一次完整排样，退出后统一写盘；不会把 NFP 时间计入阶段曲线。
+            try (PackingConvergenceRecorder ignored = PackingConvergenceRecorder.openCase(statistics, caseName)) {
+                Path casePackingDirectory = NFPToBeamSearchBridge.packCase(
+                        nfpResultFile,
+                        caseJsonFile,
+                        packingResultDirectory.resolve(BRIDGE_DIRECTORY_NAME),
+                        packingResultDirectory);
+                System.out.println("案例完成: " + caseJsonFile.getFileName() + " -> " + casePackingDirectory);
+            }
         }
     }
 
-    /**
-     * 根据案例输入形式为 NFP 输出文件找回对应的原始 JSON 文件。
-     *
-     * @param casePath 统一入口接收的案例文件或案例目录。
-     * @param nfpResultFile 当前案例生成的 NFP 文本结果，用于取得案例名称。
-     * @return 与当前 NFP 结果同名的原始案例 JSON 文件。
-     * @throws IOException 当目录模式下找不到对应 JSON 文件时抛出。
-     */
-    private static Path resolveCaseJsonFile(Path casePath, Path nfpResultFile) throws IOException {
+    /** 将单文件或目录输入规范化成稳定排序的案例 JSON 列表。 */
+    private static List<Path> resolveCaseJsonFiles(Path casePath) throws IOException {
         if (Files.isRegularFile(casePath)) {
-            return casePath;
+            if (!casePath.getFileName().toString().toLowerCase().endsWith(".json")) {
+                throw new IOException("案例文件必须是 .json: " + casePath);
+            }
+            return List.of(casePath);
         }
-
-        String nfpFileName = nfpResultFile.getFileName().toString();
-        int extensionIndex = nfpFileName.lastIndexOf('.');
-        String caseName = extensionIndex >= 0 ? nfpFileName.substring(0, extensionIndex) : nfpFileName;
-        Path caseJsonFile = casePath.resolve(caseName + ".json");
-        if (!Files.isRegularFile(caseJsonFile)) {
-            throw new IOException("找不到与 NFP 结果对应的案例 JSON: " + caseJsonFile);
+        if (!Files.isDirectory(casePath)) {
+            throw new IOException("案例路径既不是文件也不是目录: " + casePath);
         }
-        return caseJsonFile;
+        try (var files = Files.list(casePath)) {
+            return files.filter(path -> path.getFileName().toString().toLowerCase().endsWith(".json"))
+                    .sorted()
+                    .toList();
+        }
     }
 
     /**
@@ -131,13 +126,6 @@ public final class IntegratedPackingApplication {
         return new OutputDirectories(
                 outputParentDirectory.resolve(NFP_RESULT_DIRECTORY_NAME),
                 outputParentDirectory.resolve(PACKING_RESULT_DIRECTORY_NAME));
-    }
-
-    /** 输出统一入口的命令行参数说明。 */
-    private static void printUsage() {
-        System.err.println("用法: IntegratedPackingApplication [caseJsonFileOrDirectory]");
-        System.err.println("结果将自动写入案例目录同级的 "
-                + NFP_RESULT_DIRECTORY_NAME + " 和 " + PACKING_RESULT_DIRECTORY_NAME + " 目录。");
     }
 
     /**

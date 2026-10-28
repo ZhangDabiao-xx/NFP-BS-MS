@@ -32,6 +32,14 @@
             <version>${javafx.version}</version>
         </dependency>
 
+        <!-- 真正由 mvn test 执行的单元测试框架；测试不会调用真实模型 API。 -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>5.10.2</version>
+            <scope>test</scope>
+        </dependency>
+
         <!--JavaFx 保存图片需要 -->
         <dependency>
             <groupId>org.openjfx</groupId>
@@ -44,17 +52,23 @@
 
     <build>
         <plugins>
-            <!-- 默认执行统一求解入口；两个可视化入口通过 -Dexec.mainClass 单独指定。 -->
+            <!-- 默认执行确定性的基准求解入口；Agent 与可视化均通过 -Dexec.mainClass 显式指定。 -->
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>exec-maven-plugin</artifactId>
                 <version>3.1.0</version>
                 <configuration>
-                    <mainClass>org.example.application.IntegratedPackingApplication</mainClass>
+                    <mainClass>org.example.application.BaselinePackingApplication</mainClass>
                 </configuration>
             </plugin>
 
-            <!-- 打包统一求解入口及其运行时依赖 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.2.5</version>
+            </plugin>
+
+            <!-- 打包基准求解入口及其运行时依赖 -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>
@@ -69,7 +83,7 @@
                             <createDependencyReducedPom>false</createDependencyReducedPom>
                             <transformers>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                                    <mainClass>org.example.application.IntegratedPackingApplication</mainClass>
+                                    <mainClass>org.example.application.BaselinePackingApplication</mainClass>
                                 </transformer>
                             </transformers>
                         </configuration>

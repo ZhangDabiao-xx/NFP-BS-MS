@@ -5,9 +5,11 @@ import org.example.beamsearch.common.Box;
 import org.example.beamsearch.common.Container;
 import org.example.beamsearch.common.ExecutionResult;
 import org.example.beamsearch.common.Instance;
+import org.example.beamsearch.common.RepackStatistics;
 import org.example.beamsearch.common.Space;
 import org.example.beamsearch.common.SpaceComparator;
 import org.example.beamsearch.spacemanager.SpaceManager;
+import org.example.beamsearch.lb.solver.RectangleLowerBoundSolver;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -74,6 +76,43 @@ public final class PriorityFirstPacker {
      */
     public static ExecutionResult solveWithTotalTime(List<Instance> groupedInstances,
                                                      long totalTimeMs) {
+        return solveWithInitialPackingPolicy(groupedInstances, totalTimeMs, null);
+    }
+
+    /**
+     * 保留旧矩形入口的兼容方法。
+     *
+     * <p>矩形与混排现在共用 {@link #solveWithTotalTime(List, long)} 的受限初始
+     * 搜索和完整性校验，避免两条路径的性能与正确性策略发生分叉。</p>
+     *
+     * @param groupedInstances 当前输入按颜色拆出的 Instance 列表
+     * @param totalTimeMs 全局重排优化的总时间，单位为毫秒
+     * @return 合并后的最终排样结果
+     */
+    public static ExecutionResult solveRectangleWithTotalTime(List<Instance> groupedInstances,
+                                                               long totalTimeMs) {
+        return solveWithTotalTime(groupedInstances, totalTimeMs);
+    }
+
+    /** 仅纯矩形路径使用显式传入的完整案例下界，沿用原有初始排样与状态整理流程。 */
+    public static ExecutionResult solveRectangleWithTotalTime(List<Instance> groupedInstances,
+                                                               long totalTimeMs,
+                                                               RectangleLowerBoundSolver.Result caseLowerBound) {
+        if (caseLowerBound == null || groupedInstances == null || groupedInstances.isEmpty()
+                || collectBoxes(groupedInstances).stream().anyMatch(box -> !isPriorityBox(box))) {
+            throw new IllegalArgumentException("Rectangle-only packing requires a case lower bound and priority items.");
+        }
+        ExecutionResult result = solveWithInitialPackingPolicy(
+                groupedInstances, totalTimeMs, caseLowerBound.lowerBound());
+        result.rectangleLowerBound = caseLowerBound;
+        // 下界独立计时，不扣减全局重排预算，但计入纯矩形案例的总排样耗时。
+        result.totalPackingTimeMs += caseLowerBound.elapsedNanos() / 1_000_000L;
+        return result;
+    }
+
+    private static ExecutionResult solveWithInitialPackingPolicy(List<Instance> groupedInstances,
+                                                                  long totalTimeMs,
+                                                                  Integer rectangleLowerBound) {
         if (groupedInstances == null || groupedInstances.isEmpty()) {
             return emptyResult();
         }
@@ -112,20 +151,25 @@ public final class PriorityFirstPacker {
             long totalBudgetMs = Math.max(1L, totalTimeMs);
 
             long ordinarySolveStartNanos = System.nanoTime();
-            ExecutionResult ordinaryResult = solveNewBoardsUntil(
+            ExecutionResult ordinaryResult = solveNewBoards(
                     ordinaryInstance,
-                    Long.MAX_VALUE);
+                    totalBudgetMs);
             long ordinarySolveTimeMs = elapsedMillis(ordinarySolveStartNanos);
 
+            // 混排即使只有普通件，也不计算阶段下界，继续按时间和无改进轮数优化。
             long ordinaryOptimizeStartNanos = System.nanoTime();
             ordinaryResult = GlobalRepackOptimizer.optimize(
                     ordinaryInstance,
                     ordinaryResult,
-                    PackingRuntimeConfig.capRepackTimeMs(totalBudgetMs));
+                    PackingRuntimeConfig.capRepackTimeMs(totalBudgetMs),
+                    0, PackingConvergenceRecorder.ORDINARY);
             long ordinaryOptimizeTimeMs = elapsedMillis(ordinaryOptimizeStartNanos);
+            requireAllWorkpiecesPlaced(ordinaryResult, ordinaryInstance, "ordinary packing");
 
             ordinaryResult.priorityBoardCount = 0;
             ordinaryResult.ordinaryBoardCount = ordinaryResult.solutions.size();
+            ordinaryResult.priorityRepackStatistics = RepackStatistics.notRun("no_priority_workpieces");
+            ordinaryResult.ordinaryRepackStatistics = ordinaryResult.repackStatistics;
             setTiming(ordinaryResult,
                     0,
                     0,
@@ -148,9 +192,9 @@ public final class PriorityFirstPacker {
         long totalWorkpieceCount = countWorkpieces(allBoxes);
 
         long prioritySolveStartNanos = System.nanoTime();
-        ExecutionResult priorityResult = solveNewBoardsUntil(
+        ExecutionResult priorityResult = solveNewBoards(
                 priorityInstance,
-                Long.MAX_VALUE);
+                totalBudgetMs);
         long prioritySolveTimeMs = elapsedMillis(prioritySolveStartNanos);
 
         // 目标函数首先最小化 Sp，因此必须在普通件插入前完成优先件全局优化。
@@ -161,11 +205,17 @@ public final class PriorityFirstPacker {
                 priorityWorkpieceCount,
                 totalWorkpieceCount);
         long priorityOptimizeStartNanos = System.nanoTime();
-        priorityResult = GlobalRepackOptimizer.optimize(
-                priorityInstance,
-                priorityResult,
-                PackingRuntimeConfig.capRepackTimeMs(priorityOptimizeTimeLimitMs));
+        long priorityRepackBudgetMs = PackingRuntimeConfig.capRepackTimeMs(priorityOptimizeTimeLimitMs);
+        // 只有纯矩形入口传入案例下界；混排不计算或启用下界停止判断。
+        priorityResult = rectangleLowerBound == null
+                ? GlobalRepackOptimizer.optimize(
+                        priorityInstance, priorityResult, priorityRepackBudgetMs,
+                        0, PackingConvergenceRecorder.PRIORITY)
+                : GlobalRepackOptimizer.optimize(
+                        priorityInstance, priorityResult, priorityRepackBudgetMs, rectangleLowerBound);
         long priorityOptimizeTimeMs = elapsedMillis(priorityOptimizeStartNanos);
+        requireAllWorkpiecesPlaced(priorityResult, priorityInstance, "priority packing");
+        RepackStatistics priorityRepackStatistics = priorityResult.repackStatistics;
 
         // 重新建立混合 Instance，统一重编号 typeNum，使 freeBoxes 和
         // GeneralBlock.typeCount 在后续阶段使用同一套下标。
@@ -174,12 +224,15 @@ public final class PriorityFirstPacker {
 
         BeamSearch insertionSearch = new BeamSearch(createSpaceManager(mixedInstance), mixedInstance);
         long insertionStartNanos = System.nanoTime();
-        // 普通件插入是独立阶段：不扣减全局重排优化的时间预算。候选整体
-        // 重排仍通过 candidateRepackTimeLimitMs 限制单次验证，避免不可行候选无限搜索。
+        // 普通件插入不扣减全局重排优化预算，但其自身有总时限。时限到达时，
+        // 未插入的普通件会在第三阶段开新板继续排样，不会遗失。
+        long insertionBudgetMs = PackingRuntimeConfig.ordinaryInsertionTimeMs();
+        long insertionDeadlineMillis = System.currentTimeMillis() + insertionBudgetMs;
+        System.out.println("Ordinary insertion budget=" + insertionBudgetMs + "ms.");
         ExecutionResult insertionResult = insertionSearch.packIntoExistingBoardsUntil(
                 priorityResult.boardStates,
                 ordinaryTypes,
-                Long.MAX_VALUE);
+                insertionDeadlineMillis);
         long insertionTimeMs = elapsedMillis(insertionStartNanos);
 
         // 第二阶段只允许在已有优先件板材中继续排样，板材数量必须与
@@ -198,27 +251,34 @@ public final class PriorityFirstPacker {
                 mixedContainer);
 
         ExecutionResult remainingResult = null;
+        RepackStatistics ordinaryRepackStatistics =
+                RepackStatistics.notRun("no_remaining_ordinary_workpieces");
         long ordinarySolveTimeMs = 0;
         long ordinaryOptimizeTimeMs = 0;
         if (remainingOrdinaryInstance != null) {
             long usedOptimizationTimeMs = priorityOptimizeTimeMs;
             long ordinarySolveStartNanos = System.nanoTime();
-            remainingResult = solveNewBoardsUntil(
+            remainingResult = solveNewBoards(
                     remainingOrdinaryInstance,
-                    Long.MAX_VALUE);
+                    totalBudgetMs);
             ordinarySolveTimeMs = elapsedMillis(ordinarySolveStartNanos);
 
             // 这里只优化普通件新开的板材。由于优先件板材已经在上一步锁定，
             // 该优化不会改变 Sp，只会尽量减少 So。普通件初始排样耗时不扣减
             // 此处预算，剩余时间只由已经发生的优先件全局优化决定。
             long ordinaryOptimizeStartNanos = System.nanoTime();
+            // 剩余普通件同样禁用阶段下界，避免初始板数达到下界后直接跳过优化。
             remainingResult = GlobalRepackOptimizer.optimize(
                     remainingOrdinaryInstance,
                     remainingResult,
                     PackingRuntimeConfig.capRepackTimeMs(remainingOptimizationBudget(
                             totalBudgetMs,
-                            usedOptimizationTimeMs)));
+                            usedOptimizationTimeMs)),
+                    0, PackingConvergenceRecorder.ORDINARY);
             ordinaryOptimizeTimeMs = elapsedMillis(ordinaryOptimizeStartNanos);
+            requireAllWorkpiecesPlaced(
+                    remainingResult, remainingOrdinaryInstance, "remaining ordinary packing");
+            ordinaryRepackStatistics = remainingResult.repackStatistics;
         }
 
         ExecutionResult finalResult = mergeResults(
@@ -228,6 +288,7 @@ public final class PriorityFirstPacker {
                 remainingResult,
                 remainingOrdinaryInstance,
                 mixedInstance);
+        requireAllWorkpiecesPlaced(finalResult, mixedInstance, "combined packing");
         setTiming(finalResult,
                 prioritySolveTimeMs,
                 priorityOptimizeTimeMs,
@@ -236,18 +297,14 @@ public final class PriorityFirstPacker {
                 ordinaryOptimizeTimeMs,
                 priorityOptimizeTimeMs + ordinaryOptimizeTimeMs,
                 elapsedMillis(solveStartNanos));
+        finalResult.priorityRepackStatistics = priorityRepackStatistics;
+        finalResult.ordinaryRepackStatistics = ordinaryRepackStatistics;
         return finalResult;
     }
 
-    /**
-     * 在给定截止时间前求解一个独立 Instance 的新板排样。
-     *
-     * @param instance 当前阶段待排的矩形实例。
-     * @param deadlineMillis 新板排样的绝对截止时间戳；传入 {@link Long#MAX_VALUE} 表示必须完整排样。
-     * @return 当前实例的排样结果。
-     */
-    private static ExecutionResult solveNewBoardsUntil(Instance instance,
-                                                       long deadlineMillis) {
+    /** 使用受限单板 Beam Search 求解一个独立 Instance 的新板排样。 */
+    private static ExecutionResult solveNewBoards(Instance instance,
+                                                   long totalOptimizationTimeMs) {
         Comparator<Space> comparator = SpaceComparator.getSpaceComparator(instance, 1);
         SpaceManager spaceManager = new SpaceManager(comparator);
         BeamSearch beamSearch = new BeamSearch(spaceManager, instance);
@@ -258,7 +315,17 @@ public final class PriorityFirstPacker {
             minCon = (int) (instance.totalBoxVolume / boardArea);
         }
 
-        ExecutionResult result = beamSearch.solveUntil(deadlineMillis, minCon);
+        long perBoardTimeMs = PackingRuntimeConfig.initialBoardTimeMs(
+                minCon,
+                totalOptimizationTimeMs);
+        int maxBeamWidth = PackingRuntimeConfig.initialMaxBeamWidth();
+        System.out.println("Initial-packing policy: lower bound=" + minCon
+                + ", per-board search budget=" + perBoardTimeMs + "ms, max beam width="
+                + maxBeamWidth + ".");
+        ExecutionResult result = beamSearch.solveWithPerBoardTimeLimit(
+                perBoardTimeMs,
+                minCon,
+                maxBeamWidth);
         result.setAvgUtilization();
         return result;
     }
@@ -297,6 +364,33 @@ public final class PriorityFirstPacker {
             }
         }
         return count;
+    }
+
+    /**
+     * 只对已经通过输入尺寸校验、实际进入 Instance 的工件做完整性校验。
+     * 尺寸违规工件在 ProblemLoader 中已写入 notOptimize.csv，因而不在这里计数。
+     */
+    private static void requireAllWorkpiecesPlaced(ExecutionResult result,
+                                                   Instance instance,
+                                                   String phase) {
+        if (result == null || instance == null || result.unplacedCounts == null) {
+            throw new IllegalStateException("Cannot verify complete workpiece placement after " + phase + ".");
+        }
+
+        long remainingCount = 0;
+        int countLength = Math.min(instance.boxes.length, result.unplacedCounts.length);
+        for (int index = 0; index < countLength; index++) {
+            remainingCount += Math.max(0, result.unplacedCounts[index]);
+        }
+        if (result.unplacedCounts.length < instance.boxes.length) {
+            for (int index = result.unplacedCounts.length; index < instance.boxes.length; index++) {
+                remainingCount += Math.max(0, instance.boxes[index].count);
+            }
+        }
+        if (remainingCount > 0) {
+            throw new IllegalStateException(
+                    "Packing left " + remainingCount + " size-valid workpiece(s) unplaced after " + phase + ".");
+        }
     }
 
     /**
